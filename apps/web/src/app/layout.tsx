@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from 'next';
 import '@/styles/globals.css';
+import { ClientBeacon } from '@/components/analytics/ClientBeacon';
 
 export const metadata: Metadata = {
   metadataBase: new URL('https://fairtrail.org'),
@@ -46,7 +47,10 @@ export default function RootLayout({
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
       </head>
-      <body>{children}</body>
+      <body>
+        {children}
+        <ClientBeacon />
+      </body>
     </html>
   );
 }
