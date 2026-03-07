@@ -20,6 +20,7 @@ export async function POST(request: NextRequest) {
     preferredAirlines,
     timePreference,
     cabinClass,
+    selectedFlights,
   } = body;
 
   if (!rawInput || !origin || !destination || !dateFrom || !dateTo) {
@@ -48,6 +49,13 @@ export async function POST(request: NextRequest) {
   const expiresAt = new Date(to);
   expiresAt.setDate(expiresAt.getDate() + flex);
 
+  // Derive preferredAirlines from selected flights if not explicitly set
+  const flights = Array.isArray(selectedFlights) ? selectedFlights : [];
+  let airlines: string[] = Array.isArray(preferredAirlines) ? preferredAirlines : [];
+  if (airlines.length === 0 && flights.length > 0) {
+    airlines = [...new Set(flights.map((f: { airline: string }) => f.airline))];
+  }
+
   const query = await prisma.query.create({
     data: {
       rawInput,
@@ -60,12 +68,28 @@ export async function POST(request: NextRequest) {
       flexibility: flex,
       maxPrice: maxPrice ? Number(maxPrice) : null,
       maxStops: maxStops !== undefined && maxStops !== null ? Number(maxStops) : null,
-      preferredAirlines: Array.isArray(preferredAirlines) ? preferredAirlines : [],
+      preferredAirlines: airlines,
       timePreference: timePreference || 'any',
       cabinClass: cabinClass || 'economy',
       expiresAt,
     },
   });
+
+  // Store selected flights as initial price snapshots
+  if (flights.length > 0) {
+    await prisma.priceSnapshot.createMany({
+      data: flights.map((f: { travelDate: string; price: number; currency?: string; airline: string; bookingUrl: string; stops?: number; duration?: string | null }) => ({
+        queryId: query.id,
+        travelDate: new Date(f.travelDate),
+        price: f.price,
+        currency: f.currency || 'USD',
+        airline: f.airline,
+        bookingUrl: f.bookingUrl,
+        stops: f.stops ?? 0,
+        duration: f.duration ?? null,
+      })),
+    });
+  }
 
   return apiSuccess({ id: query.id }, 201);
 }
