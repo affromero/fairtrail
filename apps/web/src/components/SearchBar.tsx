@@ -81,6 +81,7 @@ export function SearchBar() {
 
   // Preview state
   const [previewFlights, setPreviewFlights] = useState<PriceData[] | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
 
   // Link banner state
   const [createdQuery, setCreatedQuery] = useState<CreatedQuery | null>(null);
@@ -156,7 +157,7 @@ export function SearchBar() {
   const handlePreview = async () => {
     if (!parsed) return;
 
-    setLoading(true);
+    setPreviewLoading(true);
     setError(null);
 
     try {
@@ -177,7 +178,7 @@ export function SearchBar() {
     } catch {
       setError('Network error — please try again');
     } finally {
-      setLoading(false);
+      setPreviewLoading(false);
     }
   };
 
@@ -242,12 +243,14 @@ export function SearchBar() {
     setAmbiguities([]);
     setPartialParsed(null);
     setPreviewFlights(null);
+    setPreviewLoading(false);
     setCreatedQuery(null);
     inputRef.current?.focus();
   };
 
   const showClarification = ambiguities.length > 0 && !parsed;
-  const showConfirmation = parsed && !previewFlights && !createdQuery;
+  const showConfirmation = parsed && !previewFlights && !createdQuery && !previewLoading;
+  const showPreviewLoading = parsed && previewLoading && !previewFlights;
   const showPicker = parsed && previewFlights && !createdQuery;
 
   if (inviteValid === null) {
@@ -352,6 +355,15 @@ export function SearchBar() {
           onEdit={handleReset}
           loading={loading}
         />
+      )}
+
+      {showPreviewLoading && parsed && (
+        <div className={styles.previewLoading}>
+          <span className={styles.previewRoute}>
+            {parsed.origin} → {parsed.destination}
+          </span>
+          <span className={styles.previewStatus}>Searching Google Flights&hellip;</span>
+        </div>
       )}
 
       {showPicker && (
