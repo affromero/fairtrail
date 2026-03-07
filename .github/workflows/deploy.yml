@@ -55,7 +55,7 @@ jobs:
             rm -f /tmp/ft-cron-env
 
             echo "Building containers..."
-            docker compose -f docker-compose.prod.yml build --no-cache
+            docker compose -f docker-compose.prod.yml build
 
             echo "Starting infra services..."
             docker compose -f docker-compose.prod.yml up -d --no-recreate db redis
@@ -76,7 +76,7 @@ jobs:
 
             echo "Running Prisma migrations..."
             for i in $(seq 1 3); do
-              if docker compose -f docker-compose.prod.yml run --rm --no-deps web npx prisma db push --schema=apps/web/prisma/schema.prisma; then
+              if docker compose -f docker-compose.prod.yml run --rm --no-deps --entrypoint "" web npx prisma db push --schema=apps/web/prisma/schema.prisma; then
                 echo "Prisma migrations applied (attempt $i)"
                 break
               fi
