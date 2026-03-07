@@ -73,12 +73,15 @@ model FetchRun {
 }
 
 model ExtractionConfig {
-  id        String   @id @default("singleton")
-  provider  String   @default("anthropic")
-  model     String   @default("claude-haiku-4-5-20251001")
-  enabled        Boolean  @default(true)
-  scrapeInterval Int      @default(6) // hours — global default
-  updatedAt      DateTime @updatedAt
+  id                String   @id @default("singleton")
+  provider          String   @default("anthropic")
+  model             String   @default("claude-haiku-4-5-20251001")
+  enabled           Boolean  @default(true)
+  scrapeInterval    Int      @default(6) // hours — global default
+  sitePasswordHash  String?
+  adminPasswordHash String?
+  siteGateEnabled   Boolean  @default(false)
+  updatedAt         DateTime @updatedAt
 }
 
 model ApiUsageLog {
