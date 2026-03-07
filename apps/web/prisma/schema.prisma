@@ -24,6 +24,7 @@ model Query {
   cabinClass      String   @default("economy")
   active          Boolean  @default(true)
   expiresAt       DateTime
+  firstViewedAt   DateTime?
   scrapeInterval  Int      @default(6) // hours
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
@@ -75,8 +76,9 @@ model ExtractionConfig {
   id        String   @id @default("singleton")
   provider  String   @default("anthropic")
   model     String   @default("claude-haiku-4-5-20251001")
-  enabled   Boolean  @default(true)
-  updatedAt DateTime @updatedAt
+  enabled        Boolean  @default(true)
+  scrapeInterval Int      @default(6) // hours — global default
+  updatedAt      DateTime @updatedAt
 }
 
 model ApiUsageLog {
