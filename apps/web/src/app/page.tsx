@@ -2,6 +2,7 @@ import Link from 'next/link';
 import styles from './page.module.css';
 import { SearchBar } from '@/components/SearchBar';
 import { ThemeToggle } from '@/components/ThemeToggle';
+import { SavedTrackers } from '@/components/SavedTrackers';
 import { getSessionToken, verifySessionToken } from '@/lib/admin-auth';
 
 export default async function HomePage() {
@@ -29,6 +30,7 @@ export default async function HomePage() {
           The price trail airlines don&apos;t show you
         </p>
         <SearchBar />
+        <SavedTrackers />
       </div>
 
       <section className={styles.why}>

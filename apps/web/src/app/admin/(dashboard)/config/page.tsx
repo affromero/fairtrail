@@ -8,12 +8,14 @@ interface Config {
   provider: string;
   model: string;
   enabled: boolean;
+  scrapeInterval: number;
 }
 
 export default function ConfigPage() {
   const [config, setConfig] = useState<Config | null>(null);
   const [provider, setProvider] = useState('anthropic');
   const [model, setModel] = useState('claude-haiku-4-5-20251001');
+  const [scrapeInterval, setScrapeInterval] = useState(6);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
 
@@ -25,6 +27,7 @@ export default function ConfigPage() {
           setConfig(d.data);
           setProvider(d.data.provider);
           setModel(d.data.model);
+          setScrapeInterval(d.data.scrapeInterval);
         }
       });
   }, []);
@@ -47,7 +50,7 @@ export default function ConfigPage() {
     const res = await fetch('/api/admin/config', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ provider, model }),
+      body: JSON.stringify({ provider, model, scrapeIntervalHours: scrapeInterval }),
     });
 
     const data = await res.json();
@@ -93,6 +96,19 @@ export default function ConfigPage() {
               <option key={m.id} value={m.id}>
                 {m.name} ({m.costPer1kInput === 0 ? 'Free (Max)' : `$${m.costPer1kInput}/1k in`})
               </option>
+            ))}
+          </select>
+        </div>
+
+        <div className={styles.field}>
+          <label className={styles.label}>Scrape Interval</label>
+          <select
+            className={styles.select}
+            value={scrapeInterval}
+            onChange={(e) => setScrapeInterval(Number(e.target.value))}
+          >
+            {[1, 2, 3, 4, 6, 8, 12, 24].map((h) => (
+              <option key={h} value={h}>Every {h}h</option>
             ))}
           </select>
         </div>

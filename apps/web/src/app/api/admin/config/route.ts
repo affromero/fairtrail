@@ -37,6 +37,9 @@ export async function PATCH(request: NextRequest) {
   if (provider) data.provider = provider;
   if (model) data.model = model;
   if (typeof body.enabled === 'boolean') data.enabled = body.enabled;
+  if (typeof body.scrapeIntervalHours === 'number') {
+    data.scrapeInterval = Math.max(1, Math.min(24, Math.round(body.scrapeIntervalHours)));
+  }
 
   const config = await prisma.extractionConfig.upsert({
     where: { id: 'singleton' },

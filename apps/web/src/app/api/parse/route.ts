@@ -14,8 +14,12 @@ export async function POST(request: NextRequest) {
     return apiError('Query must be between 5 and 500 characters', 400);
   }
 
+  const conversationHistory = Array.isArray(body.conversationHistory)
+    ? body.conversationHistory as Array<{ role: 'user' | 'assistant'; content: string }>
+    : undefined;
+
   try {
-    const { parsed, usage } = await parseFlightQuery(rawInput);
+    const { response, usage } = await parseFlightQuery(rawInput, conversationHistory);
 
     // Log API usage for the parse call
     const config = await prisma.extractionConfig.findFirst({ where: { id: 'singleton' } });
@@ -25,13 +29,13 @@ export async function POST(request: NextRequest) {
         model: config?.model ?? 'claude-haiku-4-5-20251001',
         inputTokens: usage.inputTokens,
         outputTokens: usage.outputTokens,
-        costUsd: 0, // Parse cost is minimal
+        costUsd: 0,
         operation: 'parse-query',
         durationMs: 0,
       },
     });
 
-    return apiSuccess(parsed);
+    return apiSuccess(response);
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Failed to parse query';
     return apiError(msg, 422);

@@ -27,6 +27,14 @@ export default async function ChartPage({ params }: Props) {
 
   if (!query) notFound();
 
+  // Mark first view for 24h auto-cleanup
+  if (!query.firstViewedAt) {
+    await prisma.query.update({
+      where: { id },
+      data: { firstViewedAt: new Date() },
+    });
+  }
+
   const expired = new Date() > query.expiresAt;
   const daysLeft = daysUntil(query.expiresAt);
 
