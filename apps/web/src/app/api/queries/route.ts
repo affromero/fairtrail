@@ -1,8 +1,13 @@
 import { NextRequest } from 'next/server';
 import { apiSuccess, apiError } from '@/lib/api-response';
 import { prisma } from '@/lib/prisma';
+import { hasValidInvite } from '@/lib/invite-auth';
 
 export async function POST(request: NextRequest) {
+  if (!(await hasValidInvite())) {
+    return apiError('Invite code required', 401);
+  }
+
   const body = await request.json().catch(() => null);
   if (!body) return apiError('Invalid JSON body', 400);
 

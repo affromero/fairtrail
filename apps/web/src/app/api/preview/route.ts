@@ -6,6 +6,7 @@ import { navigateGoogleFlights } from '@/lib/scraper/navigate';
 import { extractPrices, type PriceData } from '@/lib/scraper/extract-prices';
 import { getModelCosts } from '@/lib/scraper/ai-registry';
 import { createHash } from 'crypto';
+import { hasValidInvite } from '@/lib/invite-auth';
 
 const PREVIEW_MAX_RESULTS = 20;
 
@@ -23,6 +24,10 @@ function buildCacheKey(params: {
 }
 
 export async function POST(request: NextRequest) {
+  if (!(await hasValidInvite())) {
+    return apiError('Invite code required', 401);
+  }
+
   const body = await request.json().catch(() => null);
   if (!body) return apiError('Invalid JSON body', 400);
 

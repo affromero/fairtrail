@@ -5,10 +5,9 @@ import { EXTRACTION_PROVIDERS } from '@/lib/scraper/ai-registry';
 import { hashPassword } from '@/lib/password';
 
 function stripHashes(config: Record<string, unknown>) {
-  const { sitePasswordHash, adminPasswordHash, ...rest } = config;
+  const { adminPasswordHash, ...rest } = config;
   return {
     ...rest,
-    hasSitePassword: !!sitePasswordHash,
     hasAdminPassword: !!adminPasswordHash,
   };
 }
@@ -50,12 +49,6 @@ export async function PATCH(request: NextRequest) {
   if (typeof body.scrapeIntervalHours === 'number') {
     data.scrapeInterval = Math.max(1, Math.min(24, Math.round(body.scrapeIntervalHours)));
   }
-  if (typeof body.siteGateEnabled === 'boolean') {
-    data.siteGateEnabled = body.siteGateEnabled;
-  }
-  if (typeof body.sitePassword === 'string' && body.sitePassword.length > 0) {
-    data.sitePasswordHash = await hashPassword(body.sitePassword);
-  }
   if (typeof body.adminPassword === 'string' && body.adminPassword.length > 0) {
     data.adminPasswordHash = await hashPassword(body.adminPassword);
   }
@@ -66,23 +59,5 @@ export async function PATCH(request: NextRequest) {
     create: { id: 'singleton', ...data },
   });
 
-  const response = apiSuccess(stripHashes(config as unknown as Record<string, unknown>));
-
-  // Set or clear the ft-gate-active cookie based on gate state
-  const gateEnabled = (config as unknown as Record<string, unknown>).siteGateEnabled as boolean;
-  const hasSitePassword = !!(config as unknown as Record<string, unknown>).sitePasswordHash;
-
-  if (gateEnabled && hasSitePassword) {
-    response.cookies.set('ft-gate-active', '1', {
-      httpOnly: false,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      maxAge: 60 * 60 * 24 * 365,
-      path: '/',
-    });
-  } else {
-    response.cookies.delete('ft-gate-active');
-  }
-
-  return response;
+  return apiSuccess(stripHashes(config as unknown as Record<string, unknown>));
 }

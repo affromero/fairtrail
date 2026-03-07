@@ -2,8 +2,13 @@ import { NextRequest } from 'next/server';
 import { apiSuccess, apiError } from '@/lib/api-response';
 import { parseFlightQuery } from '@/lib/scraper/parse-query';
 import { prisma } from '@/lib/prisma';
+import { hasValidInvite } from '@/lib/invite-auth';
 
 export async function POST(request: NextRequest) {
+  if (!(await hasValidInvite())) {
+    return apiError('Invite code required', 401);
+  }
+
   const body = await request.json().catch(() => null);
   if (!body?.query || typeof body.query !== 'string') {
     return apiError('Missing or invalid "query" field', 400);

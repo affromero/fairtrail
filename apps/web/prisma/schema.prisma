@@ -78,10 +78,20 @@ model ExtractionConfig {
   model             String   @default("claude-haiku-4-5-20251001")
   enabled           Boolean  @default(true)
   scrapeInterval    Int      @default(6) // hours — global default
-  sitePasswordHash  String?
   adminPasswordHash String?
-  siteGateEnabled   Boolean  @default(false)
   updatedAt         DateTime @updatedAt
+}
+
+model InviteCode {
+  id        String    @id @default(cuid())
+  code      String    @unique
+  label     String?
+  usesCount Int       @default(0)
+  active    Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  expiresAt DateTime?
+
+  @@index([active])
 }
 
 model ApiUsageLog {
