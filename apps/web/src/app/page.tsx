@@ -1,11 +1,26 @@
+import Link from 'next/link';
 import styles from './page.module.css';
 import { SearchBar } from '@/components/SearchBar';
 import { ThemeToggle } from '@/components/ThemeToggle';
+import { getSessionToken, verifySessionToken } from '@/lib/admin-auth';
 
-export default function HomePage() {
+export default async function HomePage() {
+  const token = await getSessionToken();
+  const isAdmin = token ? verifySessionToken(token) : false;
+
   return (
     <main className={styles.root}>
-      <div className={styles.themeToggle}>
+      <div className={styles.topBar}>
+        {isAdmin && (
+          <Link href="/admin" className={styles.adminLink} title="Admin Panel">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+              <path
+                d="M8 1.5a1.25 1.25 0 0 1 1.177.824l.963 2.681 2.825.213a1.25 1.25 0 0 1 .712 2.19l-2.142 1.818.658 2.77a1.25 1.25 0 0 1-1.863 1.354L8 11.885 5.67 13.35a1.25 1.25 0 0 1-1.863-1.354l.658-2.77-2.142-1.818a1.25 1.25 0 0 1 .712-2.19l2.825-.213.963-2.681A1.25 1.25 0 0 1 8 1.5Z"
+                fill="currentColor"
+              />
+            </svg>
+          </Link>
+        )}
         <ThemeToggle />
       </div>
       <div className={styles.hero}>
