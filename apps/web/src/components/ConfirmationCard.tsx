@@ -50,8 +50,8 @@ export function ConfirmationCard({
   onTrack,
   onEdit,
   loading,
-  actionLabel = 'Search flights',
-  loadingLabel = 'Searching flights...',
+  actionLabel = 'Show available flights',
+  loadingLabel = 'Checking Google Flights...',
 }: {
   parsed: ParsedQuery;
   onTrack: () => void;
@@ -100,6 +100,14 @@ export function ConfirmationCard({
           </span>
         </div>
       </div>
+
+      <p className={styles.trackingInfo}>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+          <circle cx="12" cy="12" r="10" />
+          <path d="M12 6v6l4 2" />
+        </svg>
+        Prices checked daily &middot; Shareable chart &middot; Tracking ends {computeExpiry(parsed.dateTo, parsed.flexibility)}
+      </p>
 
       {hasFilters(parsed) && (
         <div className={styles.filters}>
