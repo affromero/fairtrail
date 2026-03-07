@@ -1,0 +1,124 @@
+.root {
+  width: 100%;
+  max-width: 640px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+}
+
+.inputWrapper {
+  width: 100%;
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.input {
+  width: 100%;
+  padding: 1rem 3.5rem 1rem 1.25rem;
+  font-family: var(--font-display);
+  font-size: 1.0625rem;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.input::placeholder {
+  color: var(--muted);
+  font-style: italic;
+}
+
+.input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-glow), 0 0 20px var(--accent-glow);
+}
+
+.input:disabled {
+  opacity: 0.6;
+}
+
+.searchButton {
+  position: absolute;
+  right: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  background: var(--accent);
+  color: var(--bg);
+  border: none;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.searchButton:hover:not(:disabled) {
+  opacity: 0.85;
+}
+
+.searchButton:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid transparent;
+  border-top: 2px solid var(--bg);
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.hints {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.hint {
+  font-size: 0.8125rem;
+  color: var(--muted);
+  font-family: var(--font-mono);
+}
+
+.hintSep {
+  color: var(--border);
+}
+
+.error {
+  padding: 0.75rem 1rem;
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: var(--radius-md);
+  color: var(--price-up);
+  font-size: 0.875rem;
+  width: 100%;
+  text-align: center;
+}
+
+@media (max-width: 640px) {
+  .input {
+    font-size: 1rem;
+    padding: 0.875rem 3.5rem 0.875rem 1rem;
+  }
+
+  .hints {
+    gap: 0.25rem;
+  }
+
+  .hint {
+    font-size: 0.75rem;
+  }
+}

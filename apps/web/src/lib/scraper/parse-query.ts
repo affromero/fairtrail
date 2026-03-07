@@ -9,6 +9,11 @@ export interface ParsedFlightQuery {
   dateFrom: string; // ISO date
   dateTo: string; // ISO date
   flexibility: number; // days
+  maxPrice: number | null;
+  maxStops: number | null; // 0 = nonstop only, 1 = max 1 stop, null = any
+  preferredAirlines: string[]; // empty = no preference
+  timePreference: 'any' | 'morning' | 'afternoon' | 'evening' | 'redeye';
+  cabinClass: 'economy' | 'premium_economy' | 'business' | 'first';
 }
 
 const SYSTEM_PROMPT = `You are a flight query parser. Extract structured flight search parameters from natural language input.
@@ -21,7 +26,12 @@ Return ONLY valid JSON with this exact shape:
   "destinationName": "City name (e.g. Paris)",
   "dateFrom": "YYYY-MM-DD start of travel window",
   "dateTo": "YYYY-MM-DD end of travel window",
-  "flexibility": number of days of flexibility (0 if exact dates)
+  "flexibility": number of days of flexibility (0 if exact dates),
+  "maxPrice": number or null (e.g. 800 if user says "under $800"),
+  "maxStops": number or null (0 if "nonstop"/"direct", 1 if "max 1 stop", null if no preference),
+  "preferredAirlines": ["Delta", "United"] or [] if no preference,
+  "timePreference": "any" | "morning" | "afternoon" | "evening" | "redeye",
+  "cabinClass": "economy" | "premium_economy" | "business" | "first"
 }
 
 Rules:
@@ -30,6 +40,11 @@ Rules:
 - If the user says "June 15-20", set dateFrom to June 15, dateTo to June 20, flexibility to 0
 - If the user says "next month" or "sometime in July", use the full month range
 - If the user says "flexible" without specifying days, use flexibility of 3
+- Default cabinClass to "economy" unless stated otherwise
+- Default timePreference to "any" unless stated (e.g. "morning flight" → "morning", "red-eye" → "redeye")
+- Extract airline preferences if mentioned (e.g. "on Delta" → ["Delta"])
+- Extract price caps if mentioned (e.g. "under $800", "budget", "cheap" → maxPrice of 500)
+- If no stop preference stated, maxStops is null
 - Today's date is ${new Date().toISOString().split('T')[0]}
 - Return ONLY the JSON object, no markdown, no explanation`;
 

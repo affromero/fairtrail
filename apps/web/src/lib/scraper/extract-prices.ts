@@ -11,9 +11,49 @@ export interface PriceData {
   duration: string | null;
 }
 
-const SYSTEM_PROMPT = `You are a flight price data extractor. Given HTML from a Google Flights search results page, extract all visible flight options.
+export interface QueryFilters {
+  maxPrice: number | null;
+  maxStops: number | null;
+  preferredAirlines: string[];
+  timePreference: string;
+  cabinClass: string;
+}
 
-Return ONLY valid JSON — an array of objects with this exact shape:
+const MAX_RESULTS = 10;
+
+function buildSystemPrompt(filters: QueryFilters): string {
+  const filterRules: string[] = [];
+
+  if (filters.maxPrice) {
+    filterRules.push(`- ONLY include flights priced at or below $${filters.maxPrice}`);
+  }
+  if (filters.maxStops !== null) {
+    filterRules.push(
+      filters.maxStops === 0
+        ? '- ONLY include nonstop/direct flights'
+        : `- ONLY include flights with ${filters.maxStops} stop(s) or fewer`
+    );
+  }
+  if (filters.preferredAirlines.length > 0) {
+    filterRules.push(`- ONLY include flights operated by: ${filters.preferredAirlines.join(', ')}`);
+  }
+  if (filters.timePreference !== 'any') {
+    const timeMap: Record<string, string> = {
+      morning: 'departing before 12:00 PM',
+      afternoon: 'departing between 12:00 PM and 6:00 PM',
+      evening: 'departing after 6:00 PM',
+      redeye: 'departing after 10:00 PM (red-eye flights)',
+    };
+    filterRules.push(`- Prefer flights ${timeMap[filters.timePreference] ?? ''}`);
+  }
+
+  const filterSection = filterRules.length > 0
+    ? `\nFiltering rules (STRICT — do not include flights that violate these):\n${filterRules.join('\n')}\n`
+    : '';
+
+  return `You are a flight price data extractor. Given HTML from a Google Flights search results page, extract the best matching flight options.
+
+Return ONLY valid JSON — an array of UP TO ${MAX_RESULTS} objects with this exact shape:
 [
   {
     "travelDate": "YYYY-MM-DD",
@@ -25,21 +65,24 @@ Return ONLY valid JSON — an array of objects with this exact shape:
     "duration": "11h 20m"
   }
 ]
-
-Rules:
-- Extract ALL visible flight results, not just the cheapest
+${filterSection}
+General rules:
+- Return at most ${MAX_RESULTS} results, sorted by price (cheapest first)
 - Price must be a number (no $ sign, no commas)
 - If you can't find a direct booking URL, construct one from the Google Flights URL
 - stops: 0 for nonstop, 1 for 1 stop, etc.
 - duration: human-readable format like "8h 30m"
 - If the travel date is not clearly visible per result, use the search date provided
+- Prefer variety: if multiple airlines are available, include at least one from each (up to the ${MAX_RESULTS} limit)
 - Return ONLY the JSON array, no markdown, no explanation
 - If you cannot extract any flights, return an empty array []`;
+}
 
 export async function extractPrices(
   html: string,
   searchUrl: string,
-  travelDateFallback: string
+  travelDateFallback: string,
+  filters: QueryFilters = { maxPrice: null, maxStops: null, preferredAirlines: [], timePreference: 'any', cabinClass: 'economy' }
 ): Promise<{ prices: PriceData[]; usage: ExtractionUsage }> {
   const config = await prisma.extractionConfig.findFirst({
     where: { id: 'singleton' },
@@ -67,7 +110,8 @@ Default travel date (if not visible per result): ${travelDateFallback}
 HTML content:
 ${trimmedHtml}`;
 
-  const result = await providerConfig.extract(apiKey, model, SYSTEM_PROMPT, userPrompt);
+  const systemPrompt = buildSystemPrompt(filters);
+  const result = await providerConfig.extract(apiKey, model, systemPrompt, userPrompt);
 
   const jsonMatch = result.content.match(/\[[\s\S]*\]/);
   if (!jsonMatch) {

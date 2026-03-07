@@ -26,8 +26,15 @@ export async function runScrapeForQuery(queryId: string): Promise<ScrapeResult> 
     const { html, url } = await navigateGoogleFlights(query);
     const travelDateFallback = query.dateFrom.toISOString().split('T')[0]!;
 
-    // Extract prices via LLM
-    const { prices, usage } = await extractPrices(html, url, travelDateFallback);
+    // Extract prices via LLM with user's filters
+    const filters = {
+      maxPrice: query.maxPrice,
+      maxStops: query.maxStops,
+      preferredAirlines: query.preferredAirlines,
+      timePreference: query.timePreference,
+      cabinClass: query.cabinClass,
+    };
+    const { prices, usage } = await extractPrices(html, url, travelDateFallback, filters);
 
     // Calculate cost
     const config = await prisma.extractionConfig.findFirst({ where: { id: 'singleton' } });

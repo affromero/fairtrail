@@ -3,23 +3,111 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
 }
 
+/* Hero */
 .hero {
-  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 12vh 1.5rem 4rem;
+  width: 100%;
+  max-width: 720px;
+  gap: 1.5rem;
 }
 
 .title {
   font-family: var(--font-display);
-  font-size: 3rem;
+  font-size: 3.5rem;
   font-weight: 700;
   letter-spacing: -0.02em;
   color: var(--accent);
+  text-shadow: 0 0 40px var(--accent-glow);
 }
 
 .tagline {
-  margin-top: 0.5rem;
   font-size: 1.125rem;
   color: var(--text-secondary);
+  margin-top: -0.5rem;
+}
+
+/* Why section */
+.why {
+  width: 100%;
+  max-width: 720px;
+  padding: 3rem 1.5rem 4rem;
+  border-top: 1px solid var(--border);
+}
+
+.whyTitle {
+  font-family: var(--font-display);
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 1.5rem;
+}
+
+.reasons {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.reason {
+  display: flex;
+  gap: 1rem;
+  align-items: flex-start;
+}
+
+.reasonNumber {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-display);
+  font-size: 0.8125rem;
+  font-weight: 700;
+  color: var(--accent);
+  background: var(--accent-glow);
+  border: 1px solid var(--accent-dim);
+  border-radius: 50%;
+}
+
+.reasonTitle {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 0.25rem;
+}
+
+.reasonText {
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+/* Footer */
+.footer {
+  width: 100%;
+  padding: 2rem 1.5rem;
+  border-top: 1px solid var(--border);
+  text-align: center;
+}
+
+.footer p {
+  font-size: 0.8125rem;
+  color: var(--muted);
+  font-family: var(--font-mono);
+}
+
+@media (max-width: 640px) {
+  .hero {
+    padding-top: 8vh;
+  }
+
+  .title {
+    font-size: 2.5rem;
+  }
 }

@@ -17,6 +17,11 @@ model Query {
   dateFrom        DateTime
   dateTo          DateTime
   flexibility     Int      @default(0)
+  maxPrice        Float?
+  maxStops        Int?
+  preferredAirlines String[] @default([])
+  timePreference  String   @default("any")
+  cabinClass      String   @default("economy")
   active          Boolean  @default(true)
   expiresAt       DateTime
   scrapeInterval  Int      @default(6) // hours
