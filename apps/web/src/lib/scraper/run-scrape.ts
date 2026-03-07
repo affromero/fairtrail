@@ -108,6 +108,14 @@ export async function runScrapeForQuery(queryId: string): Promise<ScrapeResult> 
   }
 }
 
+export async function cleanupUnvisitedQueries(): Promise<number> {
+  const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const result = await prisma.query.deleteMany({
+    where: { firstViewedAt: null, createdAt: { lt: cutoff } },
+  });
+  return result.count;
+}
+
 export async function runScrapeAll(): Promise<ScrapeResult[]> {
   const activeQueries = await prisma.query.findMany({
     where: {
