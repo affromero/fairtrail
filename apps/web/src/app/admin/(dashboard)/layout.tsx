@@ -9,6 +9,7 @@ const NAV_ITEMS = [
   { href: '/admin', label: 'Dashboard' },
   { href: '/admin/queries', label: 'Queries' },
   { href: '/admin/seed-routes', label: 'Seed Routes' },
+  { href: '/admin/insights', label: 'Insights' },
   { href: '/admin/analytics', label: 'Analytics' },
   { href: '/admin/config', label: 'Config' },
 ];
