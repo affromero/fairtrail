@@ -16,14 +16,18 @@ export function FlightPicker({
   flights,
   onTrack,
   onBack,
+  onEdit,
   loading,
 }: {
   flights: PriceData[];
   onTrack: (selected: PriceData[]) => void;
   onBack: () => void;
+  onEdit: () => void;
   loading: boolean;
 }) {
-  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [selected, setSelected] = useState<Set<number>>(
+    () => new Set(flights.slice(0, MAX_SELECTIONS).map((_, i) => i))
+  );
 
   const toggle = (index: number) => {
     setSelected((prev) => {
@@ -67,6 +71,7 @@ export function FlightPicker({
           </button>
         </div>
       </div>
+      <p className={styles.hint}>Select up to {MAX_SELECTIONS} flights to track daily price changes</p>
 
       {flights.length === 0 ? (
         <div className={styles.empty}>
@@ -121,6 +126,13 @@ export function FlightPicker({
           disabled={loading}
         >
           Back
+        </button>
+        <button
+          className={styles.backButton}
+          onClick={onEdit}
+          disabled={loading}
+        >
+          Edit search
         </button>
       </div>
     </div>

@@ -72,6 +72,13 @@
   cursor: not-allowed;
 }
 
+.hint {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--muted);
+  margin: 0 0 1rem;
+}
+
 .empty {
   padding: 2rem;
   text-align: center;
