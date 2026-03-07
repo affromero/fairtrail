@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { EXTRACTION_PROVIDERS } from '@/lib/scraper/ai-registry';
 import styles from './page.module.css';
 
@@ -9,9 +9,17 @@ interface Config {
   model: string;
   enabled: boolean;
   scrapeInterval: number;
-  hasSitePassword: boolean;
   hasAdminPassword: boolean;
-  siteGateEnabled: boolean;
+}
+
+interface InviteCode {
+  id: string;
+  code: string;
+  label: string | null;
+  usesCount: number;
+  active: boolean;
+  createdAt: string;
+  expiresAt: string | null;
 }
 
 export default function ConfigPage() {
@@ -22,11 +30,20 @@ export default function ConfigPage() {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
 
-  const [sitePassword, setSitePassword] = useState('');
   const [adminPassword, setAdminPassword] = useState('');
-  const [siteGateEnabled, setSiteGateEnabled] = useState(false);
-  const [savingPasswords, setSavingPasswords] = useState(false);
+  const [savingPassword, setSavingPassword] = useState(false);
   const [passwordMessage, setPasswordMessage] = useState('');
+
+  const [invites, setInvites] = useState<InviteCode[]>([]);
+  const [newLabel, setNewLabel] = useState('');
+  const [generatingInvite, setGeneratingInvite] = useState(false);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  const loadInvites = useCallback(() => {
+    fetch('/api/admin/invites')
+      .then((r) => r.json())
+      .then((d) => { if (d.ok) setInvites(d.data); });
+  }, []);
 
   useEffect(() => {
     fetch('/api/admin/config')
@@ -37,10 +54,10 @@ export default function ConfigPage() {
           setProvider(d.data.provider);
           setModel(d.data.model);
           setScrapeInterval(d.data.scrapeInterval);
-          setSiteGateEnabled(d.data.siteGateEnabled);
         }
       });
-  }, []);
+    loadInvites();
+  }, [loadInvites]);
 
   const providerConfig = EXTRACTION_PROVIDERS[provider];
   const models = providerConfig?.models ?? [];
@@ -73,31 +90,63 @@ export default function ConfigPage() {
     setSaving(false);
   };
 
-  const handleSavePasswords = async () => {
-    setSavingPasswords(true);
+  const handleSavePassword = async () => {
+    if (!adminPassword) return;
+    setSavingPassword(true);
     setPasswordMessage('');
-
-    const payload: Record<string, unknown> = { siteGateEnabled };
-    if (sitePassword) payload.sitePassword = sitePassword;
-    if (adminPassword) payload.adminPassword = adminPassword;
 
     const res = await fetch('/api/admin/config', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
+      body: JSON.stringify({ adminPassword }),
     });
 
     const data = await res.json();
     if (data.ok) {
       setConfig(data.data);
-      setSitePassword('');
       setAdminPassword('');
-      setSiteGateEnabled(data.data.siteGateEnabled);
-      setPasswordMessage('Passwords updated');
+      setPasswordMessage('Password updated');
     } else {
       setPasswordMessage(data.error || 'Failed to save');
     }
-    setSavingPasswords(false);
+    setSavingPassword(false);
+  };
+
+  const handleGenerateInvite = async () => {
+    setGeneratingInvite(true);
+
+    const res = await fetch('/api/admin/invites', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ label: newLabel.trim() || null }),
+    });
+
+    const data = await res.json();
+    if (data.ok) {
+      setNewLabel('');
+      loadInvites();
+    }
+    setGeneratingInvite(false);
+  };
+
+  const handleToggleInvite = async (id: string, active: boolean) => {
+    await fetch(`/api/admin/invites/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ active }),
+    });
+    loadInvites();
+  };
+
+  const handleDeleteInvite = async (id: string) => {
+    await fetch(`/api/admin/invites/${id}`, { method: 'DELETE' });
+    loadInvites();
+  };
+
+  const handleCopyCode = (invite: InviteCode) => {
+    navigator.clipboard.writeText(invite.code);
+    setCopiedId(invite.id);
+    setTimeout(() => setCopiedId(null), 2000);
   };
 
   if (!config) {
@@ -166,44 +215,68 @@ export default function ConfigPage() {
       </div>
 
       <div className={styles.form}>
-        <h2 className={styles.sectionTitle}>Access Control</h2>
+        <h2 className={styles.sectionTitle}>Invite Codes</h2>
 
-        <div className={styles.field}>
-          <label className={styles.label}>Site Gate</label>
-          <div className={styles.toggleRow}>
-            <button
-              type="button"
-              className={`${styles.toggle} ${siteGateEnabled ? styles.toggleOn : ''}`}
-              onClick={() => setSiteGateEnabled(!siteGateEnabled)}
-              disabled={!config.hasSitePassword && !sitePassword}
-            >
-              <span className={styles.toggleKnob} />
-            </button>
-            <span className={styles.toggleLabel}>
-              {siteGateEnabled ? 'Enabled' : 'Disabled'}
-              {!config.hasSitePassword && !sitePassword && (
-                <span className={styles.toggleHint}> — set a site password first</span>
-              )}
-            </span>
-          </div>
-        </div>
-
-        <div className={styles.field}>
-          <label className={styles.label}>
-            Site Password {config.hasSitePassword && <span className={styles.passwordSet}>(set)</span>}
-          </label>
+        <div className={styles.inviteGenRow}>
           <input
-            type="password"
+            type="text"
             className={styles.input}
-            placeholder={config.hasSitePassword ? 'Leave blank to keep current' : 'Set site password'}
-            value={sitePassword}
-            onChange={(e) => setSitePassword(e.target.value)}
+            placeholder="Label (optional, e.g. 'for John')"
+            value={newLabel}
+            onChange={(e) => setNewLabel(e.target.value)}
           />
+          <button
+            className={styles.saveButton}
+            onClick={handleGenerateInvite}
+            disabled={generatingInvite}
+          >
+            {generatingInvite ? 'Generating...' : 'Generate Code'}
+          </button>
         </div>
+
+        {invites.length > 0 && (
+          <div className={styles.inviteList}>
+            {invites.map((inv) => (
+              <div key={inv.id} className={`${styles.inviteRow} ${!inv.active ? styles.inviteInactive : ''}`}>
+                <div className={styles.inviteMain}>
+                  <button
+                    className={styles.inviteCode}
+                    onClick={() => handleCopyCode(inv)}
+                    title="Click to copy"
+                  >
+                    {copiedId === inv.id ? 'Copied!' : inv.code.slice(0, 8) + '...'}
+                  </button>
+                  {inv.label && <span className={styles.inviteLabel}>{inv.label}</span>}
+                </div>
+                <div className={styles.inviteMeta}>
+                  <span className={styles.inviteUses}>{inv.usesCount} uses</span>
+                  <button
+                    type="button"
+                    className={`${styles.toggle} ${inv.active ? styles.toggleOn : ''}`}
+                    onClick={() => handleToggleInvite(inv.id, !inv.active)}
+                  >
+                    <span className={styles.toggleKnob} />
+                  </button>
+                  <button
+                    className={styles.inviteDelete}
+                    onClick={() => handleDeleteInvite(inv.id)}
+                    title="Delete"
+                  >
+                    &times;
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className={styles.form}>
+        <h2 className={styles.sectionTitle}>Admin Password</h2>
 
         <div className={styles.field}>
           <label className={styles.label}>
-            Admin Password {config.hasAdminPassword && <span className={styles.passwordSet}>(set)</span>}
+            Password {config.hasAdminPassword && <span className={styles.passwordSet}>(set)</span>}
           </label>
           <input
             type="password"
@@ -215,8 +288,8 @@ export default function ConfigPage() {
         </div>
 
         <div className={styles.actions}>
-          <button className={styles.saveButton} onClick={handleSavePasswords} disabled={savingPasswords}>
-            {savingPasswords ? 'Saving...' : 'Save Access Control'}
+          <button className={styles.saveButton} onClick={handleSavePassword} disabled={savingPassword || !adminPassword}>
+            {savingPassword ? 'Saving...' : 'Save Password'}
           </button>
           {passwordMessage && <span className={styles.message}>{passwordMessage}</span>}
         </div>
