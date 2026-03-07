@@ -1,5 +1,7 @@
 import { cookies } from 'next/headers';
 import { createHmac, timingSafeEqual } from 'crypto';
+import { prisma } from '@/lib/prisma';
+import { verifyHashedPassword } from '@/lib/password';
 
 const SESSION_COOKIE = 'ft-session';
 const SESSION_MAX_AGE = 60 * 60 * 24 * 7; // 7 days
@@ -34,7 +36,18 @@ export function verifySessionToken(token: string): boolean {
   }
 }
 
-export function verifyPassword(input: string): boolean {
+export async function verifyPassword(input: string): Promise<boolean> {
+  // Check DB hash first
+  const config = await prisma.extractionConfig.findUnique({
+    where: { id: 'singleton' },
+    select: { adminPasswordHash: true },
+  });
+
+  if (config?.adminPasswordHash) {
+    return verifyHashedPassword(input, config.adminPasswordHash);
+  }
+
+  // Fall back to env var
   const password = process.env.ADMIN_PASSWORD;
   if (!password) return false;
 

@@ -9,6 +9,9 @@ interface Config {
   model: string;
   enabled: boolean;
   scrapeInterval: number;
+  hasSitePassword: boolean;
+  hasAdminPassword: boolean;
+  siteGateEnabled: boolean;
 }
 
 export default function ConfigPage() {
@@ -19,6 +22,12 @@ export default function ConfigPage() {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
 
+  const [sitePassword, setSitePassword] = useState('');
+  const [adminPassword, setAdminPassword] = useState('');
+  const [siteGateEnabled, setSiteGateEnabled] = useState(false);
+  const [savingPasswords, setSavingPasswords] = useState(false);
+  const [passwordMessage, setPasswordMessage] = useState('');
+
   useEffect(() => {
     fetch('/api/admin/config')
       .then((r) => r.json())
@@ -28,6 +37,7 @@ export default function ConfigPage() {
           setProvider(d.data.provider);
           setModel(d.data.model);
           setScrapeInterval(d.data.scrapeInterval);
+          setSiteGateEnabled(d.data.siteGateEnabled);
         }
       });
   }, []);
@@ -61,6 +71,33 @@ export default function ConfigPage() {
       setMessage(data.error || 'Failed to save');
     }
     setSaving(false);
+  };
+
+  const handleSavePasswords = async () => {
+    setSavingPasswords(true);
+    setPasswordMessage('');
+
+    const payload: Record<string, unknown> = { siteGateEnabled };
+    if (sitePassword) payload.sitePassword = sitePassword;
+    if (adminPassword) payload.adminPassword = adminPassword;
+
+    const res = await fetch('/api/admin/config', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+
+    const data = await res.json();
+    if (data.ok) {
+      setConfig(data.data);
+      setSitePassword('');
+      setAdminPassword('');
+      setSiteGateEnabled(data.data.siteGateEnabled);
+      setPasswordMessage('Passwords updated');
+    } else {
+      setPasswordMessage(data.error || 'Failed to save');
+    }
+    setSavingPasswords(false);
   };
 
   if (!config) {
@@ -125,6 +162,63 @@ export default function ConfigPage() {
             {saving ? 'Saving...' : 'Save Config'}
           </button>
           {message && <span className={styles.message}>{message}</span>}
+        </div>
+      </div>
+
+      <div className={styles.form}>
+        <h2 className={styles.sectionTitle}>Access Control</h2>
+
+        <div className={styles.field}>
+          <label className={styles.label}>Site Gate</label>
+          <div className={styles.toggleRow}>
+            <button
+              type="button"
+              className={`${styles.toggle} ${siteGateEnabled ? styles.toggleOn : ''}`}
+              onClick={() => setSiteGateEnabled(!siteGateEnabled)}
+              disabled={!config.hasSitePassword && !sitePassword}
+            >
+              <span className={styles.toggleKnob} />
+            </button>
+            <span className={styles.toggleLabel}>
+              {siteGateEnabled ? 'Enabled' : 'Disabled'}
+              {!config.hasSitePassword && !sitePassword && (
+                <span className={styles.toggleHint}> — set a site password first</span>
+              )}
+            </span>
+          </div>
+        </div>
+
+        <div className={styles.field}>
+          <label className={styles.label}>
+            Site Password {config.hasSitePassword && <span className={styles.passwordSet}>(set)</span>}
+          </label>
+          <input
+            type="password"
+            className={styles.input}
+            placeholder={config.hasSitePassword ? 'Leave blank to keep current' : 'Set site password'}
+            value={sitePassword}
+            onChange={(e) => setSitePassword(e.target.value)}
+          />
+        </div>
+
+        <div className={styles.field}>
+          <label className={styles.label}>
+            Admin Password {config.hasAdminPassword && <span className={styles.passwordSet}>(set)</span>}
+          </label>
+          <input
+            type="password"
+            className={styles.input}
+            placeholder={config.hasAdminPassword ? 'Leave blank to keep current' : 'Set admin password'}
+            value={adminPassword}
+            onChange={(e) => setAdminPassword(e.target.value)}
+          />
+        </div>
+
+        <div className={styles.actions}>
+          <button className={styles.saveButton} onClick={handleSavePasswords} disabled={savingPasswords}>
+            {savingPasswords ? 'Saving...' : 'Save Access Control'}
+          </button>
+          {passwordMessage && <span className={styles.message}>{passwordMessage}</span>}
         </div>
       </div>
 

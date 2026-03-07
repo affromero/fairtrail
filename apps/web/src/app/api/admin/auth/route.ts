@@ -8,7 +8,7 @@ export async function POST(request: NextRequest) {
     return apiError('Missing password', 400);
   }
 
-  if (!verifyPassword(body.password)) {
+  if (!(await verifyPassword(body.password))) {
     return apiError('Invalid password', 401);
   }
 
