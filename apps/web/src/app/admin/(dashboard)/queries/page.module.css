@@ -1,0 +1,146 @@
+.root {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.title {
+  font-family: var(--font-display);
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.empty {
+  font-size: 0.875rem;
+  color: var(--muted);
+}
+
+.empty a {
+  color: var(--accent);
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.row {
+  padding: 1rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.rowRoute {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.rowCode {
+  font-family: var(--font-display);
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: var(--accent);
+  letter-spacing: 0.04em;
+}
+
+.rowArrow {
+  color: var(--muted);
+}
+
+.rowMeta {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+}
+
+.rowSep {
+  color: var(--border);
+}
+
+.rowActions {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-top: 0.25rem;
+}
+
+.intervalSelect {
+  padding: 0.375rem 0.5rem;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--text);
+  background: var(--elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.pauseButton,
+.resumeButton,
+.deleteButton {
+  padding: 0.375rem 0.75rem;
+  font-family: var(--font-display);
+  font-size: 0.75rem;
+  font-weight: 700;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+  background: transparent;
+}
+
+.pauseButton {
+  color: var(--warning);
+  border-color: rgba(245, 158, 11, 0.3);
+}
+
+.resumeButton {
+  color: var(--accent);
+  border-color: var(--accent-dim);
+}
+
+.deleteButton {
+  color: var(--price-up);
+  border-color: rgba(239, 68, 68, 0.3);
+}
+
+.pauseButton:hover,
+.resumeButton:hover,
+.deleteButton:hover {
+  border-color: currentColor;
+}
+
+.pauseButton:disabled,
+.resumeButton:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.viewLink {
+  padding: 0.375rem 0.75rem;
+  font-family: var(--font-display);
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  text-decoration: none;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.viewLink:hover {
+  color: var(--text);
+  border-color: var(--text-secondary);
+  text-decoration: none;
+}
