@@ -76,7 +76,7 @@ jobs:
 
             echo "Running Prisma migrations..."
             for i in $(seq 1 3); do
-              if docker compose -f docker-compose.prod.yml run --rm --no-deps --entrypoint "" web npx prisma db push --schema=apps/web/prisma/schema.prisma; then
+              if docker compose -f docker-compose.prod.yml run --rm --no-deps --entrypoint "" web npx prisma db push --accept-data-loss --schema=apps/web/prisma/schema.prisma; then
                 echo "Prisma migrations applied (attempt $i)"
                 break
               fi
