@@ -9,7 +9,8 @@
     "build": "npm run build --workspace=@fairtrail/web",
     "lint": "npm run lint --workspace=@fairtrail/web",
     "typecheck": "npm run typecheck --workspace=@fairtrail/web",
-    "ci": "npm run lint && npm run typecheck && npm run build",
+    "test": "npm run test --workspace=@fairtrail/web",
+    "ci": "npm run lint && npm run typecheck && npm run test && npm run build",
     "db:push": "npx prisma db push --schema=apps/web/prisma/schema.prisma",
     "db:generate": "npx prisma generate --schema=apps/web/prisma/schema.prisma",
     "db:migrate": "npx prisma migrate deploy --schema=apps/web/prisma/schema.prisma"

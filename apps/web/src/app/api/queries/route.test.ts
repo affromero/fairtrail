@@ -1,0 +1,169 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { NextRequest } from 'next/server';
+
+const { mockHasValidInvite, mockQueryCreate, mockSnapshotCreateMany } = vi.hoisted(() => ({
+  mockHasValidInvite: vi.fn(),
+  mockQueryCreate: vi.fn().mockImplementation((args: { data: Record<string, unknown> }) =>
+    Promise.resolve({ id: 'q-' + Math.random().toString(36).slice(2, 8), ...args.data })
+  ),
+  mockSnapshotCreateMany: vi.fn().mockResolvedValue({ count: 0 }),
+}));
+
+vi.mock('@/lib/invite-auth', () => ({
+  hasValidInvite: () => mockHasValidInvite(),
+}));
+
+vi.mock('next/headers', () => ({
+  cookies: vi.fn().mockResolvedValue({ get: vi.fn(), set: vi.fn(), delete: vi.fn() }),
+}));
+
+vi.mock('@/lib/prisma', () => ({
+  prisma: {
+    query: { create: mockQueryCreate },
+    priceSnapshot: { createMany: mockSnapshotCreateMany },
+  },
+}));
+
+import { POST } from './route';
+
+function makeRequest(body: unknown): NextRequest {
+  return new NextRequest('http://localhost/api/queries', {
+    method: 'POST',
+    body: JSON.stringify(body),
+    headers: { 'Content-Type': 'application/json' },
+  });
+}
+
+const validBody = {
+  rawInput: 'JFK to LAX June 15-22',
+  dateFrom: '2026-06-15',
+  dateTo: '2026-06-22',
+  flexibility: 0,
+  tripType: 'round_trip',
+  routes: [{
+    origin: 'JFK',
+    originName: 'New York JFK',
+    destination: 'LAX',
+    destinationName: 'Los Angeles',
+    selectedFlights: [],
+  }],
+};
+
+describe('POST /api/queries', () => {
+  beforeEach(() => {
+    mockHasValidInvite.mockReset().mockResolvedValue(true);
+    mockQueryCreate.mockClear();
+    mockSnapshotCreateMany.mockClear();
+  });
+
+  it('rejects unauthenticated request with 401', async () => {
+    mockHasValidInvite.mockResolvedValue(false);
+    const res = await POST(makeRequest(validBody));
+    expect(res.status).toBe(401);
+  });
+
+  it('rejects invalid json body with 400', async () => {
+    const req = new NextRequest('http://localhost/api/queries', {
+      method: 'POST',
+      body: 'not json',
+      headers: { 'Content-Type': 'application/json' },
+    });
+    const res = await POST(req);
+    expect(res.status).toBe(400);
+  });
+
+  it('rejects missing required fields with 400', async () => {
+    const res = await POST(makeRequest({ routes: [{ origin: 'JFK', destination: 'LAX', selectedFlights: [] }] }));
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toContain('rawInput');
+  });
+
+  it('rejects invalid airport code with 400', async () => {
+    const res = await POST(makeRequest({
+      ...validBody,
+      routes: [{ origin: 'XX', destination: 'LAX', originName: 'X', destinationName: 'LA', selectedFlights: [] }],
+    }));
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toContain('Invalid airport code');
+  });
+
+  it('rejects invalid date format with 400', async () => {
+    const res = await POST(makeRequest({ ...validBody, dateFrom: 'notadate' }));
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toContain('Invalid date');
+  });
+
+  it('rejects dateFrom after dateTo for roundtrip with 400', async () => {
+    const res = await POST(makeRequest({
+      ...validBody,
+      dateFrom: '2026-07-01',
+      dateTo: '2026-06-15',
+    }));
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toContain('dateFrom must be before dateTo');
+  });
+
+  it('allows dateFrom equal dateTo for one-way', async () => {
+    const res = await POST(makeRequest({
+      ...validBody,
+      dateFrom: '2026-06-15',
+      dateTo: '2026-06-15',
+      tripType: 'one_way',
+    }));
+    expect(res.status).toBe(201);
+  });
+
+  it('creates query and returns 201 on success', async () => {
+    const res = await POST(makeRequest(validBody));
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    expect(body.ok).toBe(true);
+    expect(body.data.queries).toHaveLength(1);
+    expect(body.data.queries[0].origin).toBe('JFK');
+    expect(body.data.queries[0].deleteToken).toBeDefined();
+  });
+
+  it('caps flexibility at 14 days', async () => {
+    await POST(makeRequest({ ...validBody, flexibility: 100 }));
+    const createArg = mockQueryCreate.mock.calls[0]![0] as { data: { flexibility: number } };
+    expect(createArg.data.flexibility).toBe(14);
+  });
+
+  it('defaults currency to USD', async () => {
+    await POST(makeRequest({ ...validBody, currency: undefined }));
+    const createArg = mockQueryCreate.mock.calls[0]![0] as { data: { currency: string } };
+    expect(createArg.data.currency).toBe('USD');
+  });
+
+  it('creates initial price snapshots from selected flights', async () => {
+    const bodyWithFlights = {
+      ...validBody,
+      routes: [{
+        ...validBody.routes[0],
+        selectedFlights: [
+          { travelDate: '2026-06-15', price: 300, airline: 'Delta', bookingUrl: 'https://delta.com' },
+        ],
+      }],
+    };
+    await POST(makeRequest(bodyWithFlights));
+    expect(mockSnapshotCreateMany).toHaveBeenCalled();
+  });
+
+  it('supports multi-route format', async () => {
+    const multiRoute = {
+      ...validBody,
+      routes: [
+        { origin: 'JFK', originName: 'JFK', destination: 'LAX', destinationName: 'LAX', selectedFlights: [] },
+        { origin: 'LAX', originName: 'LAX', destination: 'SFO', destinationName: 'SFO', selectedFlights: [] },
+      ],
+    };
+    const res = await POST(makeRequest(multiRoute));
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    expect(body.data.queries).toHaveLength(2);
+  });
+});
