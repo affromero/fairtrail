@@ -31,7 +31,7 @@ model Query {
   lookAheadDays   Int      @default(14)
   expiresAt       DateTime
   firstViewedAt   DateTime?
-  scrapeInterval  Int      @default(6) // hours
+  scrapeInterval  Int      @default(3) // hours
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
@@ -91,7 +91,7 @@ model ExtractionConfig {
   provider             String    @default("anthropic")
   model                String    @default("claude-haiku-4-5-20251001")
   enabled              Boolean   @default(true)
-  scrapeInterval       Int       @default(6) // hours — global default
+  scrapeInterval       Int       @default(3) // hours — global default
   adminPasswordHash    String?
   communitySharing     Boolean   @default(false)
   communityApiKey      String?

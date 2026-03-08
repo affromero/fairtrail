@@ -253,7 +253,7 @@ These require an admin session cookie (set via `/admin` login). Useful for progr
 6. GET  /api/queries/{id}/prices → check for price changes
 ```
 
-The built-in cron (default: every 6 hours) handles step 3 automatically. You only need to trigger a manual scrape if you want data immediately.
+The built-in cron (default: every 3 hours) handles step 3 automatically. You only need to trigger a manual scrape if you want data immediately.
 
 ---
 

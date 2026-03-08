@@ -94,6 +94,9 @@ export default function SetupPage() {
     );
   }
 
+  const CLI_PROVIDERS = new Set(['claude-code', 'codex']);
+  const hasCliProvider = status.detectedProviders.some((p) => CLI_PROVIDERS.has(p));
+
   const providerEntries = Object.entries(EXTRACTION_PROVIDERS);
   const subtitles = [
     'Set your admin password',
@@ -137,6 +140,11 @@ export default function SetupPage() {
 
         {step === 1 && (
           <div className={styles.fields}>
+            {hasCliProvider && (
+              <p className={styles.cliHint}>
+                Using your existing CLI subscription — no API key needed, no extra cost.
+              </p>
+            )}
             <div className={styles.providers}>
               {providerEntries.map(([key, config]) => {
                 const detected = status.detectedProviders.includes(key);
@@ -151,7 +159,13 @@ export default function SetupPage() {
                   >
                     <span className={styles.providerName}>{config.displayName}</span>
                     <span className={styles.providerStatus}>
-                      {detected ? 'Ready' : 'No key'}
+                      {detected
+                        ? CLI_PROVIDERS.has(key)
+                          ? 'Your subscription'
+                          : 'Ready'
+                        : CLI_PROVIDERS.has(key)
+                          ? 'Not installed'
+                          : 'No key'}
                     </span>
                   </button>
                 );
