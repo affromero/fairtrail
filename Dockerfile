@@ -12,8 +12,10 @@ RUN apk add --no-cache libc6-compat openssl python3 make g++
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
+ARG COMMIT_SHA=unknown
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NODE_ENV=production
+ENV NEXT_PUBLIC_COMMIT_SHA=${COMMIT_SHA}
 RUN npm run build --workspace=@fairtrail/web
 
 FROM node:22-alpine AS runner

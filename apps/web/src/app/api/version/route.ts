@@ -26,6 +26,7 @@ export async function GET() {
 
   return apiSuccess({
     current,
+    commit: process.env.NEXT_PUBLIC_COMMIT_SHA ?? 'dev',
     latest,
     updateAvailable: latest ? latest !== current : false,
   });

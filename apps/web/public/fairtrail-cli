@@ -369,6 +369,19 @@ cmd_uninstall() {
   echo -e "${GREEN}${BOLD}✓${RESET} Uninstalled"
 }
 
+cmd_version() {
+  local version_json
+  version_json=$(curl -sf "http://localhost:${PORT}/api/version" 2>/dev/null)
+  if [ -n "$version_json" ]; then
+    local ver commit
+    ver=$(echo "$version_json" | python3 -c "import json,sys; print(json.load(sys.stdin)['data']['current'])" 2>/dev/null)
+    commit=$(echo "$version_json" | python3 -c "import json,sys; print(json.load(sys.stdin)['data'].get('commit','unknown'))" 2>/dev/null)
+    echo -e "fairtrail ${BOLD}${ver}${RESET} ${DIM}(${commit:0:7})${RESET}"
+  else
+    echo -e "fairtrail ${DIM}(not running — start with: fairtrail)${RESET}"
+  fi
+}
+
 cmd_help() {
   echo ""
   echo -e "${BOLD}  Fairtrail${RESET}"
@@ -383,6 +396,7 @@ cmd_help() {
   echo "    logs         View live logs"
   echo "    status       Check if running"
   echo "    update       Pull latest version and restart"
+  echo "    version      Show version and commit"
   echo "    uninstall    Remove Fairtrail and all data"
   echo "    help         Show this help"
   echo ""
@@ -395,6 +409,7 @@ case "${1:-}" in
   logs)      cmd_logs ;;
   status)    cmd_status ;;
   update)    cmd_update ;;
+  version|-v|--version) cmd_version ;;
   uninstall) cmd_uninstall ;;
   help|-h|--help) cmd_help ;;
   "")        cmd_start_foreground ;;
