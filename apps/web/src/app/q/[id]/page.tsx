@@ -56,6 +56,7 @@ interface QueryWithSnapshots {
     createdAt: Date;
     firstViewedAt: Date | null;
     groupId: string | null;
+    currency: string;
   };
   snapshots: Array<{
     id: string;
@@ -258,7 +259,7 @@ export default async function ChartPage({ params }: Props) {
           )}
 
           <section className={styles.chart}>
-            <PriceChart snapshots={qData.snapshots} />
+            <PriceChart snapshots={qData.snapshots} currency={qData.query.currency ?? 'USD'} />
           </section>
 
           <section className={styles.best}>

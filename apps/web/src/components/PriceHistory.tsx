@@ -1,3 +1,4 @@
+import { currencySymbol } from '@/lib/currency';
 import styles from './PriceHistory.module.css';
 
 interface Snapshot {
@@ -76,13 +77,13 @@ export function PriceHistory({ snapshots }: { snapshots: Snapshot[] }) {
                 <tr key={s.id}>
                   <td className={styles.date}>{formatDateTime(s.scrapedAt)}</td>
                   <td>{s.airline}</td>
-                  <td className={styles.price}>${s.price.toLocaleString()}</td>
+                  <td className={styles.price}>{currencySymbol(s.currency)}{s.price.toLocaleString()}</td>
                   <td>
                     {trend.direction === 'up' && (
-                      <span className={styles.trendUp}>+${Math.abs(trend.diff).toFixed(0)}</span>
+                      <span className={styles.trendUp}>+{currencySymbol(s.currency)}{Math.abs(trend.diff).toFixed(0)}</span>
                     )}
                     {trend.direction === 'down' && (
-                      <span className={styles.trendDown}>-${Math.abs(trend.diff).toFixed(0)}</span>
+                      <span className={styles.trendDown}>-{currencySymbol(s.currency)}{Math.abs(trend.diff).toFixed(0)}</span>
                     )}
                     {trend.direction === 'stable' && (
                       <span className={styles.trendStable}>&mdash;</span>
