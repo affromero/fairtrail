@@ -6,6 +6,7 @@ import { SavedTrackers } from '@/components/SavedTrackers';
 import { SetupRedirect } from '@/components/SetupRedirect';
 import { UsageStats } from '@/components/UsageStats';
 import { PriceAlerts } from '@/components/PriceAlerts';
+import { UpdateBanner } from '@/components/UpdateBanner';
 import { Footer } from '@/components/Footer';
 import { getSessionToken, verifySessionToken } from '@/lib/admin-auth';
 
@@ -70,6 +71,7 @@ export default async function HomePage() {
         {isSelfHosted ? (
           <>
             <SearchBar />
+            <UpdateBanner />
             <PriceAlerts />
             <SavedTrackers />
             <UsageStats />
