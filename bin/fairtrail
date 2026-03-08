@@ -98,6 +98,8 @@ cmd_stop() {
   echo -e "${CYAN}${BOLD}▸${RESET} Stopping Fairtrail..."
   docker compose -f "$FAIRTRAIL_DIR/docker-compose.yml" stop 2>/dev/null
   echo -e "${GREEN}${BOLD}✓${RESET} Stopped"
+  echo -e "  ${YELLOW}Price tracking is paused — no scrapes will run until you start again.${RESET}"
+  echo -e "  ${DIM}Your data and queries are saved. Run 'fairtrail' to resume.${RESET}"
 }
 
 cmd_logs() {
@@ -132,7 +134,7 @@ cmd_help() {
   echo "  Commands:"
   echo "    (none)     Start Fairtrail (Ctrl+C to stop)"
   echo "    start      Start in background"
-  echo "    stop       Stop Fairtrail"
+  echo "    stop       Stop — pauses all price tracking until you start again"
   echo "    logs       View live logs"
   echo "    status     Check if running"
   echo "    update     Pull latest version and restart"
