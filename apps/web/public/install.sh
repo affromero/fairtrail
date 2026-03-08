@@ -104,6 +104,30 @@ fi
 ok "Docker is running"
 
 # ---------------------------------------------------------------------------
+# 1b. Check if port is available
+# ---------------------------------------------------------------------------
+port_in_use() {
+  if command -v lsof &>/dev/null; then
+    lsof -i :"$1" &>/dev/null
+  elif command -v ss &>/dev/null; then
+    ss -tlnp | grep -q ":$1 "
+  elif command -v netstat &>/dev/null; then
+    netstat -tlnp 2>/dev/null | grep -q ":$1 "
+  else
+    return 1
+  fi
+}
+
+while port_in_use "$PORT"; do
+  warn "Port ${PORT} is already in use."
+  echo ""
+  read -rp "  Enter a different port [default: $((PORT + 1))]: " NEW_PORT
+  PORT="${NEW_PORT:-$((PORT + 1))}"
+done
+
+ok "Port ${PORT} is available"
+
+# ---------------------------------------------------------------------------
 # 2. Migrate from old install location
 # ---------------------------------------------------------------------------
 if [ -d "$HOME/fairtrail" ] && [ ! -d "$FAIRTRAIL_DIR" ]; then
