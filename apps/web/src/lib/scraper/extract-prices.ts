@@ -1,5 +1,6 @@
 import { EXTRACTION_PROVIDERS, type ExtractionUsage } from './ai-registry';
 import { prisma } from '@/lib/prisma';
+import type { NavigationSource } from './navigate';
 
 export interface PriceData {
   travelDate: string; // ISO date
@@ -21,7 +22,7 @@ export interface QueryFilters {
 
 const DEFAULT_MAX_RESULTS = 10;
 
-function buildSystemPrompt(filters: QueryFilters, maxResults: number): string {
+function buildSystemPrompt(filters: QueryFilters, maxResults: number, source: NavigationSource = 'google_flights'): string {
   const filterRules: string[] = [];
 
   if (filters.maxPrice) {
@@ -51,7 +52,15 @@ function buildSystemPrompt(filters: QueryFilters, maxResults: number): string {
     ? `\nFiltering rules (STRICT — do not include flights that violate these):\n${filterRules.join('\n')}\n`
     : '';
 
-  return `You are a flight price data extractor. Given HTML from a Google Flights search results page, extract the best matching flight options.
+  const sourceDesc = source === 'airline_direct'
+    ? "an airline's booking/search results page"
+    : 'a Google Flights search results page';
+
+  const bookingUrlRule = source === 'airline_direct'
+    ? '- For bookingUrl, use the search URL provided (the airline website URL)'
+    : "- If you can't find a direct booking URL, construct one from the Google Flights URL";
+
+  return `You are a flight price data extractor. Given HTML from ${sourceDesc}, extract the best matching flight options.
 
 Return ONLY valid JSON — an array of UP TO ${maxResults} objects with this exact shape:
 [
@@ -60,7 +69,7 @@ Return ONLY valid JSON — an array of UP TO ${maxResults} objects with this exa
     "price": 623,
     "currency": "USD",
     "airline": "Delta",
-    "bookingUrl": "https://www.google.com/travel/flights/booking?...",
+    "bookingUrl": "https://...",
     "stops": 1,
     "duration": "11h 20m"
   }
@@ -69,7 +78,7 @@ ${filterSection}
 General rules:
 - Return at most ${maxResults} results, sorted by price (cheapest first)
 - Price must be a number (no $ sign, no commas)
-- If you can't find a direct booking URL, construct one from the Google Flights URL
+${bookingUrlRule}
 - stops: 0 for nonstop, 1 for 1 stop, etc.
 - duration: human-readable format like "8h 30m"
 - If the travel date is not clearly visible per result, use the search date provided
@@ -96,7 +105,8 @@ export async function extractPrices(
   travelDateFallback: string,
   filters: QueryFilters = { maxPrice: null, maxStops: null, preferredAirlines: [], timePreference: 'any', cabinClass: 'economy' },
   maxResults: number = DEFAULT_MAX_RESULTS,
-  resultsFound: boolean = true
+  resultsFound: boolean = true,
+  source: NavigationSource = 'google_flights'
 ): Promise<ExtractionResult> {
   if (!resultsFound) {
     return { prices: [], usage: { inputTokens: 0, outputTokens: 0 }, failureReason: 'page_not_loaded' };
@@ -128,7 +138,7 @@ Default travel date (if not visible per result): ${travelDateFallback}
 HTML content:
 ${trimmedHtml}`;
 
-  const systemPrompt = buildSystemPrompt(filters, maxResults);
+  const systemPrompt = buildSystemPrompt(filters, maxResults, source);
   const result = await providerConfig.extract(apiKey, model, systemPrompt, userPrompt);
 
   const jsonMatch = result.content.match(/\[[\s\S]*\]/);
