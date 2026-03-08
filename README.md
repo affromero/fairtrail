@@ -38,9 +38,8 @@ If you have [Claude Code](https://docs.anthropic.com/en/docs/claude-code) or [Co
 
 Once it finishes:
 
-1. Open [localhost:3003/setup](http://localhost:3003/setup) — set your admin password and confirm the LLM provider
-2. Search for a flight in plain English: *"NYC to Tokyo in July under $800"*
-3. Fairtrail starts tracking prices immediately — come back anytime to see the trend
+1. Open [localhost:3003](http://localhost:3003) — or run `fairtrail search "NYC to Tokyo in July under $800"`
+2. Fairtrail starts tracking prices immediately — come back anytime to see the trend
 
 ## Why Fairtrail?
 
