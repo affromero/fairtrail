@@ -80,6 +80,16 @@
   border-color: var(--accent);
 }
 
+.cliHint {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--accent);
+  text-align: center;
+  padding: 0.5rem 0.75rem;
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  border-radius: var(--radius-md);
+}
+
 .providers {
   display: grid;
   grid-template-columns: 1fr 1fr;
