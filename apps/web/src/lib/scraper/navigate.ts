@@ -49,12 +49,13 @@ export async function navigateGoogleFlights(
     // Wait for flight results to load
     await page.waitForTimeout(3000);
 
-    // Try to dismiss consent/cookie dialogs
+    // Dismiss consent/cookie dialog — Google renders two identical "Accept all"
+    // buttons; without .first() Playwright strict mode throws on the ambiguity
     try {
-      const consentButton = page.locator('button:has-text("Accept all")');
+      const consentButton = page.locator('button:has-text("Accept all")').first();
       if (await consentButton.isVisible({ timeout: 2000 })) {
         await consentButton.click();
-        await page.waitForTimeout(1000);
+        await page.waitForTimeout(3000);
       }
     } catch {
       // No consent dialog — continue
