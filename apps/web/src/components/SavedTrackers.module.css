@@ -153,10 +153,43 @@
   border: 1px solid rgba(245, 158, 11, 0.25);
 }
 
+.badgePaused {
+  color: var(--warning);
+  background: rgba(245, 158, 11, 0.08);
+  border: 1px solid rgba(245, 158, 11, 0.25);
+}
+
 .badgeDeleted {
   color: var(--price-up);
   background: rgba(239, 68, 68, 0.08);
   border: 1px solid rgba(239, 68, 68, 0.25);
+}
+
+.cardActions {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+.pauseBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  font-size: 0.625rem;
+  color: var(--muted);
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+  line-height: 1;
+}
+
+.pauseBtn:hover {
+  color: var(--accent);
+  border-color: var(--accent);
 }
 
 @media (max-width: 640px) {

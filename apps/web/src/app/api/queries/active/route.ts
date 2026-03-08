@@ -4,20 +4,24 @@ import { hasValidInvite } from '@/lib/invite-auth';
 
 export const dynamic = 'force-dynamic';
 
+const isSelfHosted = process.env.SELF_HOSTED === 'true';
+
 export async function GET() {
   if (!(await hasValidInvite())) {
     return apiSuccess({ queries: [] });
   }
 
+  // Self-hosted: include paused queries too so users can resume them
   const queries = await prisma.query.findMany({
     where: {
-      active: true,
       isSeed: false,
+      ...(isSelfHosted ? {} : { active: true }),
       OR: [{ expiresAt: { gt: new Date() } }],
     },
     orderBy: { createdAt: 'desc' },
     select: {
       id: true,
+      active: true,
       origin: true,
       destination: true,
       originName: true,
@@ -41,6 +45,7 @@ export async function GET() {
 
   const result = queries.map((q) => ({
     id: q.id,
+    active: q.active,
     origin: q.origin,
     destination: q.destination,
     originName: q.originName,

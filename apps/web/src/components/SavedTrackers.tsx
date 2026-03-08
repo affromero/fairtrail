@@ -7,6 +7,7 @@ import styles from './SavedTrackers.module.css';
 
 interface ActiveQuery {
   id: string;
+  active: boolean;
   origin: string;
   destination: string;
   originName: string;
@@ -28,7 +29,7 @@ interface DisplayTracker {
   dateTo: string;
   snapshotCount: number;
   lastScrapedAt: string | null;
-  status: 'active' | 'expired' | 'deleted';
+  status: 'active' | 'paused' | 'expired' | 'deleted';
   hasDeleteToken: boolean;
 }
 
@@ -81,7 +82,7 @@ export function SavedTrackers() {
             dateTo: q.dateTo,
             snapshotCount: q.snapshotCount,
             lastScrapedAt: q.lastScrapedAt,
-            status: 'active',
+            status: q.active ? 'active' : 'paused',
             hasDeleteToken: deleteTokenMap.has(q.id),
           }));
           setTrackers(display);
@@ -138,6 +139,22 @@ export function SavedTrackers() {
     setTrackers((prev) => prev.filter((t) => t.id !== id));
   };
 
+  const handleTogglePause = async (id: string, currentlyActive: boolean) => {
+    const res = await fetch(`/api/admin/queries/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ active: !currentlyActive }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      setTrackers((prev) =>
+        prev.map((t) =>
+          t.id === id ? { ...t, status: currentlyActive ? 'paused' : 'active' } : t
+        )
+      );
+    }
+  };
+
   if (trackers.length === 0) return null;
 
   return (
@@ -189,9 +206,27 @@ export function SavedTrackers() {
                       </span>
                     )}
                   </div>
-                  <span className={`${styles.badge} ${t.status === 'active' ? styles.badgeActive : styles.badgeExpired}`}>
-                    {t.status === 'active' ? 'Tracking' : 'Expired'}
-                  </span>
+                  <div className={styles.cardActions}>
+                    <span className={`${styles.badge} ${
+                      t.status === 'active' ? styles.badgeActive
+                        : t.status === 'paused' ? styles.badgePaused
+                        : styles.badgeExpired
+                    }`}>
+                      {t.status === 'active' ? 'Tracking' : t.status === 'paused' ? 'Paused' : 'Expired'}
+                    </span>
+                    {(t.status === 'active' || t.status === 'paused') && (
+                      <button
+                        className={styles.pauseBtn}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          handleTogglePause(t.id, t.status === 'active');
+                        }}
+                        title={t.status === 'active' ? 'Pause tracking' : 'Resume tracking'}
+                      >
+                        {t.status === 'active' ? '⏸' : '▶'}
+                      </button>
+                    )}
+                  </div>
                 </div>
               </Link>
             )}
