@@ -39,6 +39,7 @@ export interface FlightSearchParams {
   dateTo: Date;
   cabinClass?: string;
   tripType?: string; // 'one_way' | 'round_trip'
+  currency?: string; // ISO 4217 code, defaults to USD
 }
 
 export type NavigationSource = 'google_flights' | 'airline_direct';
@@ -55,7 +56,8 @@ function buildGoogleFlightsUrl(params: FlightSearchParams): string {
   const dateTo = params.dateTo.toISOString().split('T')[0];
   const oneWayPrefix = params.tripType === 'one_way' ? 'one+way+' : '';
 
-  return `https://www.google.com/travel/flights?q=${oneWayPrefix}flights+from+${params.origin}+to+${params.destination}+on+${dateFrom}+to+${dateTo}&curr=USD&hl=en`;
+  const curr = params.currency || 'USD';
+  return `https://www.google.com/travel/flights?q=${oneWayPrefix}flights+from+${params.origin}+to+${params.destination}+on+${dateFrom}+to+${dateTo}&curr=${curr}&hl=en`;
 }
 
 export async function navigateGoogleFlights(
@@ -192,7 +194,8 @@ export async function navigateFlightDetail(
     // Extract booking options from the detail view
     // Google Flights renders "Book with LOTAirline\n$662" (Airline appended to name)
     // or "Book with Mytrip\n$704" (no Airline tag for OTAs)
-    const result = await page.evaluate(() => {
+    const detailCurrency = params.currency || 'USD';
+    const result = await page.evaluate((curr) => {
       const text = document.body.innerText ?? '';
       const options: Array<{ provider: string; isAirline: boolean; price: number; currency: string }> = [];
 
@@ -206,12 +209,12 @@ export async function navigateFlightDetail(
         const provider = rawProvider.replace(/Airline$/, '').trim();
         const price = parseInt(match[2]!.replace(/,/g, ''), 10);
         if (!isNaN(price) && provider.length > 0) {
-          options.push({ provider, isAirline, price, currency: 'USD' });
+          options.push({ provider, isAirline, price, currency: curr });
         }
       }
 
       return options;
-    });
+    }, detailCurrency);
 
     await context.close();
 

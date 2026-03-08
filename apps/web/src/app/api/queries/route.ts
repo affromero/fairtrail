@@ -9,6 +9,7 @@ interface RouteInput {
   originName: string;
   destination: string;
   destinationName: string;
+  date?: string; // when set, pins this query to a specific travel date
   selectedFlights: Array<{
     travelDate: string;
     price: number;
@@ -39,7 +40,9 @@ export async function POST(request: NextRequest) {
     timePreference,
     cabinClass,
     tripType,
+    currency: bodyCurrency,
   } = body;
+  const currency: string = typeof bodyCurrency === 'string' && bodyCurrency ? bodyCurrency : 'USD';
 
   // Support both new (routes array) and legacy (single origin/destination) formats
   let routeInputs: RouteInput[];
@@ -95,6 +98,7 @@ export async function POST(request: NextRequest) {
     originName: string;
     destination: string;
     destinationName: string;
+    date?: string;
     deleteToken: string;
   }> = [];
 
@@ -109,6 +113,13 @@ export async function POST(request: NextRequest) {
 
     const deleteToken = crypto.randomUUID();
 
+    // Per-date pinning: when route has a specific date, use it as both dateFrom/dateTo
+    const routeFrom = route.date ? new Date(route.date + 'T00:00:00Z') : from;
+    const routeTo = route.date ? new Date(route.date + 'T00:00:00Z') : to;
+    const routeFlex = route.date ? 0 : flex;
+    const routeExpiry = new Date(routeTo);
+    routeExpiry.setDate(routeExpiry.getDate() + routeFlex);
+
     const query = await prisma.query.create({
       data: {
         rawInput,
@@ -116,16 +127,17 @@ export async function POST(request: NextRequest) {
         originName: route.originName,
         destination: route.destination,
         destinationName: route.destinationName,
-        dateFrom: from,
-        dateTo: to,
-        flexibility: flex,
+        dateFrom: routeFrom,
+        dateTo: routeTo,
+        flexibility: routeFlex,
         maxPrice: maxPrice ? Number(maxPrice) : null,
         maxStops: maxStops !== undefined && maxStops !== null ? Number(maxStops) : null,
         preferredAirlines: routeAirlines,
         timePreference: timePreference || 'any',
         cabinClass: cabinClass || 'economy',
         tripType: tripType === 'one_way' ? 'one_way' : 'round_trip',
-        expiresAt,
+        currency,
+        expiresAt: routeExpiry,
         deleteToken,
         groupId,
       },
@@ -152,6 +164,7 @@ export async function POST(request: NextRequest) {
       originName: route.originName,
       destination: route.destination,
       destinationName: route.destinationName,
+      date: route.date,
       deleteToken,
     });
   }

@@ -41,6 +41,7 @@ export async function runScrapeForQuery(queryId: string): Promise<ScrapeResult> 
 
   try {
     // For seed queries, compute rolling date window from today
+    const queryCurrency = query.currency ?? 'USD';
     const searchParams = query.isSeed
       ? {
           origin: query.origin,
@@ -49,8 +50,9 @@ export async function runScrapeForQuery(queryId: string): Promise<ScrapeResult> 
           dateTo: new Date(Date.now() + query.lookAheadDays * 24 * 60 * 60 * 1000),
           cabinClass: query.cabinClass,
           tripType: query.tripType,
+          currency: queryCurrency,
         }
-      : { ...query, cabinClass: query.cabinClass, tripType: query.tripType };
+      : { ...query, cabinClass: query.cabinClass, tripType: query.tripType, currency: queryCurrency };
 
     // Route: airline-direct for single known airline, Google Flights otherwise
     const directAirlines = query.preferredAirlines.filter(isKnownAirline);
@@ -100,7 +102,7 @@ export async function runScrapeForQuery(queryId: string): Promise<ScrapeResult> 
       for (const nav of navResults) {
         sources.add(nav.source);
         const { prices, usage, failureReason } = await extractPrices(
-          nav.html, nav.url, travelDateFallback, filters, undefined, nav.resultsFound, nav.source
+          nav.html, nav.url, travelDateFallback, filters, undefined, nav.resultsFound, nav.source, queryCurrency
         );
         allPrices = allPrices.concat(prices);
         totalInputTokens += usage.inputTokens;

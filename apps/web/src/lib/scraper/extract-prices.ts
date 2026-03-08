@@ -24,7 +24,7 @@ export interface QueryFilters {
 
 const DEFAULT_MAX_RESULTS = 10;
 
-function buildSystemPrompt(filters: QueryFilters, maxResults: number, source: NavigationSource = 'google_flights'): string {
+function buildSystemPrompt(filters: QueryFilters, maxResults: number, source: NavigationSource = 'google_flights', currency: string = 'USD'): string {
   const filterRules: string[] = [];
 
   if (filters.maxPrice) {
@@ -69,7 +69,7 @@ Return ONLY valid JSON — an array of UP TO ${maxResults} objects with this exa
   {
     "travelDate": "YYYY-MM-DD",
     "price": 623,
-    "currency": "USD",
+    "currency": "${currency}",
     "airline": "Delta",
     "bookingUrl": "https://...",
     "stops": 1,
@@ -112,7 +112,8 @@ export async function extractPrices(
   filters: QueryFilters = { maxPrice: null, maxStops: null, preferredAirlines: [], timePreference: 'any', cabinClass: 'economy' },
   maxResults: number = DEFAULT_MAX_RESULTS,
   resultsFound: boolean = true,
-  source: NavigationSource = 'google_flights'
+  source: NavigationSource = 'google_flights',
+  currency: string = 'USD'
 ): Promise<ExtractionResult> {
   if (!resultsFound) {
     console.log(`[extract] skipped — page did not load results (source=${source})`);
@@ -144,7 +145,7 @@ Default travel date (if not visible per result): ${travelDateFallback}
 Page content:
 ${html}`;
 
-  const systemPrompt = buildSystemPrompt(filters, maxResults, source);
+  const systemPrompt = buildSystemPrompt(filters, maxResults, source, currency);
   const result = await providerConfig.extract(apiKey, model, systemPrompt, userPrompt);
 
   const jsonMatch = result.content.match(/\[[\s\S]*\]/);

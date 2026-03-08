@@ -2,6 +2,7 @@
 
 import { useMemo } from 'react';
 import dynamic from 'next/dynamic';
+import { currencySymbol } from '@/lib/currency';
 import styles from './PriceChart.module.css';
 
 const Plot = dynamic(() => import('react-plotly.js'), { ssr: false });
@@ -45,7 +46,9 @@ function getAirlineColor(airline: string, index: number): string {
   return fallback[index % fallback.length]!;
 }
 
-export function PriceChart({ snapshots }: { snapshots: Snapshot[] }) {
+export function PriceChart({ snapshots, currency = 'USD' }: { snapshots: Snapshot[]; currency?: string }) {
+  const sym = currencySymbol(currency);
+
   const traces = useMemo(() => {
     const available = snapshots.filter((s) => s.status !== 'sold_out');
     const soldOut = snapshots.filter((s) => s.status === 'sold_out');
@@ -70,7 +73,7 @@ export function PriceChart({ snapshots }: { snapshots: Snapshot[] }) {
         marker: { color, size: 6 },
         customdata: points.map((p) => [p.bookingUrl, p.stops, p.duration, p.currency, p.seatsLeft]),
         hovertemplate:
-          '<b>%{y:$.2f}</b> %{customdata[3]}<br>' +
+          `<b>${sym}%{y:.2f}</b> %{customdata[3]}<br>` +
           '%{x|%b %d, %H:%M}<br>' +
           '%{customdata[2]}<br>' +
           '<extra>%{fullData.name}</extra>',
@@ -88,14 +91,14 @@ export function PriceChart({ snapshots }: { snapshots: Snapshot[] }) {
         marker: { color: '#ef4444', size: 10 },
         customdata: soldOut.map((p) => [p.bookingUrl, p.stops, p.duration, p.currency, p.seatsLeft]),
         hovertemplate:
-          '<b>%{y:$.2f}</b> (sold out)<br>' +
+          `<b>${sym}%{y:.2f}</b> (sold out)<br>` +
           '%{x|%b %d, %H:%M}<br>' +
           '<extra>Sold out</extra>',
       });
     }
 
     return result;
-  }, [snapshots]);
+  }, [snapshots, sym]);
 
   if (snapshots.length === 0) {
     return (
@@ -124,7 +127,7 @@ export function PriceChart({ snapshots }: { snapshots: Snapshot[] }) {
           },
           yaxis: {
             gridcolor: '#243049',
-            tickprefix: '$',
+            tickprefix: sym,
             title: { text: '' },
           },
           legend: {

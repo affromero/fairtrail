@@ -1,3 +1,4 @@
+import { currencySymbol } from '@/lib/currency';
 import styles from './BestPrice.module.css';
 
 interface Snapshot {
@@ -22,7 +23,7 @@ export function BestPrice({ snapshots }: { snapshots: Snapshot[] }) {
       </div>
       <div className={styles.content}>
         <span className={styles.price}>
-          ${best.price.toLocaleString('en-US', { minimumFractionDigits: 0 })}
+          {currencySymbol(best.currency)}{best.price.toLocaleString('en-US', { minimumFractionDigits: 0 })}
         </span>
         <div className={styles.details}>
           <span className={styles.airline}>{best.airline}</span>

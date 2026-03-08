@@ -1,6 +1,7 @@
 'use client';
 
 import type { Airport } from '@/lib/scraper/parse-query';
+import { currencySymbol } from '@/lib/currency';
 import styles from './ConfirmationCard.module.css';
 
 export interface ParsedQuery {
@@ -19,6 +20,7 @@ export interface ParsedQuery {
   timePreference: string;
   cabinClass: string;
   tripType: string;
+  currency: string;
 }
 
 function formatDate(iso: string): string {
@@ -136,7 +138,7 @@ export function ConfirmationCard({
       {hasFilters(parsed) && (
         <div className={styles.filters}>
           {parsed.maxPrice && (
-            <span className={styles.tag}>Under ${parsed.maxPrice}</span>
+            <span className={styles.tag}>Under {currencySymbol(parsed.currency)}{parsed.maxPrice}</span>
           )}
           {parsed.maxStops !== null && (
             <span className={styles.tag}>

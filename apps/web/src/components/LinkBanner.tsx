@@ -9,6 +9,7 @@ export interface CreatedTracker {
   originName: string;
   destination: string;
   destinationName: string;
+  date?: string;
 }
 
 interface LinkBannerProps {
@@ -71,6 +72,11 @@ export function LinkBanner({ trackers, onDismiss }: LinkBannerProps) {
                 <span className={styles.code}>{tracker.destination}</span>
                 <span className={styles.city}>{tracker.destinationName}</span>
               </div>
+              {tracker.date && (
+                <span className={styles.city}>
+                  · {new Date(tracker.date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                </span>
+              )}
             </div>
 
             <div className={styles.urlBox}>
