@@ -1,0 +1,16 @@
+{
+  "name": "Fairtrail",
+  "short_name": "Fairtrail",
+  "description": "The price trail airlines don't show you",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#080f1a",
+  "theme_color": "#06b6d4",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}

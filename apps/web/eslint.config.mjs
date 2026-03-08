@@ -5,7 +5,7 @@ export default tseslint.config(
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
-    ignores: ['**/node_modules/**', '**/.next/**', '**/prisma/generated/**', 'next-env.d.ts'],
+    ignores: ['**/node_modules/**', '**/.next/**', '**/prisma/generated/**', 'next-env.d.ts', 'public/sw.js'],
   },
   {
     rules: {

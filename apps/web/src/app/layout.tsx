@@ -23,6 +23,12 @@ export const metadata: Metadata = {
   twitter: {
     card: 'summary_large_image',
   },
+  manifest: '/manifest.json',
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'black-translucent',
+    title: 'Fairtrail',
+  },
 };
 
 export const viewport: Viewport = {
@@ -39,6 +45,12 @@ const themeScript = `
   })();
 `;
 
+const swScript = `
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('/sw.js').catch(function() {});
+  }
+`;
+
 export default function RootLayout({
   children,
 }: {
@@ -48,6 +60,7 @@ export default function RootLayout({
     <html lang="en" data-theme="dark" suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
+        <script dangerouslySetInnerHTML={{ __html: swScript }} />
       </head>
       <body>
         {children}
