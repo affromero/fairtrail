@@ -8,7 +8,7 @@ export function startCron() {
     return;
   }
 
-  const intervalHours = Math.max(1, parseInt(process.env.CRON_INTERVAL_HOURS ?? '6', 10));
+  const intervalHours = Math.max(1, parseInt(process.env.CRON_INTERVAL_HOURS ?? '3', 10));
   const cronExpression = `0 */${intervalHours} * * *`;
 
   cronJob = new CronJob(cronExpression, async () => {

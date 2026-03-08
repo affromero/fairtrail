@@ -28,7 +28,7 @@ export default function ConfigPage() {
   const [config, setConfig] = useState<Config | null>(null);
   const [provider, setProvider] = useState('anthropic');
   const [model, setModel] = useState('claude-haiku-4-5-20251001');
-  const [scrapeInterval, setScrapeInterval] = useState(6);
+  const [scrapeInterval, setScrapeInterval] = useState(3);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
 

@@ -285,7 +285,7 @@ async function trySyncToHub(): Promise<void> {
 export async function runScrapeAll(): Promise<ScrapeResult[]> {
   // Get global scrape interval default
   const config = await prisma.extractionConfig.findFirst({ where: { id: 'singleton' } });
-  const globalInterval = config?.scrapeInterval ?? 6;
+  const globalInterval = config?.scrapeInterval ?? 3;
 
   const activeQueries = await prisma.query.findMany({
     where: {

@@ -38,7 +38,7 @@ export async function POST(request: NextRequest) {
 
   const now = new Date();
   const days = typeof lookAheadDays === 'number' && [7, 14, 21, 30].includes(lookAheadDays) ? lookAheadDays : 14;
-  const interval = typeof scrapeInterval === 'number' && [1, 3, 6, 12, 24].includes(scrapeInterval) ? scrapeInterval : 6;
+  const interval = typeof scrapeInterval === 'number' && [1, 3, 6, 12, 24].includes(scrapeInterval) ? scrapeInterval : 3;
 
   const seed = await prisma.query.create({
     data: {

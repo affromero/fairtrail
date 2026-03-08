@@ -13,7 +13,7 @@ export function SeedRouteForm() {
   const [cabinClass, setCabinClass] = useState('economy');
   const [airlines, setAirlines] = useState('');
   const [lookAheadDays, setLookAheadDays] = useState(14);
-  const [scrapeInterval, setScrapeInterval] = useState(6);
+  const [scrapeInterval, setScrapeInterval] = useState(3);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
 
