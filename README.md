@@ -248,9 +248,9 @@ npm run dev
 | Charts | Plotly.js (interactive) |
 | Cron | Built-in (node-cron) or external trigger |
 
-## Admin Panel
+## Settings
 
-Access at `/admin` to:
+Access at `/admin` (no login required on self-hosted instances):
 
 - **Manage queries** — pause, resume, delete, adjust scrape frequency
 - **Configure LLM** — choose extraction provider and model

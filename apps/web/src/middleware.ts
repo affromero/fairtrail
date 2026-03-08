@@ -52,6 +52,11 @@ export async function middleware(request: NextRequest) {
     return new NextResponse(null, { status: 404, headers: { 'X-Robots-Tag': 'noindex' } });
   }
 
+  // Self-hosted: no login page, redirect straight to dashboard
+  if (isSelfHosted && pathname.startsWith('/admin/login')) {
+    return NextResponse.redirect(new URL('/admin', request.url));
+  }
+
   // Admin auth — skip entirely for self-hosted (no admin panel)
   if (!isSelfHosted) {
     // Admin pages (not login) — require session
