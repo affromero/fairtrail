@@ -6,6 +6,9 @@ set -euo pipefail
 #
 # Installs the fairtrail CLI and Docker services to ~/.fairtrail
 # No git clone, no build — pulls a pre-built image from GHCR.
+#
+# Want to inspect this script before running it?
+#   curl -fsSL https://fairtrail.org/install.sh | less
 
 BOLD='\033[1m'
 DIM='\033[2m'
@@ -29,6 +32,37 @@ echo ""
 echo -e "${BOLD}  Fairtrail — Flight Price Tracker${RESET}"
 echo -e "  ${DIM}The price trail airlines don't show you${RESET}"
 echo ""
+
+# ---------------------------------------------------------------------------
+# 0. Transparency summary — show what this installer does before proceeding
+# ---------------------------------------------------------------------------
+echo -e "  ${BOLD}This installer will:${RESET}"
+echo ""
+echo -e "  ${DIM}1.${RESET} Install 3 Docker containers to ${BOLD}~/.fairtrail/${RESET}"
+echo -e "     ${DIM}• PostgreSQL 16 (your local database — nothing leaves your machine)${RESET}"
+echo -e "     ${DIM}• Redis 7 (local cache)${RESET}"
+echo -e "     ${DIM}• Fairtrail web app (from ghcr.io/affromero/fairtrail)${RESET}"
+echo ""
+echo -e "  ${DIM}2.${RESET} Download the ${BOLD}fairtrail${RESET} CLI to ${BOLD}~/.local/bin/${RESET}"
+echo ""
+echo -e "  ${DIM}3.${RESET} Generate a local ${BOLD}.env${RESET} config file in ~/.fairtrail/"
+echo ""
+echo -e "  ${DIM}No data leaves your machine. No account required.${RESET}"
+echo -e "  ${DIM}Open source (MIT) — ${BOLD}https://github.com/AFFRomero/fairtrail${RESET}"
+echo ""
+
+# Allow non-interactive mode (e.g., CI) by setting FAIRTRAIL_YES=1
+if [ "${FAIRTRAIL_YES:-}" != "1" ]; then
+  read -rp "  Continue? [Y/n] " CONSENT
+  if [[ "$CONSENT" =~ ^[Nn]$ ]]; then
+    echo ""
+    echo -e "  ${DIM}No changes were made. Inspect the script:${RESET}"
+    echo -e "  ${BOLD}curl -fsSL https://fairtrail.org/install.sh | less${RESET}"
+    echo ""
+    exit 0
+  fi
+  echo ""
+fi
 
 # ---------------------------------------------------------------------------
 # 1. Detect OS and check prerequisites
@@ -207,6 +241,27 @@ mkdir -p "$INSTALL_BIN"
 
 info "Downloading CLI..."
 if curl -fsSL "$BASE_URL/fairtrail-cli" -o "$INSTALL_BIN/fairtrail.tmp" 2>/dev/null; then
+  # Verify integrity if checksum is available
+  if curl -fsSL "$BASE_URL/fairtrail-cli.sha256" -o "$INSTALL_BIN/fairtrail.tmp.sha256" 2>/dev/null; then
+    EXPECTED=$(awk '{print $1}' "$INSTALL_BIN/fairtrail.tmp.sha256")
+    if command -v sha256sum &>/dev/null; then
+      ACTUAL=$(sha256sum "$INSTALL_BIN/fairtrail.tmp" | awk '{print $1}')
+    elif command -v shasum &>/dev/null; then
+      ACTUAL=$(shasum -a 256 "$INSTALL_BIN/fairtrail.tmp" | awk '{print $1}')
+    else
+      ACTUAL=""
+    fi
+    rm -f "$INSTALL_BIN/fairtrail.tmp.sha256"
+
+    if [ -n "$ACTUAL" ] && [ "$ACTUAL" != "$EXPECTED" ]; then
+      rm -f "$INSTALL_BIN/fairtrail.tmp"
+      fail "Checksum mismatch — CLI binary may have been tampered with.\n\n  Expected: ${EXPECTED}\n  Got:      ${ACTUAL}\n\n  Report this at: https://github.com/AFFRomero/fairtrail/issues"
+    fi
+    if [ -n "$ACTUAL" ]; then
+      ok "Checksum verified (SHA-256)"
+    fi
+  fi
+
   mv -f "$INSTALL_BIN/fairtrail.tmp" "$INSTALL_BIN/fairtrail"
   chmod +x "$INSTALL_BIN/fairtrail"
   ok "Installed fairtrail to $INSTALL_BIN/fairtrail"
@@ -322,27 +377,56 @@ fi
 # ---------------------------------------------------------------------------
 NEED_OVERRIDE=false
 OVERRIDE_VOLUMES=""
+MOUNT_CONSENT=true
 
-if [ "$CLAUDE_CODE_DETECTED" = true ]; then
-  NEED_OVERRIDE=true
-  OVERRIDE_VOLUMES="${OVERRIDE_VOLUMES}
-      - ${HOME}/.claude:/home/node/.claude:ro"
+if [ "$CLAUDE_CODE_DETECTED" = true ] || [ "$CODEX_DETECTED" = true ]; then
+  echo ""
+  info "Mounting CLI credentials (read-only)"
+  echo ""
+  echo -e "  ${DIM}To use your existing CLI subscription instead of a separate API key,${RESET}"
+  echo -e "  ${DIM}Fairtrail needs read-only access to your CLI auth tokens:${RESET}"
+  echo ""
+  if [ "$CLAUDE_CODE_DETECTED" = true ]; then
+    echo -e "    ${DIM}~/.claude  →  mounted as read-only (:ro)${RESET}"
+  fi
+  if [ "$CODEX_DETECTED" = true ]; then
+    echo -e "    ${DIM}~/.codex   →  mounted as read-only (:ro)${RESET}"
+  fi
+  echo ""
+  echo -e "  ${DIM}The container cannot modify these files. Your tokens are never copied or sent anywhere.${RESET}"
+  echo ""
+
+  if [ "${FAIRTRAIL_YES:-}" != "1" ]; then
+    read -rp "  Allow read-only credential mount? [Y/n] " MOUNT_CHOICE
+    if [[ "$MOUNT_CHOICE" =~ ^[Nn]$ ]]; then
+      MOUNT_CONSENT=false
+      warn "Skipped credential mount — you'll need to provide an API key in setup"
+    fi
+  fi
 fi
 
-if [ "$CODEX_DETECTED" = true ]; then
-  NEED_OVERRIDE=true
-  OVERRIDE_VOLUMES="${OVERRIDE_VOLUMES}
+if [ "$MOUNT_CONSENT" = true ]; then
+  if [ "$CLAUDE_CODE_DETECTED" = true ]; then
+    NEED_OVERRIDE=true
+    OVERRIDE_VOLUMES="${OVERRIDE_VOLUMES}
+      - ${HOME}/.claude:/home/node/.claude:ro"
+  fi
+
+  if [ "$CODEX_DETECTED" = true ]; then
+    NEED_OVERRIDE=true
+    OVERRIDE_VOLUMES="${OVERRIDE_VOLUMES}
       - ${HOME}/.codex:/home/node/.codex:ro"
+  fi
 fi
 
 if [ "$NEED_OVERRIDE" = true ]; then
   cat > "$FAIRTRAIL_DIR/docker-compose.override.yml" << YAML
-# Auto-generated — mounts CLI auth into the container
+# Auto-generated — mounts CLI auth into the container (read-only)
 services:
   web:
     volumes:${OVERRIDE_VOLUMES}
 YAML
-  ok "Mounted CLI credentials"
+  ok "Mounted CLI credentials (read-only)"
 else
   rm -f "$FAIRTRAIL_DIR/docker-compose.override.yml"
 fi
