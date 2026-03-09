@@ -25,15 +25,6 @@ FAIRTRAIL_DIR="$HOME/.fairtrail"
 PORT="${PORT:-3003}"
 BASE_URL="${FAIRTRAIL_URL:-https://fairtrail.org}"
 
-# Detect architecture — arm64 Macs need the -arm64 image tag
-detect_arch_suffix() {
-  case "$(uname -m)" in
-    arm64|aarch64) echo "-arm64" ;;
-    *) echo "" ;;
-  esac
-}
-ARCH_SUFFIX=$(detect_arch_suffix)
-
 if [ ! -f "$FAIRTRAIL_DIR/docker-compose.yml" ]; then
   printf "${RED}${BOLD}✗${RESET} Fairtrail not found. Run the installer first:\n"
   printf "  curl -fsSL https://fairtrail.org/install.sh | sh\n"
@@ -203,13 +194,6 @@ cmd_update() {
   else
     rm -f "$HOME/.local/bin/fairtrail.tmp"
     printf "${YELLOW}${BOLD}!${RESET} CLI update skipped (couldn't reach %s)\n" "$BASE_URL"
-  fi
-
-  # Ensure docker-compose.yml uses the correct arch-specific image tag
-  local correct_image="ghcr.io/affromero/fairtrail:latest${ARCH_SUFFIX}"
-  if grep -q 'image: ghcr.io/affromero/fairtrail:' docker-compose.yml; then
-    sed -i.bak "s|image: ghcr.io/affromero/fairtrail:.*|image: ${correct_image}|" docker-compose.yml
-    rm -f docker-compose.yml.bak
   fi
 
   # Pull latest image and restart
