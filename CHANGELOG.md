@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.2.1] - 2026-03-09
+
+### Added
+- "What Fairtrail is not" section on landing page
+- System theme detection with demo GIF swap for light/dark modes
+- Behavioral test suite (110 tests across 14 files)
+- Cron scheduling jitter (±2.5min) to avoid bot detection
+
+### Fixed
+- Docker multi-arch manifest so `fairtrail update` works on Apple Silicon (arm64)
+- Docker image slimmed from 1GB to 475MB
+- Pin Prisma@6 in entrypoint and deploy to avoid v7 breaking changes
+- POSIX shell compatibility for installer (replace `echo -e` with `printf`)
+- Mount `~/.claude.json` config in installer for Claude Code CLI users
+
+### Changed
+- CI cancels in-progress deploys when a new push arrives
+
 ## [0.2.0] - 2026-03-08
 
 ### Added
