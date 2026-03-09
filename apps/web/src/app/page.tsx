@@ -8,6 +8,7 @@ import { UsageStats } from '@/components/UsageStats';
 import { PriceAlerts } from '@/components/PriceAlerts';
 import { UpdateBanner } from '@/components/UpdateBanner';
 import { Footer } from '@/components/Footer';
+import { DemoGif } from '@/components/DemoGif';
 import { InstallCommand } from '@/components/InstallCommand';
 import { getSessionToken, verifySessionToken } from '@/lib/admin-auth';
 
@@ -84,14 +85,7 @@ export default async function HomePage() {
 
       {!isSelfHosted && (
         <div className={styles.demo}>
-          <img
-            src="/demo.gif"
-            alt="Price evolution charts — JFK to Paris, LAX to Tokyo, Chicago to Rome"
-            className={styles.demoImg}
-            width={1280}
-            height={900}
-            loading="eager"
-          />
+          <DemoGif />
         </div>
       )}
 

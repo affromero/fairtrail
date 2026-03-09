@@ -40,7 +40,10 @@ export const viewport: Viewport = {
 
 const themeScript = `
   (function() {
-    var t = localStorage.getItem('ft-theme') || 'dark';
+    var t = localStorage.getItem('ft-theme');
+    if (!t) {
+      t = window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+    }
     document.documentElement.setAttribute('data-theme', t);
   })();
 `;
