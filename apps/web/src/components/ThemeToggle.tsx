@@ -5,18 +5,20 @@ import styles from './ThemeToggle.module.css';
 
 type Theme = 'dark' | 'light';
 
-function getStoredTheme(): Theme {
+function getResolvedTheme(): Theme {
   if (typeof window === 'undefined') return 'dark';
-  return (localStorage.getItem('ft-theme') as Theme) ?? 'dark';
+  const stored = localStorage.getItem('ft-theme') as Theme | null;
+  if (stored) return stored;
+  return window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
 }
 
 export function ThemeToggle() {
   const [theme, setTheme] = useState<Theme>('dark');
 
   useEffect(() => {
-    const stored = getStoredTheme();
-    setTheme(stored);
-    document.documentElement.setAttribute('data-theme', stored);
+    const resolved = getResolvedTheme();
+    setTheme(resolved);
+    document.documentElement.setAttribute('data-theme', resolved);
   }, []);
 
   const toggle = () => {
