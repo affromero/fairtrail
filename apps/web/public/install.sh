@@ -28,6 +28,12 @@ INSTALL_BIN="$HOME/.local/bin"
 PORT="${PORT:-3003}"
 BASE_URL="${FAIRTRAIL_URL:-https://fairtrail.org}"
 
+# Detect architecture — arm64 Macs/Linux need the -arm64 image tag
+case "$(uname -m)" in
+  arm64|aarch64) ARCH_SUFFIX="-arm64" ;;
+  *) ARCH_SUFFIX="" ;;
+esac
+
 echo ""
 printf "${BOLD}  Fairtrail — Flight Price Tracker${RESET}\n"
 printf "  ${DIM}The price trail airlines don't show you${RESET}\n"
@@ -231,6 +237,13 @@ volumes:
   redisdata:
   app-data:
 COMPOSE
+
+# Patch image tag for the detected architecture
+if [ -n "$ARCH_SUFFIX" ]; then
+  sed -i.bak "s|ghcr.io/affromero/fairtrail:latest|ghcr.io/affromero/fairtrail:latest${ARCH_SUFFIX}|" "$FAIRTRAIL_DIR/docker-compose.yml"
+  rm -f "$FAIRTRAIL_DIR/docker-compose.yml.bak"
+  ok "Detected $(uname -m) — using arm64 image"
+fi
 
 ok "Created ~/.fairtrail"
 
