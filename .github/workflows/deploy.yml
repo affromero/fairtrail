@@ -12,13 +12,20 @@ concurrency:
 
 jobs:
   publish:
-    name: Publish Docker Image
+    name: Publish Docker Image (${{ matrix.arch }})
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
-    outputs:
-      image_tag: ${{ steps.meta.outputs.tags }}
+    strategy:
+      matrix:
+        include:
+          - arch: amd64
+            platform: linux/amd64
+            suffix: ""
+          - arch: arm64
+            platform: linux/arm64
+            suffix: "-arm64"
     steps:
       - uses: actions/checkout@v4
 
@@ -43,21 +50,21 @@ jobs:
         with:
           images: ghcr.io/${{ github.repository }}
           tags: |
-            type=raw,value=latest
-            type=raw,value=${{ steps.version.outputs.version }}
-            type=sha,prefix=
+            type=raw,value=latest${{ matrix.suffix }}
+            type=raw,value=${{ steps.version.outputs.version }}${{ matrix.suffix }}
+            type=sha,prefix=,suffix=${{ matrix.suffix }}
 
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
           context: .
           push: true
-          platforms: linux/amd64
+          platforms: ${{ matrix.platform }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: COMMIT_SHA=${{ github.sha }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.arch }}
 
   deploy:
     name: Deploy to Production
