@@ -173,10 +173,10 @@ export default async function HomePage() {
                 <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708Z" fill="currentColor"/></svg>
               </span>
               <div>
-                <h3 className={styles.reasonTitle}>Not a flight search engine</h3>
+                <h3 className={styles.reasonTitle}>Not an aggregator</h3>
                 <p className={styles.reasonText}>
-                  Fairtrail doesn&apos;t show you available flights right now.
-                  It tracks prices over time so you can see how fares evolve before you buy.
+                  No ads, no affiliate links, no sponsored rankings.
+                  Fairtrail doesn&apos;t make money when you book &mdash; it just shows you the data.
                 </p>
               </div>
             </div>
@@ -185,10 +185,10 @@ export default async function HomePage() {
                 <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708Z" fill="currentColor"/></svg>
               </span>
               <div>
-                <h3 className={styles.reasonTitle}>Not a booking platform</h3>
+                <h3 className={styles.reasonTitle}>Not an AI provider</h3>
                 <p className={styles.reasonText}>
-                  We don&apos;t sell tickets or take a cut. Every data point links directly
-                  to the airline &mdash; you book with them, not through us.
+                  AI is becoming a commodity &mdash; we don&apos;t bundle or resell it.
+                  Bring your own key, or use Claude Code / Codex if you already have a subscription.
                 </p>
               </div>
             </div>
