@@ -15,7 +15,7 @@ vi.mock('@/lib/prisma', () => ({
   },
 }));
 
-vi.mock('@/lib/scraper/ai-registry', () => ({
+vi.mock('./ai-registry', () => ({
   EXTRACTION_PROVIDERS: {
     anthropic: {
       displayName: 'Anthropic',

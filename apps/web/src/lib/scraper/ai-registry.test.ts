@@ -34,12 +34,22 @@ describe('ai-registry', () => {
   });
 
   describe('detectAvailableProviders', () => {
+    const savedEnv: Record<string, string | undefined> = {};
+
+    beforeEach(() => {
+      // Save and clear LLM env vars (setup.ts sets dummy keys globally)
+      for (const key of ['ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'GOOGLE_AI_API_KEY', 'CLAUDE_CODE_ENABLED', 'CODEX_ENABLED']) {
+        savedEnv[key] = process.env[key];
+        delete process.env[key];
+      }
+    });
+
     afterEach(() => {
-      delete process.env.ANTHROPIC_API_KEY;
-      delete process.env.OPENAI_API_KEY;
-      delete process.env.GOOGLE_AI_API_KEY;
-      delete process.env.CLAUDE_CODE_ENABLED;
-      delete process.env.CODEX_ENABLED;
+      // Restore original env
+      for (const [key, val] of Object.entries(savedEnv)) {
+        if (val === undefined) delete process.env[key];
+        else process.env[key] = val;
+      }
     });
 
     it('detects API-key providers when env vars are set', async () => {
