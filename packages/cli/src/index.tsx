@@ -12,9 +12,34 @@ program
   .option('--list', 'Show all tracked queries (web) or with --headless (terminal)')
   .option('--view <id>', 'View price chart (web) or with --headless (terminal)')
   .option('--tmux', 'Split grouped routes into tmux panes (requires --headless --view)')
+  .option('--backend <provider>', 'AI backend: claude-code, codex, anthropic, openai, google')
+  .option('--model <model>', 'Model override (e.g. sonnet, opus, gpt-4.1-mini, codex)')
   .parse();
 
-const opts = program.opts<{ headless?: boolean; list?: boolean; view?: string; tmux?: boolean }>();
+const opts = program.opts<{ headless?: boolean; list?: boolean; view?: string; tmux?: boolean; backend?: string; model?: string }>();
+
+// Set backend/model override — update DB config so parse-query.ts and extract-prices.ts pick it up
+if (opts.backend) {
+  process.env.FAIRTRAIL_BACKEND = opts.backend;
+
+  const defaultModels: Record<string, string> = {
+    'claude-code': 'sonnet',
+    codex: 'codex',
+    anthropic: 'claude-haiku-4-5-20251001',
+    openai: 'gpt-4.1-mini',
+    google: 'gemini-2.0-flash',
+  };
+
+  const model = opts.model ?? defaultModels[opts.backend] ?? opts.backend;
+
+  import('@/lib/prisma').then(({ prisma }) => {
+    prisma.extractionConfig.upsert({
+      where: { id: 'singleton' },
+      update: { provider: opts.backend!, model },
+      create: { id: 'singleton', provider: opts.backend!, model, enabled: true, scrapeInterval: 3 },
+    }).catch(() => { /* DB may not be available yet */ });
+  });
+}
 
 // --tmux requires --headless
 if (opts.tmux && !opts.headless) {
