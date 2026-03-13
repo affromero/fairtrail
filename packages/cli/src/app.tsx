@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
-import { Box, Text, useApp, useInput } from 'ink';
+import { Box, useApp, useInput } from 'ink';
 import { Header } from './components/Header.js';
 import { StatusBar } from './components/StatusBar.js';
 import { SearchWizard } from './screens/SearchWizard.js';
 import { QueryList } from './screens/QueryList.js';
+import { QueryView } from './screens/QueryView.js';
 
 interface AppProps {
   mode: 'search' | 'list' | 'view';
@@ -17,7 +18,7 @@ export function App({ mode: initialMode, viewId: initialViewId }: AppProps) {
   const [viewId, setViewId] = useState(initialViewId);
 
   useInput((_input, key) => {
-    if (key.escape) {
+    if (key.escape && mode === initialMode) {
       exit();
     }
   }, { isActive: isTTY });
@@ -35,7 +36,12 @@ export function App({ mode: initialMode, viewId: initialViewId }: AppProps) {
             }}
           />
         )}
-        {mode === 'view' && <Text>Chart view for {viewId} — coming in Phase 5</Text>}
+        {mode === 'view' && viewId && (
+          <QueryView
+            id={viewId}
+            onBack={initialMode === 'list' ? () => setMode('list') : undefined}
+          />
+        )}
       </Box>
       <StatusBar />
     </Box>
