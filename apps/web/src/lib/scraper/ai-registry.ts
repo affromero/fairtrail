@@ -193,23 +193,36 @@ export const EXTRACTION_PROVIDERS: Record<string, ProviderConfig> = {
 
       const fullPrompt = `${systemPrompt}\n\n${userPrompt}`;
 
+      const { mkdtempSync, readFileSync, unlinkSync } = await import(/* webpackIgnore: true */ 'fs');
+      const { join } = await import(/* webpackIgnore: true */ 'path');
+      const os = await import(/* webpackIgnore: true */ 'os');
+
+      const tmpFile = join(mkdtempSync(join(os.tmpdir(), 'codex-')), 'output.txt');
+
       const result = await new Promise<string>((resolve, reject) => {
-        const proc = spawn('codex', ['--print'], {
+        const proc = spawn('codex', [
+          'exec', '-',
+          '--skip-git-repo-check',
+          '--ephemeral',
+          '-o', tmpFile,
+        ], {
           timeout: 240_000,
           env: { ...process.env },
         });
 
-        let stdout = '';
         let stderr = '';
-        proc.stdout.on('data', (d: Buffer) => {
-          stdout += d.toString();
-        });
         proc.stderr.on('data', (d: Buffer) => {
           stderr += d.toString();
         });
         proc.on('close', (code) => {
-          if (code !== 0) reject(new Error(`codex CLI exited ${code}: ${stderr}`));
-          else resolve(stdout.trim());
+          try {
+            const output = readFileSync(tmpFile, 'utf-8').trim();
+            unlinkSync(tmpFile);
+            if (code !== 0) reject(new Error(`codex CLI exited ${code}: ${stderr}`));
+            else resolve(output);
+          } catch {
+            reject(new Error(`codex CLI exited ${code}: ${stderr}`));
+          }
         });
         proc.on('error', (err: NodeJS.ErrnoException) => {
           if (err.code === 'ENOENT') {

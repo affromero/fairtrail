@@ -154,10 +154,10 @@ describe('ai-registry', () => {
         expect(mockSpawn).toHaveBeenCalled();
       });
 
-      // Verify spawn was called with env containing PATH
+      // Verify spawn was called with exec subcommand and env
       expect(mockSpawn).toHaveBeenCalledWith(
         'codex',
-        ['--print'],
+        expect.arrayContaining(['exec', '-', '--skip-git-repo-check', '--ephemeral']),
         expect.objectContaining({
           env: expect.objectContaining({ PATH: expect.any(String) }),
         })
