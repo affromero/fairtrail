@@ -92,7 +92,7 @@ Fairtrail needs an LLM for two things: parsing natural language queries and extr
 | **OpenAI** | `OPENAI_API_KEY` | ~$0.0004/query | GPT-4.1 Mini |
 | **Google** | `GOOGLE_AI_API_KEY` | ~$0.00015/query | Gemini 2.5 Flash (cheapest) |
 
-CLI providers are listed first because they cost nothing extra if you already have a subscription. The installer detects them automatically and mounts their auth into the Docker container.
+CLI providers are listed first because they cost nothing extra if you already have a subscription. The installer detects them automatically and mounts their config directories (`~/.claude`, `~/.codex`) **read-only** into the Docker container — this gives the containerized CLIs access to your existing auth tokens so they can make API calls on your behalf. Your credentials are never copied, and the container cannot modify them.
 
 ## Configuration
 
