@@ -175,7 +175,7 @@ jobs:
   notify:
     name: Telegram Notification
     needs: deploy
-    if: always()
+    if: always() && needs.deploy.result != 'cancelled'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
