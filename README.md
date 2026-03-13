@@ -207,13 +207,20 @@ The built-in cron runs on a configurable interval (default: every 3h). Each run 
 
 ## Managing Fairtrail
 
-```bash
-fairtrail            # start (Ctrl+C to stop)
-fairtrail start      # start in background
-fairtrail stop       # stop — pauses all price tracking until you start again
-fairtrail logs       # view live logs
-fairtrail status     # check if running
-fairtrail update     # pull latest version and restart
+```
+Usage: fairtrail [command]
+
+Commands:
+  (none)       Start Fairtrail (Ctrl+C to stop)
+  search ".."  Search and track a flight from the terminal
+  start        Start in background
+  stop         Stop — pauses all price tracking until you start again
+  logs         View live logs
+  status       Check if running
+  update       Pull latest version and restart
+  version      Show version and commit
+  uninstall    Remove Fairtrail and all data
+  help         Show this help
 ```
 
 Stopping Fairtrail pauses all scraping — no queries run while it's off. Your data and queries are saved. Just run `fairtrail` again to resume tracking.
