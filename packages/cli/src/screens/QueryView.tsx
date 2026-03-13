@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, memo } from 'react';
 import { Box, Text, useApp, useInput } from 'ink';
 import Spinner from 'ink-spinner';
 import { prisma } from '@/lib/prisma';
@@ -37,6 +37,97 @@ interface QueryData {
   lastScraped: Date | null;
 }
 
+// Isolated countdown — only this re-renders every second
+function CountdownBar({ refreshing, onRefresh, snapshotCount, lastScraped }: {
+  refreshing: boolean;
+  onRefresh: () => void;
+  snapshotCount: number;
+  lastScraped: Date | null;
+}) {
+  const [countdown, setCountdown] = useState(REFRESH_INTERVAL);
+
+  useEffect(() => {
+    if (refreshing) {
+      setCountdown(REFRESH_INTERVAL);
+      return;
+    }
+    const timer = setInterval(() => {
+      setCountdown((c) => {
+        if (c <= 1) {
+          onRefresh();
+          return REFRESH_INTERVAL;
+        }
+        return c - 1;
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [refreshing, onRefresh]);
+
+  const barWidth = 20;
+  const filled = Math.round(((REFRESH_INTERVAL - countdown) / REFRESH_INTERVAL) * barWidth);
+  const countdownBar = '█'.repeat(filled) + '░'.repeat(barWidth - filled);
+
+  return (
+    <Box flexDirection="row">
+      {refreshing ? (
+        <Box>
+          <Text color="cyan"><Spinner type="dots" /></Text>
+          <Text dimColor>{' '}Refreshing...</Text>
+        </Box>
+      ) : (
+        <Box>
+          <Text dimColor>Next refresh: {countdown}s </Text>
+          <Text color="cyan">{countdownBar}</Text>
+        </Box>
+      )}
+      <Text dimColor>
+        {'  '}{snapshotCount} snapshots
+        {lastScraped ? `  ·  Scraped ${formatTimeAgo(lastScraped)}` : ''}
+      </Text>
+    </Box>
+  );
+}
+
+// Memoized chart — only re-renders when snapshots actually change
+const MemoChart = memo(function MemoChart({ snapshots, currency }: { snapshots: Snapshot[]; currency: string }) {
+  return <PriceChart snapshots={snapshots} currency={currency} />;
+});
+
+// Memoized price table
+const PriceTable = memo(function PriceTable({ snapshots }: { snapshots: Snapshot[] }) {
+  const latestByAirline = new Map<string, Snapshot>();
+  for (const s of snapshots) {
+    if (!latestByAirline.has(s.airline) || s.scrapedAt > latestByAirline.get(s.airline)!.scrapedAt) {
+      latestByAirline.set(s.airline, s);
+    }
+  }
+  const priceHistory = [...latestByAirline.values()].sort((a, b) => a.price - b.price);
+
+  if (priceHistory.length === 0) return null;
+
+  return (
+    <Box marginTop={1} flexDirection="column">
+      <Text bold color="cyan">Current Prices</Text>
+      <Box>
+        <Text dimColor bold>{'Airline'.padEnd(16)}</Text>
+        <Text dimColor bold>{'Price'.padEnd(10)}</Text>
+        <Text dimColor bold>{'Stops'.padEnd(10)}</Text>
+        <Text dimColor bold>{'Duration'.padEnd(10)}</Text>
+        <Text dimColor bold>{'Seen'}</Text>
+      </Box>
+      {priceHistory.map((s) => (
+        <Box key={s.id}>
+          <Text>{s.airline.padEnd(16)}</Text>
+          <Text color="green" bold>{formatCurrency(s.price, s.currency).padEnd(10)}</Text>
+          <Text>{formatStops(s.stops).padEnd(10)}</Text>
+          <Text dimColor>{(s.duration ?? '—').padEnd(10)}</Text>
+          <Text dimColor>{formatTimeAgo(s.scrapedAt)}</Text>
+        </Box>
+      ))}
+    </Box>
+  );
+});
+
 interface QueryViewProps {
   id: string;
   onBack?: () => void;
@@ -47,7 +138,6 @@ export function QueryView({ id, onBack }: QueryViewProps) {
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState<QueryData | null>(null);
   const [error, setError] = useState('');
-  const [countdown, setCountdown] = useState(REFRESH_INTERVAL);
   const [refreshing, setRefreshing] = useState(false);
   const isTTY = process.stdin.isTTY ?? false;
   const prevSnapshotCount = useRef(0);
@@ -116,31 +206,12 @@ export function QueryView({ id, onBack }: QueryViewProps) {
     } finally {
       setLoading(false);
       setRefreshing(false);
-      setCountdown(REFRESH_INTERVAL);
     }
   }, [id, query]);
 
-  // Initial fetch
   useEffect(() => {
     fetchData(true);
   }, [id]);
-
-  // Countdown timer — ticks every second
-  useEffect(() => {
-    if (loading || error) return;
-
-    const timer = setInterval(() => {
-      setCountdown((c) => {
-        if (c <= 1) {
-          fetchData();
-          return REFRESH_INTERVAL;
-        }
-        return c - 1;
-      });
-    }, 1000);
-
-    return () => clearInterval(timer);
-  }, [loading, error, fetchData]);
 
   useInput((input, key) => {
     if (input === 'q') exit();
@@ -165,18 +236,6 @@ export function QueryView({ id, onBack }: QueryViewProps) {
 
   const available = query.snapshots.filter((s) => s.status === 'available');
 
-  const latestByAirline = new Map<string, Snapshot>();
-  for (const s of available) {
-    if (!latestByAirline.has(s.airline) || s.scrapedAt > latestByAirline.get(s.airline)!.scrapedAt) {
-      latestByAirline.set(s.airline, s);
-    }
-  }
-  const priceHistory = [...latestByAirline.values()].sort((a, b) => a.price - b.price);
-
-  const barWidth = 20;
-  const filled = Math.round(((REFRESH_INTERVAL - countdown) / REFRESH_INTERVAL) * barWidth);
-  const countdownBar = '█'.repeat(filled) + '░'.repeat(barWidth - filled);
-
   return (
     <Box flexDirection="column">
       <Box marginBottom={1}>
@@ -187,50 +246,21 @@ export function QueryView({ id, onBack }: QueryViewProps) {
         {newDataFlash && <Text color="green" bold>{'  ● NEW DATA'}</Text>}
       </Box>
 
-      <PriceChart snapshots={available} currency={query.currency} />
+      <MemoChart snapshots={available} currency={query.currency} />
 
       <Box marginTop={1}>
         <BestPriceCard snapshots={available} />
       </Box>
 
-      {priceHistory.length > 0 && (
-        <Box marginTop={1} flexDirection="column">
-          <Text bold color="cyan">Current Prices</Text>
-          <Box>
-            <Text dimColor bold>{'Airline'.padEnd(16)}</Text>
-            <Text dimColor bold>{'Price'.padEnd(10)}</Text>
-            <Text dimColor bold>{'Stops'.padEnd(10)}</Text>
-            <Text dimColor bold>{'Duration'.padEnd(10)}</Text>
-            <Text dimColor bold>{'Seen'}</Text>
-          </Box>
-          {priceHistory.map((s) => (
-            <Box key={s.id}>
-              <Text>{s.airline.padEnd(16)}</Text>
-              <Text color="green" bold>{formatCurrency(s.price, s.currency).padEnd(10)}</Text>
-              <Text>{formatStops(s.stops).padEnd(10)}</Text>
-              <Text dimColor>{(s.duration ?? '—').padEnd(10)}</Text>
-              <Text dimColor>{formatTimeAgo(s.scrapedAt)}</Text>
-            </Box>
-          ))}
-        </Box>
-      )}
+      <PriceTable snapshots={available} />
 
-      <Box marginTop={1} flexDirection="row">
-        {refreshing ? (
-          <Box>
-            <Text color="cyan"><Spinner type="dots" /></Text>
-            <Text dimColor>{' '}Refreshing...</Text>
-          </Box>
-        ) : (
-          <Box>
-            <Text dimColor>Next refresh: {countdown}s </Text>
-            <Text color="cyan">{countdownBar}</Text>
-          </Box>
-        )}
-        <Text dimColor>
-          {'  '}{available.length} snapshots
-          {query.lastScraped ? `  ·  Scraped ${formatTimeAgo(query.lastScraped)}` : ''}
-        </Text>
+      <Box marginTop={1}>
+        <CountdownBar
+          refreshing={refreshing}
+          onRefresh={fetchData}
+          snapshotCount={available.length}
+          lastScraped={query.lastScraped}
+        />
       </Box>
 
       <Box marginTop={1}>
