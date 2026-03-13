@@ -55,9 +55,9 @@ services:
     volumes:
       - app-data:/app/data
       # Uncomment to use Claude Code CLI from your host machine:
-      # - ~/.claude:/home/node/.claude:ro
+      # - ~/.claude:/home/node/.claude-host:ro
       # Uncomment to use Codex CLI from your host machine:
-      # - ~/.codex:/home/node/.codex:ro
+      # - ~/.codex:/home/node/.codex-host:ro
 
 volumes:
   pgdata:

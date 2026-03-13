@@ -28,7 +28,7 @@ services:
     ports:
       - "127.0.0.1:3003:3003"
     volumes:
-      - /home/sotto/.claude:/home/node/.claude
+      - /home/sotto/.claude:/home/node/.claude-host:ro
       - analytics-data:/app/data
       - cli-cache:/home/node/.npm-global
     environment:

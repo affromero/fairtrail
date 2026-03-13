@@ -59,6 +59,22 @@ echo "[setup] Applying database schema..."
 npx prisma@6 db push --schema=apps/web/prisma/schema.prisma --skip-generate --accept-data-loss 2>&1 | tail -1
 echo "[setup] Schema ready"
 
+# --- Copy CLI auth from read-only host mounts into writable directories ---
+# The installer mounts host ~/.claude and ~/.codex as read-only at *-host paths.
+# CLIs need write access (models cache, sessions), so we copy into writable dirs.
+if [ -d /home/node/.claude-host ]; then
+  cp -a /home/node/.claude-host/. /home/node/.claude/
+  echo "[setup] Copied Claude Code auth from host"
+fi
+if [ -f /home/node/.claude-host.json ]; then
+  cp /home/node/.claude-host.json /home/node/.claude.json
+  echo "[setup] Copied Claude credentials file from host"
+fi
+if [ -d /home/node/.codex-host ]; then
+  cp -a /home/node/.codex-host/. /home/node/.codex/
+  echo "[setup] Copied Codex auth from host"
+fi
+
 # --- Install CLI providers (cached in cli-cache volume) ---
 if ! command -v claude >/dev/null 2>&1; then
   echo "[setup] Installing Claude Code CLI..."

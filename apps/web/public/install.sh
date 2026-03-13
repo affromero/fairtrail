@@ -412,17 +412,17 @@ if [ "$MOUNT_CONSENT" = true ]; then
   if [ "$CLAUDE_CODE_DETECTED" = true ]; then
     NEED_OVERRIDE=true
     OVERRIDE_VOLUMES="${OVERRIDE_VOLUMES}
-      - ${HOME}/.claude:/home/node/.claude:ro"
+      - ${HOME}/.claude:/home/node/.claude-host:ro"
     if [ -f "${HOME}/.claude.json" ]; then
       OVERRIDE_VOLUMES="${OVERRIDE_VOLUMES}
-      - ${HOME}/.claude.json:/home/node/.claude.json:ro"
+      - ${HOME}/.claude.json:/home/node/.claude-host.json:ro"
     fi
   fi
 
   if [ "$CODEX_DETECTED" = true ]; then
     NEED_OVERRIDE=true
     OVERRIDE_VOLUMES="${OVERRIDE_VOLUMES}
-      - ${HOME}/.codex:/home/node/.codex:ro"
+      - ${HOME}/.codex:/home/node/.codex-host:ro"
   fi
 fi
 

@@ -37,8 +37,13 @@ ENV HOSTNAME="0.0.0.0"
 ENV CHROME_PATH=/usr/bin/chromium-browser
 
 # CLI provider support: writable npm global prefix for node user
-RUN mkdir -p /home/node/.npm-global /home/node/.claude /home/node/.codex && \
-    chown -R node:node /home/node/.npm-global /home/node/.claude /home/node/.codex
+# *-host dirs are read-only mount points; entrypoint copies into writable dirs
+RUN mkdir -p /home/node/.npm-global \
+             /home/node/.claude /home/node/.claude-host \
+             /home/node/.codex /home/node/.codex-host && \
+    chown -R node:node /home/node/.npm-global \
+                       /home/node/.claude /home/node/.claude-host \
+                       /home/node/.codex /home/node/.codex-host
 ENV NPM_CONFIG_PREFIX=/home/node/.npm-global
 ENV PATH="/home/node/.npm-global/bin:$PATH"
 
