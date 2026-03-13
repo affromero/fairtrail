@@ -32,7 +32,7 @@ Track flight prices over time. Self-hosted. Open source. Bring your own LLM.
 ## Quick Start
 
 ```bash
-curl -fsSL https://fairtrail.org/install.sh | sh
+curl -fsSL https://fairtrail.org/install.sh | bash
 ```
 
 If you have [Claude Code](https://docs.anthropic.com/en/docs/claude-code) or [Codex](https://github.com/openai/codex) installed, the setup script detects it automatically — **no API key needed**. Otherwise, it asks you to paste one.

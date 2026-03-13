@@ -35,7 +35,13 @@ ENV NEXT_TELEMETRY_DISABLED=1
 ENV PORT=3003
 ENV HOSTNAME="0.0.0.0"
 ENV CHROME_PATH=/usr/bin/chromium-browser
-RUN mkdir -p /home/node/.claude && chown node:node /home/node/.claude
+
+# CLI provider support: writable npm global prefix for node user
+RUN mkdir -p /home/node/.npm-global /home/node/.claude /home/node/.codex && \
+    chown -R node:node /home/node/.npm-global /home/node/.claude /home/node/.codex
+ENV NPM_CONFIG_PREFIX=/home/node/.npm-global
+ENV PATH="/home/node/.npm-global/bin:$PATH"
+
 WORKDIR /app
 
 # Standalone server (includes traced node_modules)

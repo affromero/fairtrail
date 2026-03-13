@@ -30,6 +30,7 @@ services:
     volumes:
       - /home/sotto/.claude:/home/node/.claude
       - analytics-data:/app/data
+      - cli-cache:/home/node/.npm-global
     environment:
       DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-postgres}@db:5432/fairtrail
       REDIS_URL: redis://redis:6379
@@ -47,3 +48,4 @@ volumes:
   pgdata:
   redisdata:
   analytics-data:
+  cli-cache:

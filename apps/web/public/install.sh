@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Fairtrail — One-command installer
-# Usage: curl -fsSL https://fairtrail.org/install.sh | sh
+# Usage: curl -fsSL https://fairtrail.org/install.sh | bash
 #
 # Installs the fairtrail CLI and Docker services to ~/.fairtrail
 # No git clone, no build — pulls a pre-built image from GHCR.
@@ -94,7 +94,7 @@ install_docker_linux() {
 if ! command -v docker &>/dev/null; then
   case "$OS" in
     macos)
-      fail "Docker Desktop is required.\n\n  Install it from: ${BOLD}https://docs.docker.com/desktop/setup/install/mac-install/${RESET}\n\n  Then re-run: ${BOLD}curl -fsSL https://fairtrail.org/install.sh | sh${RESET}"
+      fail "Docker Desktop is required.\n\n  Install it from: ${BOLD}https://docs.docker.com/desktop/setup/install/mac-install/${RESET}\n\n  Then re-run: ${BOLD}curl -fsSL https://fairtrail.org/install.sh | bash${RESET}"
       ;;
     linux|wsl)
       warn "Docker is not installed."
@@ -115,7 +115,7 @@ fi
 if ! docker info &>/dev/null 2>&1; then
   case "$OS" in
     macos)
-      fail "Docker Desktop is not running.\n\n  Open Docker Desktop from Applications, wait for it to start, then re-run:\n  ${BOLD}curl -fsSL https://fairtrail.org/install.sh | sh${RESET}"
+      fail "Docker Desktop is not running.\n\n  Open Docker Desktop from Applications, wait for it to start, then re-run:\n  ${BOLD}curl -fsSL https://fairtrail.org/install.sh | bash${RESET}"
       ;;
     linux|wsl)
       warn "Docker daemon is not running."
@@ -225,11 +225,13 @@ services:
       SELF_HOSTED: "true"
     volumes:
       - app-data:/app/data
+      - cli-cache:/home/node/.npm-global
 
 volumes:
   pgdata:
   redisdata:
   app-data:
+  cli-cache:
 COMPOSE
 
 ok "Created ~/.fairtrail"
@@ -270,13 +272,35 @@ else
   fail "Failed to download CLI from $BASE_URL/fairtrail-cli"
 fi
 
-# Check if ~/.local/bin is in PATH
+# Ensure ~/.local/bin is in PATH
 if ! echo "$PATH" | tr ':' '\n' | grep -qx "$INSTALL_BIN"; then
-  warn "$INSTALL_BIN is not in your PATH"
-  echo ""
-  printf "  Add this to your shell profile (~/.bashrc, ~/.zshrc, etc.):\n"
-  printf "  ${BOLD}export PATH=\"\$HOME/.local/bin:\$PATH\"${RESET}\n"
-  echo ""
+  EXPORT_LINE='export PATH="$HOME/.local/bin:$PATH"'
+  SHELL_PROFILE=""
+
+  # Find the right shell profile to patch
+  if [ -n "${ZSH_VERSION:-}" ] || [ "$(basename "${SHELL:-}")" = "zsh" ]; then
+    [ -f "$HOME/.zshrc" ] && SHELL_PROFILE="$HOME/.zshrc"
+  elif [ -f "$HOME/.bashrc" ]; then
+    SHELL_PROFILE="$HOME/.bashrc"
+  elif [ -f "$HOME/.profile" ]; then
+    SHELL_PROFILE="$HOME/.profile"
+  fi
+
+  if [ -n "$SHELL_PROFILE" ]; then
+    # Only add if not already present
+    if ! grep -qF '.local/bin' "$SHELL_PROFILE" 2>/dev/null; then
+      printf '\n# Added by Fairtrail installer\n%s\n' "$EXPORT_LINE" >> "$SHELL_PROFILE"
+      ok "Added $INSTALL_BIN to PATH in $SHELL_PROFILE"
+    fi
+  else
+    warn "$INSTALL_BIN is not in your PATH"
+    printf "  Add this to your shell profile:\n"
+    printf "  ${BOLD}export PATH=\"\$HOME/.local/bin:\$PATH\"${RESET}\n"
+    echo ""
+  fi
+
+  # Make it available for the rest of this script
+  export PATH="$INSTALL_BIN:$PATH"
 fi
 
 # ---------------------------------------------------------------------------
@@ -496,9 +520,9 @@ printf "  Next time, just run: ${BOLD}fairtrail${RESET}\n"
 printf "  ${DIM}Ctrl+C to stop  |  fairtrail stop  |  fairtrail help${RESET}\n"
 echo ""
 
-# Open browser automatically
+# Open browser automatically (skip on headless systems)
 if command -v open &>/dev/null; then
   open "http://localhost:${PORT}"
-elif command -v xdg-open &>/dev/null; then
-  xdg-open "http://localhost:${PORT}" 2>/dev/null &
+elif [ -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ] && command -v xdg-open &>/dev/null; then
+  xdg-open "http://localhost:${PORT}" >/dev/null 2>&1 &
 fi

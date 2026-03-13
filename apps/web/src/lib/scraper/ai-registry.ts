@@ -165,7 +165,13 @@ export const EXTRACTION_PROVIDERS: Record<string, ProviderConfig> = {
           if (code !== 0) reject(new Error(`claude CLI exited ${code}: ${stderr}`));
           else resolve(stdout.trim());
         });
-        proc.on('error', reject);
+        proc.on('error', (err: NodeJS.ErrnoException) => {
+          if (err.code === 'ENOENT') {
+            reject(new Error('claude CLI not found. Restart the container to trigger install, or disable CLAUDE_CODE_ENABLED.'));
+          } else {
+            reject(err);
+          }
+        });
         proc.stdin.write(fullPrompt);
         proc.stdin.end();
       });
@@ -190,6 +196,7 @@ export const EXTRACTION_PROVIDERS: Record<string, ProviderConfig> = {
       const result = await new Promise<string>((resolve, reject) => {
         const proc = spawn('codex', ['--print'], {
           timeout: 240_000,
+          env: { ...process.env },
         });
 
         let stdout = '';
@@ -204,7 +211,13 @@ export const EXTRACTION_PROVIDERS: Record<string, ProviderConfig> = {
           if (code !== 0) reject(new Error(`codex CLI exited ${code}: ${stderr}`));
           else resolve(stdout.trim());
         });
-        proc.on('error', reject);
+        proc.on('error', (err: NodeJS.ErrnoException) => {
+          if (err.code === 'ENOENT') {
+            reject(new Error('codex CLI not found. Restart the container to trigger install, or disable CODEX_ENABLED.'));
+          } else {
+            reject(err);
+          }
+        });
         proc.stdin.write(fullPrompt);
         proc.stdin.end();
       });

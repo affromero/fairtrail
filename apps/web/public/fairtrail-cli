@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Fairtrail CLI — wraps Docker so you never have to think about it.
-# Installed by: curl -fsSL https://fairtrail.org/install.sh | sh
+# Installed by: curl -fsSL https://fairtrail.org/install.sh | bash
 #
 # Usage:
 #   fairtrail          Start Fairtrail (Ctrl+C to stop)
@@ -27,7 +27,7 @@ BASE_URL="${FAIRTRAIL_URL:-https://fairtrail.org}"
 
 if [ ! -f "$FAIRTRAIL_DIR/docker-compose.yml" ]; then
   printf "${RED}${BOLD}✗${RESET} Fairtrail not found. Run the installer first:\n"
-  printf "  curl -fsSL https://fairtrail.org/install.sh | sh\n"
+  printf "  curl -fsSL https://fairtrail.org/install.sh | bash\n"
   exit 1
 fi
 
@@ -105,8 +105,8 @@ cmd_start_foreground() {
     # Open browser
     if command -v open &>/dev/null; then
       open "http://localhost:${PORT}"
-    elif command -v xdg-open &>/dev/null; then
-      xdg-open "http://localhost:${PORT}" 2>/dev/null &
+    elif [ -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ] && command -v xdg-open &>/dev/null; then
+      xdg-open "http://localhost:${PORT}" >/dev/null 2>&1 &
     fi
   fi
 
@@ -133,8 +133,8 @@ cmd_start_background() {
   # Open browser
   if command -v open &>/dev/null; then
     open "http://localhost:${PORT}"
-  elif command -v xdg-open &>/dev/null; then
-    xdg-open "http://localhost:${PORT}" 2>/dev/null &
+  elif [ -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ] && command -v xdg-open &>/dev/null; then
+    xdg-open "http://localhost:${PORT}" >/dev/null 2>&1 &
   fi
 }
 
@@ -348,8 +348,8 @@ print(json.dumps(body))
 
   if command -v open &>/dev/null; then
     open "http://localhost:${PORT}/q/${query_id}"
-  elif command -v xdg-open &>/dev/null; then
-    xdg-open "http://localhost:${PORT}/q/${query_id}" 2>/dev/null &
+  elif [ -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ] && command -v xdg-open &>/dev/null; then
+    xdg-open "http://localhost:${PORT}/q/${query_id}" >/dev/null 2>&1 &
   fi
 }
 
