@@ -123,7 +123,7 @@ export function QueryView({ id, onBack }: QueryViewProps) {
   // Initial fetch
   useEffect(() => {
     fetchData(true);
-  }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [id]);
 
   // Countdown timer — ticks every second
   useEffect(() => {
