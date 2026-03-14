@@ -208,8 +208,9 @@ export async function parseFlightQuery(
   }
 
   const isCliProvider = provider in CLI_PROVIDERS;
+  const hasLocalEndpoint = provider === 'openai' && process.env.OPENAI_BASE_URL;
   const apiKey = isCliProvider ? '' : (providerConfig.envKey ? process.env[providerConfig.envKey] : '') ?? '';
-  if (!apiKey && !isCliProvider) {
+  if (!apiKey && !isCliProvider && !hasLocalEndpoint) {
     throw new Error(`Missing API key: ${providerConfig.envKey}`);
   }
 

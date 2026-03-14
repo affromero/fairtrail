@@ -95,7 +95,7 @@ export const EXTRACTION_PROVIDERS: Record<string, ProviderConfig> = {
     extract: async (apiKey, model, systemPrompt, userPrompt) => {
       const { default: OpenAI } = await import('openai');
       const client = new OpenAI({
-        apiKey,
+        apiKey: apiKey || 'unused',
         baseURL: process.env.OPENAI_BASE_URL || undefined,
       });
       const response = await client.chat.completions.create({
@@ -305,7 +305,9 @@ export async function detectAvailableProviders(): Promise<string[]> {
       }
       continue;
     }
-    if (config.envKey && process.env[config.envKey]) {
+    const hasKey = config.envKey && process.env[config.envKey];
+    const hasLocalEndpoint = key === 'openai' && process.env.OPENAI_BASE_URL;
+    if (hasKey || hasLocalEndpoint) {
       available.push(key);
     }
   }
