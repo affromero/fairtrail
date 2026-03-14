@@ -35,7 +35,7 @@ export async function PATCH(request: NextRequest) {
       return apiError(`Unknown provider: ${provider}`, 400);
     }
 
-    if (model) {
+    if (model && !providerConfig.allowCustomModel) {
       const validModel = providerConfig.models.find((m) => m.id === model);
       if (!validModel) {
         return apiError(`Invalid model "${model}" for provider "${provider}"`, 400);

@@ -21,6 +21,7 @@ interface ProviderConfig {
   displayName: string;
   envKey: string;
   models: ModelInfo[];
+  allowCustomModel?: boolean;
   extract: (
     apiKey: string,
     model: string,
@@ -73,6 +74,7 @@ export const EXTRACTION_PROVIDERS: Record<string, ProviderConfig> = {
   openai: {
     displayName: 'OpenAI',
     envKey: 'OPENAI_API_KEY',
+    allowCustomModel: true,
     models: [
       {
         id: 'gpt-4.1-mini',
@@ -83,7 +85,10 @@ export const EXTRACTION_PROVIDERS: Record<string, ProviderConfig> = {
     ],
     extract: async (apiKey, model, systemPrompt, userPrompt) => {
       const { default: OpenAI } = await import('openai');
-      const client = new OpenAI({ apiKey });
+      const client = new OpenAI({
+        apiKey,
+        baseURL: process.env.OPENAI_BASE_URL || undefined,
+      });
       const response = await client.chat.completions.create({
         model,
         messages: [

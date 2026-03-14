@@ -94,6 +94,17 @@ describe('ai-registry', () => {
     });
   });
 
+  describe('allowCustomModel', () => {
+    it('is enabled for the openai provider', () => {
+      expect(EXTRACTION_PROVIDERS.openai!.allowCustomModel).toBe(true);
+    });
+
+    it('is not enabled for other providers', () => {
+      expect(EXTRACTION_PROVIDERS.anthropic!.allowCustomModel).toBeUndefined();
+      expect(EXTRACTION_PROVIDERS.google!.allowCustomModel).toBeUndefined();
+    });
+  });
+
   describe('codex extract — ENOENT handling', () => {
     it('rejects with actionable message when codex binary is missing', async () => {
       const fakeProc = createFakeProc();

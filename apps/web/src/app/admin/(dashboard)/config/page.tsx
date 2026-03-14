@@ -28,6 +28,7 @@ export default function ConfigPage() {
   const [config, setConfig] = useState<Config | null>(null);
   const [provider, setProvider] = useState('anthropic');
   const [model, setModel] = useState('claude-haiku-4-5-20251001');
+  const [customModel, setCustomModel] = useState('');
   const [scrapeInterval, setScrapeInterval] = useState(3);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
@@ -54,8 +55,16 @@ export default function ConfigPage() {
         if (d.ok) {
           setConfig(d.data);
           setProvider(d.data.provider);
-          setModel(d.data.model);
           setScrapeInterval(d.data.scrapeInterval);
+          const pc = EXTRACTION_PROVIDERS[d.data.provider];
+          const knownModel = pc?.models.find((m) => m.id === d.data.model);
+          if (knownModel) {
+            setModel(d.data.model);
+            setCustomModel('');
+          } else {
+            setModel(pc?.models[0]?.id ?? '');
+            setCustomModel(d.data.model);
+          }
         }
       });
     loadInvites();
@@ -66,11 +75,14 @@ export default function ConfigPage() {
 
   const handleProviderChange = (newProvider: string) => {
     setProvider(newProvider);
+    setCustomModel('');
     const newModels = EXTRACTION_PROVIDERS[newProvider]?.models ?? [];
     if (newModels.length > 0) {
       setModel(newModels[0]!.id);
     }
   };
+
+  const effectiveModel = customModel.trim() || model;
 
   const handleSave = async () => {
     setSaving(true);
@@ -79,7 +91,7 @@ export default function ConfigPage() {
     const res = await fetch('/api/admin/config', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ provider, model, scrapeIntervalHours: scrapeInterval }),
+      body: JSON.stringify({ provider, model: effectiveModel, scrapeIntervalHours: scrapeInterval }),
     });
 
     const data = await res.json();
@@ -186,6 +198,15 @@ export default function ConfigPage() {
               </option>
             ))}
           </select>
+          {providerConfig?.allowCustomModel && (
+            <input
+              type="text"
+              className={styles.input}
+              placeholder="Or type a custom model ID (e.g. llama-3.1-70b)"
+              value={customModel}
+              onChange={(e) => setCustomModel(e.target.value)}
+            />
+          )}
         </div>
 
         <div className={styles.field}>

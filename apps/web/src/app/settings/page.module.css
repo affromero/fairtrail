@@ -92,6 +92,26 @@
   outline: none;
 }
 
+.input {
+  padding: 0.625rem 0.75rem;
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  color: var(--text);
+  background: var(--elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  margin-top: 0.375rem;
+}
+
+.input::placeholder {
+  color: var(--muted);
+}
+
+.input:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+
 .actions {
   display: flex;
   align-items: center;
