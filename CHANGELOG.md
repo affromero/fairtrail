@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.3.2] - 2026-03-14
+
+### Added
+- Custom OpenAI-compatible endpoints via `OPENAI_BASE_URL` — run local models (Ollama, llama.cpp, vLLM) or alternative providers (OpenRouter) with any model ID ([#7](https://github.com/affromero/fairtrail/issues/7))
+- Local endpoints work without an API key — no `OPENAI_API_KEY` needed when `OPENAI_BASE_URL` is set
+
+### Fixed
+- Codex CLI auth failure in Docker containers — permission-denied errors on host `~/.codex` mount are now reported clearly instead of failing silently with 401 ([#1](https://github.com/affromero/fairtrail/issues/1))
+- CLI providers (codex, claude-code) are only shown as available when auth is actually configured, preventing users from selecting an unauthenticated provider
+- Claude Code entrypoint copy now uses permission-aware logic with actionable error messages (same fix as codex)
+- Benign "could not update PATH" warnings stripped from CLI error output; 401 errors include an auth hint
+- Container PORT env var no longer leaks into the app ([#4](https://github.com/affromero/fairtrail/issues/4))
+
+### Changed
+- Removed `CODEX_ENABLED` / `CLAUDE_CODE_ENABLED` env vars — CLI providers are auto-detected by binary presence + auth file checks
+- Removed auth.json generation from entrypoint — API key users use SDK providers directly; CLI providers are for subscription users who mount host auth dirs
+- CLI auth copy and install wrapped in `SELF_HOSTED` guard to skip on production server (~15s startup savings)
+
 ## [0.3.1] - 2026-03-14
 
 ### Added
