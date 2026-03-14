@@ -24,6 +24,7 @@ vi.mock('./ai-registry', () => ({
       extract: mockExtract,
     },
   },
+  CLI_PROVIDERS: {},
 }));
 
 // Provide a fake API key so the provider check passes
@@ -314,6 +315,12 @@ describe('parseFlightQuery', () => {
   });
 
   it('throws when api key is missing', async () => {
+    const { prisma } = await import('@/lib/prisma');
+    vi.mocked(prisma.extractionConfig.findFirst).mockResolvedValueOnce({
+      provider: 'anthropic',
+      model: 'claude-haiku-4-5-20251001',
+    } as never);
+
     const origKey = process.env.ANTHROPIC_API_KEY;
     delete process.env.ANTHROPIC_API_KEY;
 

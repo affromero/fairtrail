@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-import { program } from 'commander';
+import commander from 'commander';
+const { program } = commander;
 import { render } from 'ink';
 import React from 'react';
 import { App } from './app.js';
@@ -16,7 +17,7 @@ program
   .option('--model <model>', 'Model override (e.g. sonnet, opus, gpt-4.1-mini, codex)')
   .parse();
 
-const opts = program.opts<{ headless?: boolean; list?: boolean; view?: string; tmux?: boolean; backend?: string; model?: string }>();
+const opts = program.opts() as { headless?: boolean; list?: boolean; view?: string; tmux?: boolean; backend?: string; model?: string };
 
 // Set backend/model override — update DB config so parse-query.ts and extract-prices.ts pick it up
 if (opts.backend) {
