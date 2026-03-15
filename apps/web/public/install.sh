@@ -25,7 +25,7 @@ fail()  { printf "${RED}${BOLD}✗${RESET} %b\n" "$1"; exit 1; }
 
 FAIRTRAIL_DIR="$HOME/.fairtrail"
 INSTALL_BIN="$HOME/.local/bin"
-PORT="${PORT:-3003}"
+HOST_PORT="${HOST_PORT:-${PORT:-3003}}"
 BASE_URL="${FAIRTRAIL_URL:-https://fairtrail.org}"
 
 echo ""
@@ -152,14 +152,14 @@ port_in_use() {
   fi
 }
 
-while port_in_use "$PORT"; do
-  warn "Port ${PORT} is already in use."
+while port_in_use "$HOST_PORT"; do
+  warn "Port ${HOST_PORT} is already in use."
   echo ""
-  read -rp "  Enter a different port [default: $((PORT + 1))]: " NEW_PORT < /dev/tty
-  PORT="${NEW_PORT:-$((PORT + 1))}"
+  read -rp "  Enter a different port [default: $((HOST_PORT + 1))]: " NEW_PORT < /dev/tty
+  HOST_PORT="${NEW_PORT:-$((HOST_PORT + 1))}"
 done
 
-ok "Port ${PORT} is available"
+ok "Port ${HOST_PORT} is available"
 
 # ---------------------------------------------------------------------------
 # 2. Migrate from old install location
@@ -215,7 +215,7 @@ services:
       db:
         condition: service_healthy
     ports:
-      - "${PORT:-3003}:3003"
+      - "${HOST_PORT:-3003}:3003"
     env_file: .env
     environment:
       DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-postgres}@db:5432/fairtrail
@@ -223,7 +223,6 @@ services:
       CHROME_PATH: /usr/bin/chromium-browser
       NODE_ENV: production
       SELF_HOSTED: "true"
-      PORT: "3003"
     volumes:
       - app-data:/app/data
       - cli-cache:/home/node/.npm-global
@@ -455,7 +454,7 @@ echo ""
 info "Waiting for the app to start..."
 
 RETRIES=60
-until curl -sf "http://localhost:${PORT}/api/health" >/dev/null 2>&1; do
+until curl -sf "http://localhost:${HOST_PORT}/api/health" >/dev/null 2>&1; do
   RETRIES=$((RETRIES - 1))
   if [ "$RETRIES" -le 0 ]; then
     warn "App didn't respond in 60s — run 'fairtrail logs' to debug"
@@ -476,7 +475,7 @@ printf "${BOLD}  ┌────────────────────
 printf "${BOLD}  │                                                  │${RESET}\n"
 printf "${BOLD}  │${RESET}   ${CYAN}Fairtrail is ready${RESET}                            ${BOLD}│${RESET}\n"
 printf "${BOLD}  │${RESET}                                                  ${BOLD}│${RESET}\n"
-printf "${BOLD}  │${RESET}   Open:  ${BOLD}http://localhost:${PORT}${RESET}                  ${BOLD}│${RESET}\n"
+printf "${BOLD}  │${RESET}   Open:  ${BOLD}http://localhost:${HOST_PORT}${RESET}                  ${BOLD}│${RESET}\n"
 printf "${BOLD}  │${RESET}                                                  ${BOLD}│${RESET}\n"
 
 if [ "$CLAUDE_CODE_DETECTED" = true ] || [ "$CODEX_DETECTED" = true ]; then
@@ -494,7 +493,7 @@ echo ""
 
 # Open browser automatically (skip on headless systems)
 if command -v open &>/dev/null; then
-  open "http://localhost:${PORT}"
+  open "http://localhost:${HOST_PORT}"
 elif [ -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ] && command -v xdg-open &>/dev/null; then
-  xdg-open "http://localhost:${PORT}" >/dev/null 2>&1 &
+  xdg-open "http://localhost:${HOST_PORT}" >/dev/null 2>&1 &
 fi

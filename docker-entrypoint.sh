@@ -101,5 +101,9 @@ if [ "${SELF_HOSTED:-true}" = "true" ]; then
 fi
 
 # --- Start the app ---
-echo "[setup] Starting Fairtrail on port ${PORT:-3003}..."
+# Force internal port to 3003 — env_file can leak HOST_PORT/PORT into the
+# container, which would make Next.js bind to the wrong port (e.g. 80).
+# The host-side mapping (HOST_PORT:3003) expects 3003 inside the container.
+export PORT=3003
+echo "[setup] Starting Fairtrail on port ${PORT}..."
 exec node apps/web/server.js

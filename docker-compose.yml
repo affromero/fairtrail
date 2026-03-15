@@ -43,7 +43,7 @@ services:
       db:
         condition: service_healthy
     ports:
-      - "${PORT:-3003}:3003"
+      - "${HOST_PORT:-3003}:3003"
     env_file: .env
     environment:
       # Override with docker-compose internal networking
@@ -52,9 +52,6 @@ services:
       CHROME_PATH: /usr/bin/chromium-browser
       NODE_ENV: production
       SELF_HOSTED: "true"
-      # Force internal port to 3003 — env_file leaks PORT into the container,
-      # making Next.js bind to the wrong port (e.g. 80 instead of 3003)
-      PORT: "3003"
     volumes:
       - app-data:/app/data
       # Uncomment to use Claude Code CLI from your host machine:
