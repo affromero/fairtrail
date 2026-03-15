@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.3.3] - 2026-03-15
+
+### Fixed
+- `PORT` env var leaking into Docker container is now fully resolved — entrypoint hardcodes internal port to 3003 regardless of env_file contents, so custom compose files no longer need a `PORT: "3003"` override ([#4](https://github.com/affromero/fairtrail/issues/4))
+- Renamed user-facing `PORT` env var to `HOST_PORT` to eliminate ambiguity between host mapping and container bind port
+
+### Documentation
+- Added local model provider (Ollama, llama.cpp, vLLM) to README LLM table and quick start
+- Consolidated README configuration tables
+
 ## [0.3.2] - 2026-03-14
 
 ### Added
