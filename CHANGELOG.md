@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.3.4] - 2026-03-16
+
+### Fixed
+- Complete `HOST_PORT` migration — CLI wrapper and Node CLI now respect `HOST_PORT`/`FAIRTRAIL_URL` env vars instead of hardcoded `localhost:3003`
+- Setup route password hash mismatch — was storing SHA-256 but login expects scrypt; setup passwords now hash correctly
+- API-created query trackers no longer garbage-collected by stale cleanup — `firstViewedAt` is set on creation
+- Preview cache key now includes cabin class, trip type, and currency — prevents stale cached results across different search parameters
+- Multi-date round-trip preview pairs outbound/return dates by index instead of using only the first return date
+- Concurrent scrape runs blocked by process-level mutex — duplicate cron + manual triggers return 409 instead of duplicating snapshots
+- Removed `--accept-data-loss` from `prisma db push` in entrypoint and deploy workflow — destructive schema changes now require manual intervention
+
 ## [0.3.3] - 2026-03-15
 
 ### Fixed
