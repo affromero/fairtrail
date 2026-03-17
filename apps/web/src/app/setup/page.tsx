@@ -19,6 +19,7 @@ export default function SetupPage() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [provider, setProvider] = useState('');
   const [model, setModel] = useState('');
+  const [customModel, setCustomModel] = useState('');
   const [customBaseUrl, setCustomBaseUrl] = useState('');
   const [communitySharing, setCommunitySharing] = useState(false);
   const [error, setError] = useState('');
@@ -36,12 +37,16 @@ export default function SetupPage() {
     }
     setLocalModelsLoading(true);
     setLocalModelsError('');
+    setLocalModels([]); // clear stale data
     fetch(`/api/admin/local-models?provider=${p}`)
       .then((r) => r.json())
       .then((d) => {
         if (d.ok) {
           setLocalModels(d.data);
-          if (d.data.length > 0) setModel(d.data[0].id);
+          // Only auto-select first model if user hasn't typed a custom one
+          if (d.data.length > 0) {
+            setModel((prev) => prev || d.data[0].id);
+          }
         } else {
           setLocalModels([]);
           setLocalModelsError(d.error || 'Failed to fetch models');
@@ -76,7 +81,7 @@ export default function SetupPage() {
           fetchLocalModels(defaultProvider);
         }
       });
-  }, []);
+  }, [fetchLocalModels]);
 
   const handleSubmit = async () => {
     setError('');
@@ -95,8 +100,12 @@ export default function SetupPage() {
     }
 
     if (step === 1) {
-      if (!provider || !model) {
-        setError('Select a provider and model');
+      const effective = customModel.trim() || model;
+      if (!provider || !effective) {
+        const hint = LOCAL_PROVIDERS.has(provider) && localModelsError
+          ? 'Could not reach ' + EXTRACTION_PROVIDERS[provider]?.displayName + ' — type a model ID manually'
+          : 'Select a provider and model';
+        setError(hint);
         return;
       }
       setStep(2);
@@ -104,11 +113,12 @@ export default function SetupPage() {
     }
 
     // Step 2: complete setup
+    const effectiveModel = customModel.trim() || model;
     setLoading(true);
     const res = await fetch('/api/setup', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ adminPassword: password, provider, model, communitySharing, customBaseUrl: customBaseUrl.trim() || null }),
+      body: JSON.stringify({ adminPassword: password, provider, model: effectiveModel, communitySharing, customBaseUrl: customBaseUrl.trim() || null }),
     });
 
     if (res.ok) {
@@ -195,6 +205,7 @@ export default function SetupPage() {
                     className={`${styles.providerCard} ${provider === key ? styles.selected : ''} ${!detected ? styles.unavailable : ''}`}
                     onClick={() => {
                       setProvider(key);
+                      setCustomModel('');
                       setCustomBaseUrl(config.defaultBaseUrl ?? '');
                       if (config.models[0]) setModel(config.models[0].id);
                       else setModel('');
@@ -262,8 +273,8 @@ export default function SetupPage() {
                     placeholder={localModels.length > 0
                       ? 'Or type a custom model ID'
                       : 'Model ID (e.g. llama3.1:8b, mistral:7b)'}
-                    value={EXTRACTION_PROVIDERS[provider]!.models.length === 0 && localModels.length === 0 ? model : ''}
-                    onChange={(e) => setModel(e.target.value)}
+                    value={customModel}
+                    onChange={(e) => setCustomModel(e.target.value)}
                   />
                 )}
                 {EXTRACTION_PROVIDERS[provider]!.allowCustomBaseUrl && (

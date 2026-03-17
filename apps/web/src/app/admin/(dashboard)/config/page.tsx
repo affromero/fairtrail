@@ -60,6 +60,7 @@ export default function ConfigPage() {
     }
     setLocalModelsLoading(true);
     setLocalModelsError('');
+    setLocalModels([]); // clear stale data to avoid showing old list during fetch
     fetch(`/api/admin/local-models?provider=${p}`)
       .then((r) => r.json())
       .then((d) => {
@@ -128,9 +129,14 @@ export default function ConfigPage() {
   const effectiveModel = customModel.trim() || model || (localModels.length > 0 ? localModels[0]!.id : '');
 
   const handleSave = async () => {
+    if (!effectiveModel) {
+      setMessage('Enter a model ID before saving');
+      return;
+    }
     setSaving(true);
     setMessage('');
 
+    const newBaseUrl = customBaseUrl.trim() || null;
     const res = await fetch('/api/admin/config', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -140,7 +146,7 @@ export default function ConfigPage() {
         scrapeIntervalHours: scrapeInterval,
         defaultCurrency: defaultCurrency.trim().toUpperCase() || null,
         defaultCountry: defaultCountry.trim().toUpperCase() || null,
-        customBaseUrl: customBaseUrl.trim() || null,
+        customBaseUrl: newBaseUrl,
       }),
     });
 
@@ -148,6 +154,10 @@ export default function ConfigPage() {
     if (data.ok) {
       setConfig(data.data);
       setMessage('Config saved');
+      // Re-fetch models if the base URL changed (cache key includes host)
+      if (LOCAL_PROVIDERS.has(provider)) {
+        fetchLocalModels(provider);
+      }
     } else {
       setMessage(data.error || 'Failed to save');
     }

@@ -37,6 +37,7 @@ export default function SettingsPage() {
     }
     setLocalModelsLoading(true);
     setLocalModelsError('');
+    setLocalModels([]); // clear stale data to avoid showing old list during fetch
     fetch(`/api/admin/local-models?provider=${p}`)
       .then((r) => r.json())
       .then((d) => {
@@ -96,6 +97,10 @@ export default function SettingsPage() {
   const effectiveModel = customModel.trim() || model || (localModels.length > 0 ? localModels[0]!.id : '');
 
   const handleSave = async () => {
+    if (!effectiveModel) {
+      setMessage('Enter a model ID before saving');
+      return;
+    }
     setSaving(true);
     setMessage('');
 
@@ -109,6 +114,9 @@ export default function SettingsPage() {
     if (data.ok) {
       setConfig(data.data);
       setMessage('Saved');
+      if (LOCAL_PROVIDERS.has(provider)) {
+        fetchLocalModels(provider);
+      }
     } else {
       setMessage(data.error || 'Failed to save');
     }

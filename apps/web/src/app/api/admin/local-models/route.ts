@@ -7,7 +7,7 @@ import { LOCAL_PROVIDERS } from '@/lib/scraper/ai-registry';
 interface OllamaModel {
   name: string;
   size: number;
-  parameter_size: string;
+  parameter_size?: string;
 }
 
 interface OllamaTagsResponse {
@@ -87,17 +87,16 @@ export async function GET(request: NextRequest) {
   // Only use stored customBaseUrl if it belongs to the requested provider
   const storedUrl = config?.provider === provider ? config.customBaseUrl : null;
 
-  const cacheKey = `local-models:${provider}`;
+  const host = provider === 'ollama'
+    ? resolveOllamaHost(storedUrl)
+    : resolveLlamacppHost(storedUrl);
+  const cacheKey = `local-models:${provider}:${host}`;
 
   try {
     const models = await cached(
       cacheKey,
       async () => {
-        if (provider === 'ollama') {
-          const host = resolveOllamaHost(storedUrl);
-          return fetchOllamaModels(host);
-        }
-        const host = resolveLlamacppHost(storedUrl);
+        if (provider === 'ollama') return fetchOllamaModels(host);
         return fetchLlamacppModels(host);
       },
       300, // 5 min TTL
