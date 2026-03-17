@@ -14,6 +14,7 @@ interface Config {
   communityApiKey: string | null;
   defaultCurrency: string | null;
   defaultCountry: string | null;
+  customBaseUrl: string | null;
 }
 
 interface InviteCode {
@@ -34,6 +35,7 @@ export default function ConfigPage() {
   const [scrapeInterval, setScrapeInterval] = useState(3);
   const [defaultCurrency, setDefaultCurrency] = useState('');
   const [defaultCountry, setDefaultCountry] = useState('');
+  const [customBaseUrl, setCustomBaseUrl] = useState('');
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
 
@@ -62,6 +64,7 @@ export default function ConfigPage() {
           setScrapeInterval(d.data.scrapeInterval);
           setDefaultCurrency(d.data.defaultCurrency || '');
           setDefaultCountry(d.data.defaultCountry || '');
+          setCustomBaseUrl(d.data.customBaseUrl || '');
           const pc = EXTRACTION_PROVIDERS[d.data.provider];
           const knownModel = pc?.models.find((m) => m.id === d.data.model);
           if (knownModel) {
@@ -82,6 +85,7 @@ export default function ConfigPage() {
   const handleProviderChange = (newProvider: string) => {
     setProvider(newProvider);
     setCustomModel('');
+    setCustomBaseUrl(EXTRACTION_PROVIDERS[newProvider]?.defaultBaseUrl ?? '');
     const newModels = EXTRACTION_PROVIDERS[newProvider]?.models ?? [];
     if (newModels.length > 0) {
       setModel(newModels[0]!.id);
@@ -103,6 +107,7 @@ export default function ConfigPage() {
         scrapeIntervalHours: scrapeInterval,
         defaultCurrency: defaultCurrency.trim().toUpperCase() || null,
         defaultCountry: defaultCountry.trim().toUpperCase() || null,
+        customBaseUrl: customBaseUrl.trim() || null,
       }),
     });
 
@@ -220,6 +225,24 @@ export default function ConfigPage() {
             />
           )}
         </div>
+
+        {providerConfig?.allowCustomBaseUrl && (
+          <div className={styles.field}>
+            <label className={styles.label}>API Base URL</label>
+            <input
+              type="url"
+              className={styles.input}
+              placeholder={providerConfig.defaultBaseUrl || 'https://...'}
+              value={customBaseUrl}
+              onChange={(e) => setCustomBaseUrl(e.target.value)}
+            />
+            <span className={styles.toggleHint}>
+              {providerConfig.defaultBaseUrl
+                ? `Default: ${providerConfig.defaultBaseUrl}`
+                : 'Leave empty for default'}
+            </span>
+          </div>
+        )}
 
         <div className={styles.field}>
           <label className={styles.label}>Scrape Interval</label>

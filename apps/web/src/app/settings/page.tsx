@@ -12,6 +12,7 @@ interface Config {
   scrapeInterval: number;
   communitySharing: boolean;
   communityApiKey: string | null;
+  customBaseUrl: string | null;
 }
 
 export default function SettingsPage() {
@@ -20,6 +21,7 @@ export default function SettingsPage() {
   const [model, setModel] = useState('claude-haiku-4-5-20251001');
   const [customModel, setCustomModel] = useState('');
   const [scrapeInterval, setScrapeInterval] = useState(3);
+  const [customBaseUrl, setCustomBaseUrl] = useState('');
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
 
@@ -31,6 +33,7 @@ export default function SettingsPage() {
           setConfig(d.data);
           setProvider(d.data.provider);
           setScrapeInterval(d.data.scrapeInterval);
+          setCustomBaseUrl(d.data.customBaseUrl || '');
           const pc = EXTRACTION_PROVIDERS[d.data.provider];
           const knownModel = pc?.models.find((m) => m.id === d.data.model);
           if (knownModel) {
@@ -50,6 +53,7 @@ export default function SettingsPage() {
   const handleProviderChange = (newProvider: string) => {
     setProvider(newProvider);
     setCustomModel('');
+    setCustomBaseUrl(EXTRACTION_PROVIDERS[newProvider]?.defaultBaseUrl ?? '');
     const newModels = EXTRACTION_PROVIDERS[newProvider]?.models ?? [];
     if (newModels.length > 0) {
       setModel(newModels[0]!.id);
@@ -65,7 +69,7 @@ export default function SettingsPage() {
     const res = await fetch('/api/admin/config', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ provider, model: effectiveModel, scrapeIntervalHours: scrapeInterval }),
+      body: JSON.stringify({ provider, model: effectiveModel, scrapeIntervalHours: scrapeInterval, customBaseUrl: customBaseUrl.trim() || null }),
     });
 
     const data = await res.json();
@@ -131,6 +135,24 @@ export default function SettingsPage() {
               />
             )}
           </div>
+
+          {providerConfig?.allowCustomBaseUrl && (
+            <div className={styles.field}>
+              <label className={styles.label}>API Base URL</label>
+              <input
+                type="url"
+                className={styles.input}
+                placeholder={providerConfig.defaultBaseUrl || 'https://...'}
+                value={customBaseUrl}
+                onChange={(e) => setCustomBaseUrl(e.target.value)}
+              />
+              <span className={styles.toggleHint}>
+                {providerConfig.defaultBaseUrl
+                  ? `Default: ${providerConfig.defaultBaseUrl}`
+                  : 'Leave empty for default'}
+              </span>
+            </div>
+          )}
 
           <div className={styles.field}>
             <label className={styles.label}>Scrape Interval</label>

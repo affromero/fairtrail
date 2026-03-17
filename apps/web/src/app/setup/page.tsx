@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import styles from './page.module.css';
-import { EXTRACTION_PROVIDERS } from '@/lib/scraper/ai-registry';
+import { EXTRACTION_PROVIDERS, LOCAL_PROVIDERS } from '@/lib/scraper/ai-registry';
 
 interface SetupStatus {
   setupComplete: boolean;
@@ -19,6 +19,7 @@ export default function SetupPage() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [provider, setProvider] = useState('');
   const [model, setModel] = useState('');
+  const [customBaseUrl, setCustomBaseUrl] = useState('');
   const [communitySharing, setCommunitySharing] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -76,7 +77,7 @@ export default function SetupPage() {
     const res = await fetch('/api/setup', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ adminPassword: password, provider, model, communitySharing }),
+      body: JSON.stringify({ adminPassword: password, provider, model, communitySharing, customBaseUrl: customBaseUrl.trim() || null }),
     });
 
     if (res.ok) {
@@ -163,7 +164,9 @@ export default function SetupPage() {
                     className={`${styles.providerCard} ${provider === key ? styles.selected : ''} ${!detected ? styles.unavailable : ''}`}
                     onClick={() => {
                       setProvider(key);
+                      setCustomBaseUrl(config.defaultBaseUrl ?? '');
                       if (config.models[0]) setModel(config.models[0].id);
+                      else setModel('');
                     }}
                   >
                     <span className={styles.providerName}>{config.displayName}</span>
@@ -171,10 +174,14 @@ export default function SetupPage() {
                       {detected
                         ? CLI_PROVIDERS.has(key)
                           ? 'Your subscription'
-                          : 'Ready'
+                          : LOCAL_PROVIDERS.has(key)
+                            ? 'Local'
+                            : 'Ready'
                         : CLI_PROVIDERS.has(key)
                           ? 'Not installed'
-                          : 'No key'}
+                          : LOCAL_PROVIDERS.has(key)
+                            ? 'Local'
+                            : 'No key'}
                     </span>
                   </button>
                 );
@@ -182,18 +189,40 @@ export default function SetupPage() {
             </div>
 
             {provider && EXTRACTION_PROVIDERS[provider] && (
-              <select
-                className={styles.input}
-                value={model}
-                onChange={(e) => setModel(e.target.value)}
-              >
-                {EXTRACTION_PROVIDERS[provider]!.models.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.name}
-                    {m.costPer1kInput === 0 ? ' (free)' : ` ($${m.costPer1kInput}/1k in)`}
-                  </option>
-                ))}
-              </select>
+              <>
+                {EXTRACTION_PROVIDERS[provider]!.models.length > 0 && (
+                  <select
+                    className={styles.input}
+                    value={model}
+                    onChange={(e) => setModel(e.target.value)}
+                  >
+                    {EXTRACTION_PROVIDERS[provider]!.models.map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.name}
+                        {m.costPer1kInput === 0 ? ' (free)' : ` ($${m.costPer1kInput}/1k in)`}
+                      </option>
+                    ))}
+                  </select>
+                )}
+                {EXTRACTION_PROVIDERS[provider]!.allowCustomModel && (
+                  <input
+                    type="text"
+                    className={styles.input}
+                    placeholder="Model ID (e.g. llama3.1:8b, mistral:7b)"
+                    value={model}
+                    onChange={(e) => setModel(e.target.value)}
+                  />
+                )}
+                {EXTRACTION_PROVIDERS[provider]!.allowCustomBaseUrl && (
+                  <input
+                    type="url"
+                    className={styles.input}
+                    placeholder={EXTRACTION_PROVIDERS[provider]!.defaultBaseUrl || 'https://...'}
+                    value={customBaseUrl}
+                    onChange={(e) => setCustomBaseUrl(e.target.value)}
+                  />
+                )}
+              </>
             )}
           </div>
         )}

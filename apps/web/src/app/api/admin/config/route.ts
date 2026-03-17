@@ -80,6 +80,17 @@ export async function PATCH(request: NextRequest) {
     }
     data.defaultCountry = body.defaultCountry;
   }
+  if (body.customBaseUrl !== undefined) {
+    if (body.customBaseUrl !== null && typeof body.customBaseUrl !== 'string') {
+      return apiError('customBaseUrl must be a URL string or null', 400);
+    }
+    if (body.customBaseUrl && typeof body.customBaseUrl === 'string') {
+      try { new URL(body.customBaseUrl); } catch {
+        return apiError('customBaseUrl must be a valid URL', 400);
+      }
+    }
+    data.customBaseUrl = body.customBaseUrl || null;
+  }
 
   const config = await prisma.extractionConfig.upsert({
     where: { id: 'singleton' },

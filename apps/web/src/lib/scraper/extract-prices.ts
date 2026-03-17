@@ -1,4 +1,4 @@
-import { EXTRACTION_PROVIDERS, CLI_PROVIDERS, type ExtractionUsage } from './ai-registry';
+import { EXTRACTION_PROVIDERS, CLI_PROVIDERS, LOCAL_PROVIDERS, type ExtractionUsage } from './ai-registry';
 import { prisma } from '@/lib/prisma';
 import type { NavigationSource } from './navigate';
 
@@ -138,7 +138,10 @@ export async function extractPrices(
   }
 
   const isCliProvider = provider in CLI_PROVIDERS;
-  const hasLocalEndpoint = provider === 'openai' && process.env.OPENAI_BASE_URL;
+  const isLocalProvider = LOCAL_PROVIDERS.has(provider);
+  const hasLocalEndpoint =
+    (provider === 'openai' && (config?.customBaseUrl || process.env.OPENAI_BASE_URL)) ||
+    isLocalProvider;
   const apiKey = isCliProvider ? '' : (providerConfig.envKey ? process.env[providerConfig.envKey] : '') ?? '';
   if (!apiKey && !isCliProvider && !hasLocalEndpoint) {
     throw new Error(`Missing API key: ${providerConfig.envKey}`);
@@ -153,7 +156,9 @@ Page content:
 ${html}`;
 
   const systemPrompt = buildSystemPrompt(filters, maxResults, source, currency);
-  const result = await providerConfig.extract(apiKey, model, systemPrompt, userPrompt);
+  const result = await providerConfig.extract(apiKey, model, systemPrompt, userPrompt, {
+    baseUrl: config?.customBaseUrl ?? undefined,
+  });
 
   const jsonMatch = result.content.match(/\[[\s\S]*\]/);
   if (!jsonMatch) {

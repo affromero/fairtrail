@@ -136,7 +136,7 @@ export default async function HomePage() {
                 <h3 className={styles.reasonTitle}>Install in one command</h3>
                 <p className={styles.reasonText}>
                   The setup script auto-detects Claude Code or Codex on your machine.
-                  If you have either, no API key needed &mdash; it uses your existing subscription.
+                  If you have either, no API key needed. Or run a local model with Ollama or llama.cpp &mdash; completely free.
                 </p>
               </div>
             </div>
@@ -188,7 +188,7 @@ export default async function HomePage() {
                 <h3 className={styles.reasonTitle}>Not an AI provider</h3>
                 <p className={styles.reasonText}>
                   AI is becoming a commodity &mdash; we don&apos;t bundle or resell it.
-                  Bring your own key, or use Claude Code / Codex if you already have a subscription.
+                  Bring your own key, use Claude Code / Codex, or run Ollama / llama.cpp locally.
                 </p>
               </div>
             </div>
@@ -245,9 +245,9 @@ export default async function HomePage() {
                 <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1Zm3.354 5.354-4 4a.5.5 0 0 1-.708 0l-2-2a.5.5 0 1 1 .708-.708L7 9.293l3.646-3.647a.5.5 0 0 1 .708.708Z" fill="currentColor"/></svg>
               </span>
               <div>
-                <h3 className={styles.reasonTitle}>Free if you have Claude Code or Codex</h3>
+                <h3 className={styles.reasonTitle}>Free with Claude Code, Codex, or a local model</h3>
                 <p className={styles.reasonText}>
-                  The setup script detects your existing CLI and uses it &mdash; zero API cost.
+                  Use your existing CLI subscription, or run Ollama / llama.cpp locally &mdash; zero API cost.
                   Otherwise, extraction costs under $0.001 per query.
                 </p>
               </div>

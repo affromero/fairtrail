@@ -18,7 +18,7 @@ vi.mock('fs', async (importOriginal) => {
 });
 
 // Must import after mocks
-const { EXTRACTION_PROVIDERS, detectAvailableProviders, filterCliStderr } = await import(
+const { EXTRACTION_PROVIDERS, LOCAL_PROVIDERS, detectAvailableProviders, filterCliStderr } = await import(
   './ai-registry'
 );
 
@@ -44,7 +44,7 @@ describe('ai-registry', () => {
 
     beforeEach(() => {
       // Save and clear LLM env vars (setup.ts sets dummy keys globally)
-      for (const key of ['ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'GOOGLE_AI_API_KEY']) {
+      for (const key of ['ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'GOOGLE_AI_API_KEY', 'SELF_HOSTED']) {
         savedEnv[key] = process.env[key];
         delete process.env[key];
       }
@@ -101,16 +101,64 @@ describe('ai-registry', () => {
       expect(providers).not.toContain('codex');
       expect(providers).not.toContain('claude-code');
     });
+
+    it('includes local providers when SELF_HOSTED=true', async () => {
+      process.env.SELF_HOSTED = 'true';
+
+      const providers = await detectAvailableProviders();
+
+      expect(providers).toContain('ollama');
+      expect(providers).toContain('llamacpp');
+    });
+
+    it('excludes local providers when SELF_HOSTED is not set', async () => {
+      const providers = await detectAvailableProviders();
+
+      expect(providers).not.toContain('ollama');
+      expect(providers).not.toContain('llamacpp');
+    });
   });
 
   describe('allowCustomModel', () => {
-    it('is enabled for the openai provider', () => {
+    it('is enabled for openai, ollama, and llamacpp providers', () => {
       expect(EXTRACTION_PROVIDERS.openai!.allowCustomModel).toBe(true);
+      expect(EXTRACTION_PROVIDERS.ollama!.allowCustomModel).toBe(true);
+      expect(EXTRACTION_PROVIDERS.llamacpp!.allowCustomModel).toBe(true);
     });
 
     it('is not enabled for other providers', () => {
       expect(EXTRACTION_PROVIDERS.anthropic!.allowCustomModel).toBeUndefined();
       expect(EXTRACTION_PROVIDERS.google!.allowCustomModel).toBeUndefined();
+    });
+  });
+
+  describe('local providers', () => {
+    it('ollama provider exists with correct config', () => {
+      const ollama = EXTRACTION_PROVIDERS.ollama!;
+      expect(ollama.displayName).toBe('Ollama');
+      expect(ollama.allowCustomBaseUrl).toBe(true);
+      expect(ollama.defaultBaseUrl).toBe('http://localhost:11434/v1');
+      expect(ollama.models).toHaveLength(0);
+      expect(ollama.envKey).toBeUndefined();
+    });
+
+    it('llamacpp provider exists with correct config', () => {
+      const llamacpp = EXTRACTION_PROVIDERS.llamacpp!;
+      expect(llamacpp.displayName).toBe('llama.cpp');
+      expect(llamacpp.allowCustomBaseUrl).toBe(true);
+      expect(llamacpp.defaultBaseUrl).toBe('http://localhost:8080/v1');
+      expect(llamacpp.models).toHaveLength(0);
+      expect(llamacpp.envKey).toBeUndefined();
+    });
+
+    it('openai provider has allowCustomBaseUrl', () => {
+      expect(EXTRACTION_PROVIDERS.openai!.allowCustomBaseUrl).toBe(true);
+    });
+
+    it('LOCAL_PROVIDERS includes ollama and llamacpp', () => {
+      expect(LOCAL_PROVIDERS.has('ollama')).toBe(true);
+      expect(LOCAL_PROVIDERS.has('llamacpp')).toBe(true);
+      expect(LOCAL_PROVIDERS.has('openai')).toBe(false);
     });
   });
 

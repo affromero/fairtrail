@@ -25,6 +25,7 @@ vi.mock('./ai-registry', () => ({
     },
   },
   CLI_PROVIDERS: {},
+  LOCAL_PROVIDERS: new Set(),
 }));
 
 process.env.ANTHROPIC_API_KEY = 'test-key';

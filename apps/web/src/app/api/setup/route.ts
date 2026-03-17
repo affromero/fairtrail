@@ -14,11 +14,12 @@ export async function POST(request: Request) {
   }
 
   const body = await request.json();
-  const { adminPassword, provider, model, communitySharing } = body as {
+  const { adminPassword, provider, model, communitySharing, customBaseUrl } = body as {
     adminPassword: string;
     provider: string;
     model: string;
     communitySharing?: boolean;
+    customBaseUrl?: string | null;
   };
 
   const isSelfHosted = process.env.SELF_HOSTED === 'true';
@@ -55,6 +56,7 @@ export async function POST(request: Request) {
       adminPasswordHash: passwordHash,
       communitySharing: communitySharing && communityApiKey !== null,
       communityApiKey,
+      customBaseUrl: customBaseUrl || null,
     },
     update: {
       provider,
@@ -62,6 +64,7 @@ export async function POST(request: Request) {
       adminPasswordHash: passwordHash,
       communitySharing: communitySharing && communityApiKey !== null,
       communityApiKey,
+      customBaseUrl: customBaseUrl || null,
     },
   });
 

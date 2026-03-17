@@ -25,6 +25,7 @@ vi.mock('./ai-registry', () => ({
     },
   },
   CLI_PROVIDERS: {},
+  LOCAL_PROVIDERS: new Set(),
 }));
 
 // Provide a fake API key so the provider check passes

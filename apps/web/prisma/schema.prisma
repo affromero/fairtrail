@@ -98,6 +98,7 @@ model ExtractionConfig {
   lastCommunitySyncAt  DateTime?
   defaultCurrency      String?   // ISO 4217 (EUR, GBP). null = Google auto-detects
   defaultCountry       String?   // ISO 3166-1 alpha-2 (DE, GB). null = Google auto-detects
+  customBaseUrl        String?   // e.g. http://localhost:11434/v1
   updatedAt            DateTime  @updatedAt
 }
 

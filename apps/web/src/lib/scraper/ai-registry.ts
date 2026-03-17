@@ -17,16 +17,23 @@ interface ModelInfo {
   costPer1kOutput: number;
 }
 
+export interface ExtractOptions {
+  baseUrl?: string;
+}
+
 interface ProviderConfig {
   displayName: string;
   envKey?: string;
   models: ModelInfo[];
   allowCustomModel?: boolean;
+  allowCustomBaseUrl?: boolean;
+  defaultBaseUrl?: string;
   extract: (
     apiKey: string,
     model: string,
     systemPrompt: string,
-    userPrompt: string
+    userPrompt: string,
+    options?: ExtractOptions
   ) => Promise<ExtractionResult>;
 }
 
@@ -84,6 +91,7 @@ export const EXTRACTION_PROVIDERS: Record<string, ProviderConfig> = {
     displayName: 'OpenAI',
     envKey: 'OPENAI_API_KEY',
     allowCustomModel: true,
+    allowCustomBaseUrl: true,
     models: [
       {
         id: 'gpt-4.1-mini',
@@ -92,12 +100,71 @@ export const EXTRACTION_PROVIDERS: Record<string, ProviderConfig> = {
         costPer1kOutput: 0.0016,
       },
     ],
-    extract: async (apiKey, model, systemPrompt, userPrompt) => {
+    extract: async (apiKey, model, systemPrompt, userPrompt, options) => {
       const { default: OpenAI } = await import('openai');
       const client = new OpenAI({
         apiKey: apiKey || 'unused',
-        baseURL: process.env.OPENAI_BASE_URL || undefined,
+        baseURL: options?.baseUrl || process.env.OPENAI_BASE_URL || undefined,
       });
+      const response = await client.chat.completions.create({
+        model,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt },
+        ],
+        max_tokens: 8192,
+      });
+
+      return {
+        content: response.choices[0]?.message.content ?? '',
+        usage: {
+          inputTokens: response.usage?.prompt_tokens ?? 0,
+          outputTokens: response.usage?.completion_tokens ?? 0,
+        },
+      };
+    },
+  },
+  ollama: {
+    displayName: 'Ollama',
+    envKey: undefined,
+    allowCustomModel: true,
+    allowCustomBaseUrl: true,
+    defaultBaseUrl: 'http://localhost:11434/v1',
+    models: [],
+    extract: async (_apiKey, model, systemPrompt, userPrompt, options) => {
+      const { default: OpenAI } = await import('openai');
+      const baseURL = options?.baseUrl
+        || (process.env.OLLAMA_HOST ? process.env.OLLAMA_HOST + '/v1' : 'http://localhost:11434/v1');
+      const client = new OpenAI({ apiKey: 'unused', baseURL });
+      const response = await client.chat.completions.create({
+        model,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt },
+        ],
+        max_tokens: 8192,
+      });
+
+      return {
+        content: response.choices[0]?.message.content ?? '',
+        usage: {
+          inputTokens: response.usage?.prompt_tokens ?? 0,
+          outputTokens: response.usage?.completion_tokens ?? 0,
+        },
+      };
+    },
+  },
+  llamacpp: {
+    displayName: 'llama.cpp',
+    envKey: undefined,
+    allowCustomModel: true,
+    allowCustomBaseUrl: true,
+    defaultBaseUrl: 'http://localhost:8080/v1',
+    models: [],
+    extract: async (_apiKey, model, systemPrompt, userPrompt, options) => {
+      const { default: OpenAI } = await import('openai');
+      const baseURL = options?.baseUrl || 'http://localhost:8080/v1';
+      const client = new OpenAI({ apiKey: 'unused', baseURL });
       const response = await client.chat.completions.create({
         model,
         messages: [
@@ -270,6 +337,8 @@ export const CLI_PROVIDERS: Record<string, string> = {
   codex: 'codex',
 };
 
+export const LOCAL_PROVIDERS = new Set(['ollama', 'llamacpp']);
+
 /** Check that a CLI provider has auth configured, not just the binary installed */
 async function hasCliAuth(provider: string): Promise<boolean> {
   const { existsSync } = await import(/* webpackIgnore: true */ 'fs');
@@ -291,7 +360,14 @@ async function hasCliAuth(provider: string): Promise<boolean> {
 export async function detectAvailableProviders(): Promise<string[]> {
   const available: string[] = [];
 
+  const isSelfHosted = process.env.SELF_HOSTED === 'true';
+
   for (const [key, config] of Object.entries(EXTRACTION_PROVIDERS)) {
+    // Local providers only available on self-hosted instances
+    if (LOCAL_PROVIDERS.has(key)) {
+      if (isSelfHosted) available.push(key);
+      continue;
+    }
     const cliBinary = CLI_PROVIDERS[key];
     if (cliBinary) {
       try {
