@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import styles from './page.module.css';
 import { EXTRACTION_PROVIDERS, LOCAL_PROVIDERS } from '@/lib/scraper/ai-registry';
 
@@ -19,10 +19,45 @@ export default function SetupPage() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [provider, setProvider] = useState('');
   const [model, setModel] = useState('');
+  const [customModel, setCustomModel] = useState('');
   const [customBaseUrl, setCustomBaseUrl] = useState('');
   const [communitySharing, setCommunitySharing] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+
+  const [localModels, setLocalModels] = useState<{ id: string; name: string; size: string }[]>([]);
+  const [localModelsLoading, setLocalModelsLoading] = useState(false);
+  const [localModelsError, setLocalModelsError] = useState('');
+
+  const fetchLocalModels = useCallback((p: string) => {
+    if (!LOCAL_PROVIDERS.has(p)) {
+      setLocalModels([]);
+      setLocalModelsError('');
+      return;
+    }
+    setLocalModelsLoading(true);
+    setLocalModelsError('');
+    setLocalModels([]); // clear stale data
+    fetch(`/api/admin/local-models?provider=${p}`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.ok) {
+          setLocalModels(d.data);
+          // Only auto-select first model if user hasn't typed a custom one
+          if (d.data.length > 0) {
+            setModel((prev) => prev || d.data[0].id);
+          }
+        } else {
+          setLocalModels([]);
+          setLocalModelsError(d.error || 'Failed to fetch models');
+        }
+      })
+      .catch(() => {
+        setLocalModels([]);
+        setLocalModelsError('Could not connect');
+      })
+      .finally(() => setLocalModelsLoading(false));
+  }, []);
 
   useEffect(() => {
     fetch('/api/setup/status')
@@ -43,9 +78,10 @@ export default function SetupPage() {
           if (providerConfig?.models[0]) {
             setModel(providerConfig.models[0].id);
           }
+          fetchLocalModels(defaultProvider);
         }
       });
-  }, []);
+  }, [fetchLocalModels]);
 
   const handleSubmit = async () => {
     setError('');
@@ -64,8 +100,12 @@ export default function SetupPage() {
     }
 
     if (step === 1) {
-      if (!provider || !model) {
-        setError('Select a provider and model');
+      const effective = customModel.trim() || model;
+      if (!provider || !effective) {
+        const hint = LOCAL_PROVIDERS.has(provider) && localModelsError
+          ? 'Could not reach ' + EXTRACTION_PROVIDERS[provider]?.displayName + ' — type a model ID manually'
+          : 'Select a provider and model';
+        setError(hint);
         return;
       }
       setStep(2);
@@ -73,11 +113,12 @@ export default function SetupPage() {
     }
 
     // Step 2: complete setup
+    const effectiveModel = customModel.trim() || model;
     setLoading(true);
     const res = await fetch('/api/setup', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ adminPassword: password, provider, model, communitySharing, customBaseUrl: customBaseUrl.trim() || null }),
+      body: JSON.stringify({ adminPassword: password, provider, model: effectiveModel, communitySharing, customBaseUrl: customBaseUrl.trim() || null }),
     });
 
     if (res.ok) {
@@ -164,9 +205,11 @@ export default function SetupPage() {
                     className={`${styles.providerCard} ${provider === key ? styles.selected : ''} ${!detected ? styles.unavailable : ''}`}
                     onClick={() => {
                       setProvider(key);
+                      setCustomModel('');
                       setCustomBaseUrl(config.defaultBaseUrl ?? '');
                       if (config.models[0]) setModel(config.models[0].id);
                       else setModel('');
+                      fetchLocalModels(key);
                     }}
                   >
                     <span className={styles.providerName}>{config.displayName}</span>
@@ -204,13 +247,34 @@ export default function SetupPage() {
                     ))}
                   </select>
                 )}
+                {EXTRACTION_PROVIDERS[provider]!.models.length === 0 && localModels.length > 0 && (
+                  <select
+                    className={styles.input}
+                    value={model}
+                    onChange={(e) => setModel(e.target.value)}
+                  >
+                    {localModels.map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.name}{m.size ? ` (${m.size})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                )}
+                {EXTRACTION_PROVIDERS[provider]!.models.length === 0 && localModelsLoading && (
+                  <span className={styles.hint}>Fetching models...</span>
+                )}
+                {EXTRACTION_PROVIDERS[provider]!.models.length === 0 && localModelsError && (
+                  <span className={styles.hintError}>{localModelsError}</span>
+                )}
                 {EXTRACTION_PROVIDERS[provider]!.allowCustomModel && (
                   <input
                     type="text"
                     className={styles.input}
-                    placeholder="Model ID (e.g. llama3.1:8b, mistral:7b)"
-                    value={model}
-                    onChange={(e) => setModel(e.target.value)}
+                    placeholder={localModels.length > 0
+                      ? 'Or type a custom model ID'
+                      : 'Model ID (e.g. llama3.1:8b, mistral:7b)'}
+                    value={customModel}
+                    onChange={(e) => setCustomModel(e.target.value)}
                   />
                 )}
                 {EXTRACTION_PROVIDERS[provider]!.allowCustomBaseUrl && (

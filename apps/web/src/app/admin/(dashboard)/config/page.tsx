@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { EXTRACTION_PROVIDERS } from '@/lib/scraper/ai-registry';
+import { EXTRACTION_PROVIDERS, LOCAL_PROVIDERS } from '@/lib/scraper/ai-registry';
 import styles from './page.module.css';
 
 interface Config {
@@ -48,6 +48,36 @@ export default function ConfigPage() {
   const [generatingInvite, setGeneratingInvite] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
+  const [localModels, setLocalModels] = useState<{ id: string; name: string; size: string }[]>([]);
+  const [localModelsLoading, setLocalModelsLoading] = useState(false);
+  const [localModelsError, setLocalModelsError] = useState('');
+
+  const fetchLocalModels = useCallback((p: string) => {
+    if (!LOCAL_PROVIDERS.has(p)) {
+      setLocalModels([]);
+      setLocalModelsError('');
+      return;
+    }
+    setLocalModelsLoading(true);
+    setLocalModelsError('');
+    setLocalModels([]); // clear stale data to avoid showing old list during fetch
+    fetch(`/api/admin/local-models?provider=${p}`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.ok) {
+          setLocalModels(d.data);
+        } else {
+          setLocalModels([]);
+          setLocalModelsError(d.error || 'Failed to fetch models');
+        }
+      })
+      .catch(() => {
+        setLocalModels([]);
+        setLocalModelsError('Could not connect');
+      })
+      .finally(() => setLocalModelsLoading(false));
+  }, []);
+
   const loadInvites = useCallback(() => {
     fetch('/api/admin/invites')
       .then((r) => r.json())
@@ -74,10 +104,11 @@ export default function ConfigPage() {
             setModel(pc?.models[0]?.id ?? '');
             setCustomModel(d.data.model);
           }
+          fetchLocalModels(d.data.provider);
         }
       });
     loadInvites();
-  }, [loadInvites]);
+  }, [loadInvites, fetchLocalModels]);
 
   const providerConfig = EXTRACTION_PROVIDERS[provider];
   const models = providerConfig?.models ?? [];
@@ -89,15 +120,23 @@ export default function ConfigPage() {
     const newModels = EXTRACTION_PROVIDERS[newProvider]?.models ?? [];
     if (newModels.length > 0) {
       setModel(newModels[0]!.id);
+    } else {
+      setModel('');
     }
+    fetchLocalModels(newProvider);
   };
 
-  const effectiveModel = customModel.trim() || model;
+  const effectiveModel = customModel.trim() || model || (localModels.length > 0 ? localModels[0]!.id : '');
 
   const handleSave = async () => {
+    if (!effectiveModel) {
+      setMessage('Enter a model ID before saving');
+      return;
+    }
     setSaving(true);
     setMessage('');
 
+    const newBaseUrl = customBaseUrl.trim() || null;
     const res = await fetch('/api/admin/config', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -107,7 +146,7 @@ export default function ConfigPage() {
         scrapeIntervalHours: scrapeInterval,
         defaultCurrency: defaultCurrency.trim().toUpperCase() || null,
         defaultCountry: defaultCountry.trim().toUpperCase() || null,
-        customBaseUrl: customBaseUrl.trim() || null,
+        customBaseUrl: newBaseUrl,
       }),
     });
 
@@ -115,6 +154,10 @@ export default function ConfigPage() {
     if (data.ok) {
       setConfig(data.data);
       setMessage('Config saved');
+      // Re-fetch models if the base URL changed (cache key includes host)
+      if (LOCAL_PROVIDERS.has(provider)) {
+        fetchLocalModels(provider);
+      }
     } else {
       setMessage(data.error || 'Failed to save');
     }
@@ -204,22 +247,45 @@ export default function ConfigPage() {
 
         <div className={styles.field}>
           <label className={styles.label}>Model</label>
-          <select
-            className={styles.select}
-            value={model}
-            onChange={(e) => setModel(e.target.value)}
-          >
-            {models.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.name} ({m.costPer1kInput === 0 ? 'Free (Max)' : `$${m.costPer1kInput}/1k in`})
-              </option>
-            ))}
-          </select>
+          {models.length > 0 && (
+            <select
+              className={styles.select}
+              value={model}
+              onChange={(e) => setModel(e.target.value)}
+            >
+              {models.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.name} ({m.costPer1kInput === 0 ? 'Free (Max)' : `$${m.costPer1kInput}/1k in`})
+                </option>
+              ))}
+            </select>
+          )}
+          {models.length === 0 && localModels.length > 0 && (
+            <select
+              className={styles.select}
+              value={customModel || localModels[0]!.id}
+              onChange={(e) => setCustomModel(e.target.value)}
+            >
+              {localModels.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.name}{m.size ? ` (${m.size})` : ''}
+                </option>
+              ))}
+            </select>
+          )}
+          {models.length === 0 && localModelsLoading && (
+            <span className={styles.modelHint}>Fetching models...</span>
+          )}
+          {models.length === 0 && localModelsError && (
+            <span className={styles.modelHintError}>{localModelsError}</span>
+          )}
           {providerConfig?.allowCustomModel && (
             <input
               type="text"
               className={styles.input}
-              placeholder="Or type a custom model ID (e.g. llama-3.1-70b)"
+              placeholder={models.length === 0 && localModels.length === 0
+                ? 'Model ID (e.g. llama3.1:8b, mistral:7b)'
+                : 'Or type a custom model ID'}
               value={customModel}
               onChange={(e) => setCustomModel(e.target.value)}
             />

@@ -311,3 +311,14 @@
 .inviteDelete:hover {
   color: var(--price-up);
 }
+
+.modelHint {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.modelHintError {
+  composes: modelHint;
+  color: var(--price-up);
+}

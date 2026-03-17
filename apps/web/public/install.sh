@@ -232,6 +232,8 @@ services:
       CHROME_PATH: /usr/bin/chromium-browser
       NODE_ENV: production
       SELF_HOSTED: "true"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - app-data:/app/data
       - cli-cache:/home/node/.npm-global
@@ -292,10 +294,12 @@ if ! echo "$PATH" | tr ':' '\n' | grep -qx "$INSTALL_BIN"; then
 fi
 
 # ---------------------------------------------------------------------------
-# 5. Detect LLM providers (Claude Code CLI / Codex CLI / API key prompt)
+# 5. Detect LLM providers (Claude Code CLI / Codex CLI / Ollama / API key)
 # ---------------------------------------------------------------------------
 CLAUDE_CODE_DETECTED=false
 CODEX_DETECTED=false
+OLLAMA_DETECTED=false
+OLLAMA_HOST_VAL=""
 API_KEY_VAR=""
 API_KEY_VAL=""
 
@@ -309,22 +313,40 @@ if command -v codex &>/dev/null && [ -d "$HOME/.codex" ]; then
   ok "Codex CLI detected — no API key needed"
 fi
 
-if [ "$CLAUDE_CODE_DETECTED" = false ] && [ "$CODEX_DETECTED" = false ]; then
-  warn "No Claude Code or Codex CLI found"
+# Detect Ollama running locally
+if curl -sf http://localhost:11434/api/tags >/dev/null 2>&1; then
+  OLLAMA_DETECTED=true
+  OLLAMA_MODELS=$(curl -sf http://localhost:11434/api/tags 2>/dev/null \
+    | python3 -c "import sys,json; [print(m['name']) for m in json.load(sys.stdin).get('models',[])]" 2>/dev/null \
+    || true)
+  OLLAMA_MODEL_COUNT=$(echo "$OLLAMA_MODELS" | grep -c . 2>/dev/null || echo 0)
+  ok "Ollama detected — ${OLLAMA_MODEL_COUNT} model(s) installed locally"
+
+  # Docker-compatible host — host.docker.internal works on all platforms
+  # (macOS/WSL via Docker Desktop, Linux via extra_hosts in compose)
+  OLLAMA_HOST_VAL="http://host.docker.internal:11434"
+fi
+
+HAS_CLI_OR_LOCAL=false
+if [ "$CLAUDE_CODE_DETECTED" = true ] || [ "$CODEX_DETECTED" = true ] || [ "$OLLAMA_DETECTED" = true ]; then
+  HAS_CLI_OR_LOCAL=true
+fi
+
+if [ "$HAS_CLI_OR_LOCAL" = false ]; then
+  warn "No Claude Code, Codex CLI, or Ollama found"
   echo ""
-  printf "  Paste an API key from any provider:\n"
+  printf "  Paste an API key from any provider, or press Enter to skip:\n"
   printf "  ${DIM}1. Anthropic  — https://console.anthropic.com/${RESET}\n"
   printf "  ${DIM}2. OpenAI     — https://platform.openai.com/api-keys${RESET}\n"
   printf "  ${DIM}3. Google AI  — https://aistudio.google.com/apikey${RESET}\n"
+  printf "  ${DIM}4. Ollama     — https://ollama.com (install locally, then re-run)${RESET}\n"
   echo ""
-  read -rsp "  API key: " API_KEY_VAL < /dev/tty
+  read -rsp "  API key (or Enter to skip): " API_KEY_VAL < /dev/tty
   echo ""
 
   if [ -z "$API_KEY_VAL" ]; then
-    fail "No API key provided. Install Claude Code (https://docs.anthropic.com/en/docs/claude-code) or provide an API key."
-  fi
-
-  if [[ "$API_KEY_VAL" == sk-ant-* ]]; then
+    warn "No API key — you can configure a provider later in the admin panel"
+  elif [[ "$API_KEY_VAL" == sk-ant-* ]]; then
     API_KEY_VAR="ANTHROPIC_API_KEY"
     ok "Detected Anthropic key"
   elif [[ "$API_KEY_VAL" == sk-* ]]; then
@@ -371,6 +393,11 @@ else
     echo ""
     if [ -n "$API_KEY_VAR" ]; then
       echo "${API_KEY_VAR}=${API_KEY_VAL}"
+    fi
+    if [ -n "$OLLAMA_HOST_VAL" ]; then
+      echo ""
+      echo "# Ollama (Docker-compatible address)"
+      echo "OLLAMA_HOST=${OLLAMA_HOST_VAL}"
     fi
   } > "$FAIRTRAIL_DIR/.env"
   ok "Generated .env"
@@ -489,8 +516,12 @@ printf "${BOLD}  │${RESET}                                                  ${
 
 if [ "$CLAUDE_CODE_DETECTED" = true ] || [ "$CODEX_DETECTED" = true ]; then
   printf "${BOLD}  │${RESET}   LLM:   ${GREEN}Using your existing CLI subscription${RESET}  ${BOLD}│${RESET}\n"
-else
+elif [ "$OLLAMA_DETECTED" = true ]; then
+  printf "${BOLD}  │${RESET}   LLM:   ${GREEN}Ollama (local)${RESET}                         ${BOLD}│${RESET}\n"
+elif [ -n "$API_KEY_VAR" ]; then
   printf "${BOLD}  │${RESET}   LLM:   API key configured                     ${BOLD}│${RESET}\n"
+else
+  printf "${BOLD}  │${RESET}   LLM:   Configure in admin panel               ${BOLD}│${RESET}\n"
 fi
 
 printf "${BOLD}  │${RESET}                                                  ${BOLD}│${RESET}\n"
