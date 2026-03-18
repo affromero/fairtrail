@@ -13,6 +13,8 @@ interface Config {
   communitySharing: boolean;
   communityApiKey: string | null;
   customBaseUrl: string | null;
+  defaultCurrency: string | null;
+  defaultCountry: string | null;
 }
 
 export default function SettingsPage() {
@@ -22,6 +24,8 @@ export default function SettingsPage() {
   const [customModel, setCustomModel] = useState('');
   const [scrapeInterval, setScrapeInterval] = useState(3);
   const [customBaseUrl, setCustomBaseUrl] = useState('');
+  const [defaultCurrency, setDefaultCurrency] = useState('');
+  const [defaultCountry, setDefaultCountry] = useState('');
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
 
@@ -64,6 +68,8 @@ export default function SettingsPage() {
           setProvider(d.data.provider);
           setScrapeInterval(d.data.scrapeInterval);
           setCustomBaseUrl(d.data.customBaseUrl || '');
+          setDefaultCurrency(d.data.defaultCurrency || '');
+          setDefaultCountry(d.data.defaultCountry || '');
           const pc = EXTRACTION_PROVIDERS[d.data.provider];
           const knownModel = pc?.models.find((m) => m.id === d.data.model);
           if (knownModel) {
@@ -107,7 +113,14 @@ export default function SettingsPage() {
     const res = await fetch('/api/admin/config', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ provider, model: effectiveModel, scrapeIntervalHours: scrapeInterval, customBaseUrl: customBaseUrl.trim() || null }),
+      body: JSON.stringify({
+        provider,
+        model: effectiveModel,
+        scrapeIntervalHours: scrapeInterval,
+        customBaseUrl: customBaseUrl.trim() || null,
+        defaultCurrency: defaultCurrency.trim().toUpperCase() || null,
+        defaultCountry: defaultCountry.trim().toUpperCase() || null,
+      }),
     });
 
     const data = await res.json();
@@ -229,6 +242,30 @@ export default function SettingsPage() {
                 <option key={h} value={h}>Every {h} hour{h !== 1 ? 's' : ''}</option>
               ))}
             </select>
+          </div>
+
+          <div className={styles.field}>
+            <label className={styles.label}>Default Currency (ISO 4217)</label>
+            <input
+              type="text"
+              className={styles.input}
+              placeholder="e.g. EUR, GBP — empty = auto-detect"
+              value={defaultCurrency}
+              onChange={(e) => setDefaultCurrency(e.target.value.toUpperCase())}
+              maxLength={3}
+            />
+          </div>
+
+          <div className={styles.field}>
+            <label className={styles.label}>Default Country (ISO 3166-1)</label>
+            <input
+              type="text"
+              className={styles.input}
+              placeholder="e.g. DE, GB — empty = auto-detect"
+              value={defaultCountry}
+              onChange={(e) => setDefaultCountry(e.target.value.toUpperCase())}
+              maxLength={2}
+            />
           </div>
 
           <p className={styles.providerHint}>

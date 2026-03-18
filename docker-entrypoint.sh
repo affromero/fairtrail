@@ -104,6 +104,10 @@ fi
 # Force internal port to 3003 — env_file can leak HOST_PORT/PORT into the
 # container, which would make Next.js bind to the wrong port (e.g. 80).
 # The host-side mapping (HOST_PORT:3003) expects 3003 inside the container.
+if [ -n "${PORT:-}" ] && [ "$PORT" != "3003" ]; then
+  echo "[setup] WARNING: PORT is set to $PORT but the container expects 3003."
+  echo "[setup]   Use HOST_PORT in .env to change the external port instead."
+fi
 export PORT=3003
 echo "[setup] Starting Fairtrail on port ${PORT}..."
 exec node apps/web/server.js

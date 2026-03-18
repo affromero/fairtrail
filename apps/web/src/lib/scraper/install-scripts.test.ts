@@ -38,7 +38,13 @@ describe('install.sh', () => {
 
   it('auto-adds ~/.local/bin to shell profile when not in PATH', () => {
     // Should modify a shell profile, not just print a warning
-    expect(INSTALL_SH).toContain('>> "$SHELL_PROFILE"');
+    expect(INSTALL_SH).toContain('>> "$file"');
+  });
+
+  it('patches both .bashrc and .profile for SSH login shells', () => {
+    expect(INSTALL_SH).toContain('.bashrc');
+    expect(INSTALL_SH).toContain('.profile');
+    expect(INSTALL_SH).toContain('.bash_profile');
   });
 
   it('exports PATH for the rest of the script after adding it', () => {

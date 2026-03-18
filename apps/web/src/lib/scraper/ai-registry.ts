@@ -386,15 +386,35 @@ async function hasCliAuth(provider: string): Promise<boolean> {
   }
 }
 
+/** Ping a local provider to check if it's actually reachable (3s timeout). */
+export async function isLocalProviderReachable(provider: string): Promise<boolean> {
+  const config = EXTRACTION_PROVIDERS[provider];
+  if (!config) return false;
+
+  const baseUrl = config.defaultBaseUrl?.replace(/\/v1\/?$/, '') ?? '';
+  const endpoint = provider === 'ollama'
+    ? `${baseUrl || 'http://localhost:11434'}/api/tags`
+    : `${baseUrl || 'http://localhost:8000'}/v1/models`;
+
+  try {
+    const res = await fetch(endpoint, { signal: AbortSignal.timeout(3000) });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
 export async function detectAvailableProviders(): Promise<string[]> {
   const available: string[] = [];
 
   const isSelfHosted = process.env.SELF_HOSTED === 'true';
 
   for (const [key, config] of Object.entries(EXTRACTION_PROVIDERS)) {
-    // Local providers only available on self-hosted instances
+    // Local providers: only on self-hosted, and only if reachable
     if (LOCAL_PROVIDERS.has(key)) {
-      if (isSelfHosted) available.push(key);
+      if (isSelfHosted && await isLocalProviderReachable(key)) {
+        available.push(key);
+      }
       continue;
     }
     const cliBinary = CLI_PROVIDERS[key];

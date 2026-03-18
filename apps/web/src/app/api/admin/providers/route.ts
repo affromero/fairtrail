@@ -1,21 +1,33 @@
 import { apiSuccess } from '@/lib/api-response';
-import { EXTRACTION_PROVIDERS, detectAvailableProviders } from '@/lib/scraper/ai-registry';
+import { EXTRACTION_PROVIDERS, LOCAL_PROVIDERS, detectAvailableProviders } from '@/lib/scraper/ai-registry';
 
 interface ProviderStatus {
   displayName: string;
-  status: 'ready' | 'no_key' | 'not_installed';
+  status: 'ready' | 'no_key' | 'not_installed' | 'unreachable';
   models: string[];
 }
 
 export async function GET() {
   const available = await detectAvailableProviders();
+  const isSelfHosted = process.env.SELF_HOSTED === 'true';
 
   const statuses: Record<string, ProviderStatus> = {};
 
   for (const [key, config] of Object.entries(EXTRACTION_PROVIDERS)) {
+    let status: ProviderStatus['status'];
+    if (available.includes(key)) {
+      status = 'ready';
+    } else if (LOCAL_PROVIDERS.has(key)) {
+      status = isSelfHosted ? 'unreachable' : 'not_installed';
+    } else if (key === 'claude-code' || key === 'codex') {
+      status = 'not_installed';
+    } else {
+      status = 'no_key';
+    }
+
     statuses[key] = {
       displayName: config.displayName,
-      status: available.includes(key) ? 'ready' : key === 'claude-code' || key === 'codex' ? 'not_installed' : 'no_key',
+      status,
       models: config.models.map((m) => m.name),
     };
   }

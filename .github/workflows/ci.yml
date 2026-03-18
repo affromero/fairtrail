@@ -19,4 +19,48 @@ jobs:
       - run: npx prisma generate --schema=apps/web/prisma/schema.prisma
       - run: npm run lint
       - run: npm run typecheck
+      - run: npx vitest run --reporter=verbose
+        working-directory: apps/web
       - run: npm run build
+      - run: bash scripts/install-flow-test.sh
+
+  install-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -f scripts/Dockerfile.install-test -t fairtrail-install-test .
+      - run: docker run --rm fairtrail-install-test
+
+  integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t fairtrail-test:latest .
+      - run: bash scripts/docker-integration-test.sh --no-build
+      - name: Browser smoke tests
+        run: |
+          npm ci
+          npx playwright install chromium --with-deps
+          bash scripts/browser-smoke-test.sh http://localhost:3399
+
+  staging:
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    needs: [ci, install-smoke, integration]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.DEPLOY_KEY }}" > ~/.ssh/staging_key
+          chmod 600 ~/.ssh/staging_key
+          echo "Host fairtrail-prod" >> ~/.ssh/config
+          echo "  HostName ${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/config
+          echo "  User ${{ secrets.DEPLOY_USER }}" >> ~/.ssh/config
+          echo "  IdentityFile ~/.ssh/staging_key" >> ~/.ssh/config
+          echo "  StrictHostKeyChecking no" >> ~/.ssh/config
+      - name: Run staging tests
+        env:
+          STAGING_HOST: fairtrail-prod
+          REPO_TOKEN: ${{ secrets.REPO_TOKEN }}
+        run: bash scripts/staging-test.sh

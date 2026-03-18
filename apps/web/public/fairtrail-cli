@@ -196,13 +196,18 @@ cmd_status() {
 cmd_update() {
   printf "${CYAN}${BOLD}▸${RESET} Updating Fairtrail...\n"
 
+  # Detect where the running binary lives (don't hardcode ~/.local/bin)
+  CLI_PATH=$(command -v fairtrail 2>/dev/null || echo "$HOME/.local/bin/fairtrail")
+  CLI_DIR=$(dirname "$CLI_PATH")
+  mkdir -p "$CLI_DIR"
+
   # Update CLI (download to temp, atomic move)
-  if curl -fsSL "$BASE_URL/fairtrail-cli" -o "$HOME/.local/bin/fairtrail.tmp" 2>/dev/null; then
-    mv -f "$HOME/.local/bin/fairtrail.tmp" "$HOME/.local/bin/fairtrail"
-    chmod +x "$HOME/.local/bin/fairtrail"
+  if curl -fsSL "$BASE_URL/fairtrail-cli" -o "${CLI_PATH}.tmp"; then
+    mv -f "${CLI_PATH}.tmp" "$CLI_PATH"
+    chmod +x "$CLI_PATH"
     printf "${GREEN}${BOLD}✓${RESET} CLI updated\n"
   else
-    rm -f "$HOME/.local/bin/fairtrail.tmp"
+    rm -f "${CLI_PATH}.tmp"
     printf "${YELLOW}${BOLD}!${RESET} CLI update skipped (couldn't reach %s)\n" "$BASE_URL"
   fi
 

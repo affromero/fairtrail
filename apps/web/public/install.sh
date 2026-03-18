@@ -27,6 +27,11 @@ FAIRTRAIL_DIR="$HOME/.fairtrail"
 INSTALL_BIN="$HOME/.local/bin"
 HOST_PORT="${HOST_PORT:-${PORT:-3003}}"
 BASE_URL="${FAIRTRAIL_URL:-https://fairtrail.org}"
+# Test overrides (used by scripts/install-flow-test.sh)
+FAIRTRAIL_IMAGE="${FAIRTRAIL_IMAGE:-ghcr.io/affromero/fairtrail:latest}"
+FAIRTRAIL_API_KEY="${FAIRTRAIL_API_KEY:-}"
+FAIRTRAIL_API_PROVIDER="${FAIRTRAIL_API_PROVIDER:-}"
+FAIRTRAIL_EXTRA_ENV="${FAIRTRAIL_EXTRA_ENV:-}"
 
 echo ""
 printf "${BOLD}  Fairtrail — Flight Price Tracker${RESET}\n"
@@ -163,9 +168,13 @@ port_in_use() {
 
 while port_in_use "$HOST_PORT"; do
   warn "Port ${HOST_PORT} is already in use."
-  echo ""
-  read -rp "  Enter a different port [default: $((HOST_PORT + 1))]: " NEW_PORT < /dev/tty
-  HOST_PORT="${NEW_PORT:-$((HOST_PORT + 1))}"
+  if [ "${FAIRTRAIL_YES:-}" = "1" ]; then
+    HOST_PORT=$((HOST_PORT + 1))
+  else
+    echo ""
+    read -rp "  Enter a different port [default: $((HOST_PORT + 1))]: " NEW_PORT < /dev/tty
+    HOST_PORT="${NEW_PORT:-$((HOST_PORT + 1))}"
+  fi
 done
 
 ok "Port ${HOST_PORT} is available"
@@ -178,6 +187,27 @@ if [ -d "$HOME/fairtrail" ] && [ ! -d "$FAIRTRAIL_DIR" ]; then
   printf "  ${DIM}The new install location is ~/.fairtrail${RESET}\n"
   printf "  ${DIM}Your Docker volumes (tracked queries, price data) are preserved.${RESET}\n"
   echo ""
+
+  # Stop old containers if a compose file exists
+  if [ -f "$HOME/fairtrail/docker-compose.yml" ]; then
+    info "Stopping old containers..."
+    $DC -f "$HOME/fairtrail/docker-compose.yml" down 2>/dev/null || true
+  fi
+
+  # Clean up old directory
+  if [ "${FAIRTRAIL_YES:-}" = "1" ]; then
+    mv "$HOME/fairtrail" "$HOME/fairtrail.old-backup"
+    ok "Moved ~/fairtrail to ~/fairtrail.old-backup"
+  else
+    read -rp "  Remove old ~/fairtrail directory? [Y/n] " REMOVE_OLD < /dev/tty
+    if [[ ! "$REMOVE_OLD" =~ ^[Nn]$ ]]; then
+      mv "$HOME/fairtrail" "$HOME/fairtrail.old-backup"
+      ok "Moved ~/fairtrail to ~/fairtrail.old-backup"
+    else
+      warn "Old directory left at ~/fairtrail (you can remove it later)"
+    fi
+  fi
+  echo ""
 fi
 
 # ---------------------------------------------------------------------------
@@ -185,7 +215,7 @@ fi
 # ---------------------------------------------------------------------------
 mkdir -p "$FAIRTRAIL_DIR"
 
-cat > "$FAIRTRAIL_DIR/docker-compose.yml" << 'COMPOSE'
+cat > "$FAIRTRAIL_DIR/docker-compose.yml" << COMPOSE
 services:
   db:
     image: postgres:16-alpine
@@ -193,7 +223,7 @@ services:
     environment:
       POSTGRES_DB: fairtrail
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_PASSWORD: \${POSTGRES_PASSWORD:-postgres}
     volumes:
       - pgdata:/var/lib/postgresql/data
     ports:
@@ -218,17 +248,17 @@ services:
       retries: 5
 
   web:
-    image: ghcr.io/affromero/fairtrail:latest
+    image: ${FAIRTRAIL_IMAGE}
     restart: unless-stopped
     depends_on:
       db:
         condition: service_healthy
     ports:
-      - "${HOST_PORT:-3003}:3003"
+      - "\${HOST_PORT:-3003}:3003"
     env_file: .env
     environment:
-      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-postgres}@db:5432/fairtrail
-      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+      DATABASE_URL: postgresql://postgres:\${POSTGRES_PASSWORD:-postgres}@db:5432/fairtrail
+      REDIS_URL: \${REDIS_URL:-redis://redis:6379}
       CHROME_PATH: /usr/bin/chromium-browser
       NODE_ENV: production
       SELF_HOSTED: "true"
@@ -252,37 +282,51 @@ ok "Created ~/.fairtrail"
 # ---------------------------------------------------------------------------
 mkdir -p "$INSTALL_BIN"
 
-info "Downloading CLI..."
-if curl -fsSL "$BASE_URL/fairtrail-cli" -o "$INSTALL_BIN/fairtrail.tmp" 2>/dev/null; then
-  mv -f "$INSTALL_BIN/fairtrail.tmp" "$INSTALL_BIN/fairtrail"
+if [ -n "${FAIRTRAIL_CLI_SOURCE:-}" ] && [ -f "$FAIRTRAIL_CLI_SOURCE" ]; then
+  cp "$FAIRTRAIL_CLI_SOURCE" "$INSTALL_BIN/fairtrail"
   chmod +x "$INSTALL_BIN/fairtrail"
-  ok "Installed fairtrail to $INSTALL_BIN/fairtrail"
+  ok "Installed fairtrail CLI from local source"
 else
-  rm -f "$INSTALL_BIN/fairtrail.tmp"
-  fail "Failed to download CLI from $BASE_URL/fairtrail-cli"
+  info "Downloading CLI..."
+  if curl -fsSL "$BASE_URL/fairtrail-cli" -o "$INSTALL_BIN/fairtrail.tmp" 2>/dev/null; then
+    mv -f "$INSTALL_BIN/fairtrail.tmp" "$INSTALL_BIN/fairtrail"
+    chmod +x "$INSTALL_BIN/fairtrail"
+    ok "Installed fairtrail to $INSTALL_BIN/fairtrail"
+  else
+    rm -f "$INSTALL_BIN/fairtrail.tmp"
+    fail "Failed to download CLI from $BASE_URL/fairtrail-cli"
+  fi
 fi
 
 # Ensure ~/.local/bin is in PATH
 if ! echo "$PATH" | tr ':' '\n' | grep -qx "$INSTALL_BIN"; then
   EXPORT_LINE='export PATH="$HOME/.local/bin:$PATH"'
-  SHELL_PROFILE=""
+  PATCHED=false
 
-  # Find the right shell profile to patch
+  patch_profile() {
+    local file="$1"
+    if [ -f "$file" ] && ! grep -qF '.local/bin' "$file" 2>/dev/null; then
+      printf '\n# Added by Fairtrail installer\n%s\n' "$EXPORT_LINE" >> "$file"
+      ok "Added $INSTALL_BIN to PATH in $file"
+      PATCHED=true
+    fi
+  }
+
   if [ -n "${ZSH_VERSION:-}" ] || [ "$(basename "${SHELL:-}")" = "zsh" ]; then
-    [ -f "$HOME/.zshrc" ] && SHELL_PROFILE="$HOME/.zshrc"
-  elif [ -f "$HOME/.bashrc" ]; then
-    SHELL_PROFILE="$HOME/.bashrc"
-  elif [ -f "$HOME/.profile" ]; then
-    SHELL_PROFILE="$HOME/.profile"
+    patch_profile "$HOME/.zshrc"
+  else
+    # Patch .bashrc for interactive shells
+    patch_profile "$HOME/.bashrc"
+    # ALSO patch .profile (or .bash_profile) for SSH login shells.
+    # SSH sessions source .profile, not .bashrc, so both are needed.
+    if [ -f "$HOME/.bash_profile" ]; then
+      patch_profile "$HOME/.bash_profile"
+    else
+      patch_profile "$HOME/.profile"
+    fi
   fi
 
-  if [ -n "$SHELL_PROFILE" ]; then
-    # Only add if not already present
-    if ! grep -qF '.local/bin' "$SHELL_PROFILE" 2>/dev/null; then
-      printf '\n# Added by Fairtrail installer\n%s\n' "$EXPORT_LINE" >> "$SHELL_PROFILE"
-      ok "Added $INSTALL_BIN to PATH in $SHELL_PROFILE"
-    fi
-  else
+  if [ "$PATCHED" = false ]; then
     warn "$INSTALL_BIN is not in your PATH"
     printf "  Add this to your shell profile:\n"
     printf "  ${BOLD}export PATH=\"\$HOME/.local/bin:\$PATH\"${RESET}\n"
@@ -332,17 +376,30 @@ if [ "$CLAUDE_CODE_DETECTED" = true ] || [ "$CODEX_DETECTED" = true ] || [ "$OLL
   HAS_CLI_OR_LOCAL=true
 fi
 
+# Pre-set API key from env (for testing)
+if [ -n "$FAIRTRAIL_API_KEY" ] && [ -n "$FAIRTRAIL_API_PROVIDER" ]; then
+  API_KEY_VAR="$FAIRTRAIL_API_PROVIDER"
+  API_KEY_VAL="$FAIRTRAIL_API_KEY"
+  HAS_CLI_OR_LOCAL=true
+  ok "Using pre-configured $FAIRTRAIL_API_PROVIDER"
+fi
+
 if [ "$HAS_CLI_OR_LOCAL" = false ]; then
   warn "No Claude Code, Codex CLI, or Ollama found"
-  echo ""
-  printf "  Paste an API key from any provider, or press Enter to skip:\n"
-  printf "  ${DIM}1. Anthropic  — https://console.anthropic.com/${RESET}\n"
-  printf "  ${DIM}2. OpenAI     — https://platform.openai.com/api-keys${RESET}\n"
-  printf "  ${DIM}3. Google AI  — https://aistudio.google.com/apikey${RESET}\n"
-  printf "  ${DIM}4. Ollama     — https://ollama.com (install locally, then re-run)${RESET}\n"
-  echo ""
-  read -rsp "  API key (or Enter to skip): " API_KEY_VAL < /dev/tty
-  echo ""
+
+  if [ "${FAIRTRAIL_YES:-}" = "1" ]; then
+    warn "Non-interactive mode — skipping API key prompt"
+  else
+    echo ""
+    printf "  Paste an API key from any provider, or press Enter to skip:\n"
+    printf "  ${DIM}1. Anthropic  — https://console.anthropic.com/${RESET}\n"
+    printf "  ${DIM}2. OpenAI     — https://platform.openai.com/api-keys${RESET}\n"
+    printf "  ${DIM}3. Google AI  — https://aistudio.google.com/apikey${RESET}\n"
+    printf "  ${DIM}4. Ollama     — https://ollama.com (install locally, then re-run)${RESET}\n"
+    echo ""
+    read -rsp "  API key (or Enter to skip): " API_KEY_VAL < /dev/tty
+    echo ""
+  fi
 
   if [ -z "$API_KEY_VAL" ]; then
     warn "No API key — you can configure a provider later in the admin panel"
@@ -388,6 +445,10 @@ else
     echo "# Generated by Fairtrail installer — $(date -u '+%Y-%m-%d %H:%M UTC')"
     echo "POSTGRES_PASSWORD=postgres"
     echo ""
+    echo "# Host port — the port YOU access in the browser."
+    echo "# The container always listens on 3003 internally; do NOT set PORT."
+    echo "HOST_PORT=${HOST_PORT}"
+    echo ""
     echo "# Cron auth"
     echo "CRON_SECRET=${CRON_SECRET}"
     echo ""
@@ -398,6 +459,11 @@ else
       echo ""
       echo "# Ollama (Docker-compatible address)"
       echo "OLLAMA_HOST=${OLLAMA_HOST_VAL}"
+    fi
+    if [ -n "$FAIRTRAIL_EXTRA_ENV" ]; then
+      echo ""
+      echo "# Extra env (test overrides)"
+      echo "$FAIRTRAIL_EXTRA_ENV"
     fi
   } > "$FAIRTRAIL_DIR/.env"
   ok "Generated .env"
@@ -469,38 +535,46 @@ fi
 # ---------------------------------------------------------------------------
 # 8. Pull image and start
 # ---------------------------------------------------------------------------
-info "Pulling Fairtrail (this takes a minute on first run)..."
-echo ""
-
 cd "$FAIRTRAIL_DIR"
 
-$DC pull 2>&1 | while IFS= read -r line; do
-  printf "  ${DIM}%s${RESET}\n" "$line"
-done
+if [ "${FAIRTRAIL_SKIP_PULL:-}" = "1" ]; then
+  ok "Using local image (pull skipped)"
+else
+  info "Pulling Fairtrail (this takes a minute on first run)..."
+  echo ""
 
-$DC up -d 2>&1 | while IFS= read -r line; do
-  printf "  ${DIM}%s${RESET}\n" "$line"
-done
+  $DC pull 2>&1 | while IFS= read -r line; do
+    printf "  ${DIM}%s${RESET}\n" "$line"
+  done
+fi
 
-echo ""
+if [ "${FAIRTRAIL_SKIP_START:-}" = "1" ]; then
+  ok "Skipping container start (test mode)"
+else
+  $DC up -d 2>&1 | while IFS= read -r line; do
+    printf "  ${DIM}%s${RESET}\n" "$line"
+  done
 
-# ---------------------------------------------------------------------------
-# 9. Wait for the app to be ready
-# ---------------------------------------------------------------------------
-info "Waiting for the app to start..."
+  echo ""
 
-RETRIES=60
-until curl -sf "http://localhost:${HOST_PORT}/api/health" >/dev/null 2>&1; do
-  RETRIES=$((RETRIES - 1))
-  if [ "$RETRIES" -le 0 ]; then
-    warn "App didn't respond in 60s — run 'fairtrail logs' to debug"
-    break
+  # ---------------------------------------------------------------------------
+  # 9. Wait for the app to be ready
+  # ---------------------------------------------------------------------------
+  info "Waiting for the app to start..."
+
+  RETRIES=60
+  until curl -sf "http://localhost:${HOST_PORT}/api/health" >/dev/null 2>&1; do
+    RETRIES=$((RETRIES - 1))
+    if [ "$RETRIES" -le 0 ]; then
+      warn "App didn't respond in 60s — run 'fairtrail logs' to debug"
+      break
+    fi
+    sleep 1
+  done
+
+  if [ "$RETRIES" -gt 0 ]; then
+    ok "Fairtrail is running"
   fi
-  sleep 1
-done
-
-if [ "$RETRIES" -gt 0 ]; then
-  ok "Fairtrail is running"
 fi
 
 # ---------------------------------------------------------------------------

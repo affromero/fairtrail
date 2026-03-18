@@ -1,0 +1,26 @@
+# Simulates a fresh Debian SSH environment to test install.sh and fairtrail-cli.
+# Does NOT require Docker-in-Docker -- only tests the shell script logic
+# (PATH patching, old-dir migration, .env generation, CLI download path).
+#
+# Build:  docker build -f scripts/Dockerfile.install-test -t fairtrail-install-test .
+# Run:    docker run --rm fairtrail-install-test
+
+FROM debian:bookworm-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      bash curl ca-certificates grep coreutils xxd \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create a non-root user (typical Debian SSH setup)
+RUN useradd -m -s /bin/bash testuser
+USER testuser
+WORKDIR /home/testuser
+
+# Copy only the scripts we're testing
+COPY --chown=testuser:testuser apps/web/public/install.sh /home/testuser/install.sh
+COPY --chown=testuser:testuser apps/web/public/fairtrail-cli /home/testuser/fairtrail-cli
+COPY --chown=testuser:testuser scripts/debian-install-smoke.sh /home/testuser/run-tests.sh
+
+RUN chmod +x /home/testuser/install.sh /home/testuser/fairtrail-cli /home/testuser/run-tests.sh
+
+CMD ["bash", "/home/testuser/run-tests.sh"]

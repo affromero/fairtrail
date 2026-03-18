@@ -18,7 +18,7 @@ vi.mock('fs', async (importOriginal) => {
 });
 
 // Must import after mocks
-const { EXTRACTION_PROVIDERS, LOCAL_PROVIDERS, detectAvailableProviders, filterCliStderr } = await import(
+const { EXTRACTION_PROVIDERS, LOCAL_PROVIDERS, detectAvailableProviders, filterCliStderr, isLocalProviderReachable } = await import(
   './ai-registry'
 );
 
@@ -102,13 +102,30 @@ describe('ai-registry', () => {
       expect(providers).not.toContain('claude-code');
     });
 
-    it('includes local providers when SELF_HOSTED=true', async () => {
+    it('includes local providers when SELF_HOSTED=true and reachable', async () => {
       process.env.SELF_HOSTED = 'true';
+      const mockFetch = vi.fn().mockResolvedValue({ ok: true });
+      vi.stubGlobal('fetch', mockFetch);
 
       const providers = await detectAvailableProviders();
 
       expect(providers).toContain('ollama');
       expect(providers).toContain('llamacpp');
+      expect(providers).toContain('vllm');
+      vi.unstubAllGlobals();
+    });
+
+    it('excludes local providers when SELF_HOSTED=true but unreachable', async () => {
+      process.env.SELF_HOSTED = 'true';
+      const mockFetch = vi.fn().mockRejectedValue(new Error('connection refused'));
+      vi.stubGlobal('fetch', mockFetch);
+
+      const providers = await detectAvailableProviders();
+
+      expect(providers).not.toContain('ollama');
+      expect(providers).not.toContain('llamacpp');
+      expect(providers).not.toContain('vllm');
+      vi.unstubAllGlobals();
     });
 
     it('excludes local providers when SELF_HOSTED is not set', async () => {
@@ -318,6 +335,49 @@ describe('ai-registry', () => {
       // Clean up: resolve the promise
       fakeProc.emit('close', 0);
       await extractPromise.catch(() => {});
+    });
+  });
+
+  describe('isLocalProviderReachable', () => {
+    afterEach(() => {
+      vi.unstubAllGlobals();
+    });
+
+    it('returns true when provider responds with 200', async () => {
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true }));
+      expect(await isLocalProviderReachable('ollama')).toBe(true);
+    });
+
+    it('returns false when provider responds with non-200', async () => {
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false }));
+      expect(await isLocalProviderReachable('ollama')).toBe(false);
+    });
+
+    it('returns false when fetch throws (unreachable)', async () => {
+      vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('ECONNREFUSED')));
+      expect(await isLocalProviderReachable('llamacpp')).toBe(false);
+    });
+
+    it('returns false for unknown providers', async () => {
+      expect(await isLocalProviderReachable('nonexistent')).toBe(false);
+    });
+
+    it('pings /api/tags for ollama, /v1/models for others', async () => {
+      const mockFetch = vi.fn().mockResolvedValue({ ok: true });
+      vi.stubGlobal('fetch', mockFetch);
+
+      await isLocalProviderReachable('ollama');
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.stringContaining('/api/tags'),
+        expect.any(Object)
+      );
+
+      mockFetch.mockClear();
+      await isLocalProviderReachable('vllm');
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.stringContaining('/v1/models'),
+        expect.any(Object)
+      );
     });
   });
 });
