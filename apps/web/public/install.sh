@@ -363,15 +363,20 @@ fi
 
 if [ "$HAS_CLI_OR_LOCAL" = false ]; then
   warn "No Claude Code, Codex CLI, or Ollama found"
-  echo ""
-  printf "  Paste an API key from any provider, or press Enter to skip:\n"
-  printf "  ${DIM}1. Anthropic  — https://console.anthropic.com/${RESET}\n"
-  printf "  ${DIM}2. OpenAI     — https://platform.openai.com/api-keys${RESET}\n"
-  printf "  ${DIM}3. Google AI  — https://aistudio.google.com/apikey${RESET}\n"
-  printf "  ${DIM}4. Ollama     — https://ollama.com (install locally, then re-run)${RESET}\n"
-  echo ""
-  read -rsp "  API key (or Enter to skip): " API_KEY_VAL < /dev/tty
-  echo ""
+
+  if [ "${FAIRTRAIL_YES:-}" = "1" ]; then
+    warn "Non-interactive mode — skipping API key prompt"
+  else
+    echo ""
+    printf "  Paste an API key from any provider, or press Enter to skip:\n"
+    printf "  ${DIM}1. Anthropic  — https://console.anthropic.com/${RESET}\n"
+    printf "  ${DIM}2. OpenAI     — https://platform.openai.com/api-keys${RESET}\n"
+    printf "  ${DIM}3. Google AI  — https://aistudio.google.com/apikey${RESET}\n"
+    printf "  ${DIM}4. Ollama     — https://ollama.com (install locally, then re-run)${RESET}\n"
+    echo ""
+    read -rsp "  API key (or Enter to skip): " API_KEY_VAL < /dev/tty
+    echo ""
+  fi
 
   if [ -z "$API_KEY_VAL" ]; then
     warn "No API key — you can configure a provider later in the admin panel"
