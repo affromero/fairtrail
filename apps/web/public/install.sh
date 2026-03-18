@@ -27,6 +27,11 @@ FAIRTRAIL_DIR="$HOME/.fairtrail"
 INSTALL_BIN="$HOME/.local/bin"
 HOST_PORT="${HOST_PORT:-${PORT:-3003}}"
 BASE_URL="${FAIRTRAIL_URL:-https://fairtrail.org}"
+# Test overrides (used by scripts/install-flow-test.sh)
+FAIRTRAIL_IMAGE="${FAIRTRAIL_IMAGE:-ghcr.io/affromero/fairtrail:latest}"
+FAIRTRAIL_API_KEY="${FAIRTRAIL_API_KEY:-}"
+FAIRTRAIL_API_PROVIDER="${FAIRTRAIL_API_PROVIDER:-}"
+FAIRTRAIL_EXTRA_ENV="${FAIRTRAIL_EXTRA_ENV:-}"
 
 echo ""
 printf "${BOLD}  Fairtrail — Flight Price Tracker${RESET}\n"
@@ -163,9 +168,13 @@ port_in_use() {
 
 while port_in_use "$HOST_PORT"; do
   warn "Port ${HOST_PORT} is already in use."
-  echo ""
-  read -rp "  Enter a different port [default: $((HOST_PORT + 1))]: " NEW_PORT < /dev/tty
-  HOST_PORT="${NEW_PORT:-$((HOST_PORT + 1))}"
+  if [ "${FAIRTRAIL_YES:-}" = "1" ]; then
+    HOST_PORT=$((HOST_PORT + 1))
+  else
+    echo ""
+    read -rp "  Enter a different port [default: $((HOST_PORT + 1))]: " NEW_PORT < /dev/tty
+    HOST_PORT="${NEW_PORT:-$((HOST_PORT + 1))}"
+  fi
 done
 
 ok "Port ${HOST_PORT} is available"
@@ -185,7 +194,7 @@ fi
 # ---------------------------------------------------------------------------
 mkdir -p "$FAIRTRAIL_DIR"
 
-cat > "$FAIRTRAIL_DIR/docker-compose.yml" << 'COMPOSE'
+cat > "$FAIRTRAIL_DIR/docker-compose.yml" << COMPOSE
 services:
   db:
     image: postgres:16-alpine
@@ -193,7 +202,7 @@ services:
     environment:
       POSTGRES_DB: fairtrail
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_PASSWORD: \${POSTGRES_PASSWORD:-postgres}
     volumes:
       - pgdata:/var/lib/postgresql/data
     ports:
@@ -218,17 +227,17 @@ services:
       retries: 5
 
   web:
-    image: ghcr.io/affromero/fairtrail:latest
+    image: ${FAIRTRAIL_IMAGE}
     restart: unless-stopped
     depends_on:
       db:
         condition: service_healthy
     ports:
-      - "${HOST_PORT:-3003}:3003"
+      - "\${HOST_PORT:-3003}:3003"
     env_file: .env
     environment:
-      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-postgres}@db:5432/fairtrail
-      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+      DATABASE_URL: postgresql://postgres:\${POSTGRES_PASSWORD:-postgres}@db:5432/fairtrail
+      REDIS_URL: \${REDIS_URL:-redis://redis:6379}
       CHROME_PATH: /usr/bin/chromium-browser
       NODE_ENV: production
       SELF_HOSTED: "true"
@@ -252,14 +261,20 @@ ok "Created ~/.fairtrail"
 # ---------------------------------------------------------------------------
 mkdir -p "$INSTALL_BIN"
 
-info "Downloading CLI..."
-if curl -fsSL "$BASE_URL/fairtrail-cli" -o "$INSTALL_BIN/fairtrail.tmp" 2>/dev/null; then
-  mv -f "$INSTALL_BIN/fairtrail.tmp" "$INSTALL_BIN/fairtrail"
+if [ -n "${FAIRTRAIL_CLI_SOURCE:-}" ] && [ -f "$FAIRTRAIL_CLI_SOURCE" ]; then
+  cp "$FAIRTRAIL_CLI_SOURCE" "$INSTALL_BIN/fairtrail"
   chmod +x "$INSTALL_BIN/fairtrail"
-  ok "Installed fairtrail to $INSTALL_BIN/fairtrail"
+  ok "Installed fairtrail CLI from local source"
 else
-  rm -f "$INSTALL_BIN/fairtrail.tmp"
-  fail "Failed to download CLI from $BASE_URL/fairtrail-cli"
+  info "Downloading CLI..."
+  if curl -fsSL "$BASE_URL/fairtrail-cli" -o "$INSTALL_BIN/fairtrail.tmp" 2>/dev/null; then
+    mv -f "$INSTALL_BIN/fairtrail.tmp" "$INSTALL_BIN/fairtrail"
+    chmod +x "$INSTALL_BIN/fairtrail"
+    ok "Installed fairtrail to $INSTALL_BIN/fairtrail"
+  else
+    rm -f "$INSTALL_BIN/fairtrail.tmp"
+    fail "Failed to download CLI from $BASE_URL/fairtrail-cli"
+  fi
 fi
 
 # Ensure ~/.local/bin is in PATH
@@ -332,6 +347,14 @@ if [ "$CLAUDE_CODE_DETECTED" = true ] || [ "$CODEX_DETECTED" = true ] || [ "$OLL
   HAS_CLI_OR_LOCAL=true
 fi
 
+# Pre-set API key from env (for testing)
+if [ -n "$FAIRTRAIL_API_KEY" ] && [ -n "$FAIRTRAIL_API_PROVIDER" ]; then
+  API_KEY_VAR="$FAIRTRAIL_API_PROVIDER"
+  API_KEY_VAL="$FAIRTRAIL_API_KEY"
+  HAS_CLI_OR_LOCAL=true
+  ok "Using pre-configured $FAIRTRAIL_API_PROVIDER"
+fi
+
 if [ "$HAS_CLI_OR_LOCAL" = false ]; then
   warn "No Claude Code, Codex CLI, or Ollama found"
   echo ""
@@ -398,6 +421,11 @@ else
       echo ""
       echo "# Ollama (Docker-compatible address)"
       echo "OLLAMA_HOST=${OLLAMA_HOST_VAL}"
+    fi
+    if [ -n "$FAIRTRAIL_EXTRA_ENV" ]; then
+      echo ""
+      echo "# Extra env (test overrides)"
+      echo "$FAIRTRAIL_EXTRA_ENV"
     fi
   } > "$FAIRTRAIL_DIR/.env"
   ok "Generated .env"
@@ -469,14 +497,18 @@ fi
 # ---------------------------------------------------------------------------
 # 8. Pull image and start
 # ---------------------------------------------------------------------------
-info "Pulling Fairtrail (this takes a minute on first run)..."
-echo ""
-
 cd "$FAIRTRAIL_DIR"
 
-$DC pull 2>&1 | while IFS= read -r line; do
-  printf "  ${DIM}%s${RESET}\n" "$line"
-done
+if [ "${FAIRTRAIL_SKIP_PULL:-}" = "1" ]; then
+  ok "Using local image (pull skipped)"
+else
+  info "Pulling Fairtrail (this takes a minute on first run)..."
+  echo ""
+
+  $DC pull 2>&1 | while IFS= read -r line; do
+    printf "  ${DIM}%s${RESET}\n" "$line"
+  done
+fi
 
 $DC up -d 2>&1 | while IFS= read -r line; do
   printf "  ${DIM}%s${RESET}\n" "$line"
