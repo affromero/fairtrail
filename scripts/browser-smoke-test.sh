@@ -47,19 +47,30 @@ try {
       bad('Landing page title', 'got: ' + title);
     }
 
-    // Search input appears after invite status check (client-side fetch).
-    // Look for the placeholder text to confirm it rendered.
-    const searchInput = page.locator('input[placeholder*="NYC"], input[placeholder*="Paris"]').first();
-    if (await searchInput.isVisible({ timeout: 10000 }).catch(() => false)) {
+    // Fresh installs show a setup wizard (no LLM provider configured).
+    // After setup, the search bar appears. Both states are valid.
+    // Use Promise.race to wait for whichever appears first.
+    const result = await Promise.race([
+      page.locator('input[placeholder*="NYC"], input[placeholder*="Paris"]')
+        .first().waitFor({ state: 'visible', timeout: 15000 })
+        .then(() => 'search'),
+      page.getByText('Fairtrail Setup')
+        .waitFor({ state: 'visible', timeout: 15000 })
+        .then(() => 'setup'),
+      page.locator('input[placeholder*="invite"]')
+        .first().waitFor({ state: 'visible', timeout: 15000 })
+        .then(() => 'invite'),
+      new Promise(resolve => setTimeout(() => resolve('timeout'), 16000)),
+    ]);
+
+    if (result === 'search') {
       ok('Search input is visible on landing page');
+    } else if (result === 'setup') {
+      ok('Setup wizard shown (first-run, no provider configured)');
+    } else if (result === 'invite') {
+      ok('Invite code input visible (gated mode)');
     } else {
-      // May be behind invite gate -- check if invite input is shown instead
-      const inviteInput = page.locator('input[placeholder*="invite"]').first();
-      if (await inviteInput.isVisible({ timeout: 3000 }).catch(() => false)) {
-        ok('Invite code input visible (gated mode)');
-      } else {
-        bad('Search input', 'neither search nor invite input visible');
-      }
+      bad('Landing page', 'neither search bar, setup wizard, nor invite input visible after 15s');
     }
 
     await page.close();
