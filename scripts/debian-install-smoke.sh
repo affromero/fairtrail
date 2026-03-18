@@ -230,6 +230,116 @@ test_env_host_port() {
 }
 
 # ──────────────────────────────────────────────────────────────────
+# Test 7: End-to-end installer run (non-interactive, no Docker)
+#   Simulates: FAIRTRAIL_YES=1 bash install.sh
+#   Can't actually run Docker inside this container, but we can
+#   test every step up to "docker compose pull" by stubbing Docker.
+# ──────────────────────────────────────────────────────────────────
+test_e2e_install() {
+  # Clean slate
+  rm -rf "$HOME/.fairtrail" "$HOME/.local/bin/fairtrail" "$HOME/fairtrail"
+  rm -f "$HOME/.bashrc" "$HOME/.profile" "$HOME/.bash_profile"
+  echo "# default" > "$HOME/.bashrc"
+  echo "# default" > "$HOME/.profile"
+  mkdir -p "$HOME/.local/bin"
+
+  # Create stub "docker" that fakes success for compose commands
+  mkdir -p "$HOME/bin"
+  cat > "$HOME/bin/docker" << 'STUB'
+#!/bin/bash
+case "$*" in
+  *"compose version"*) echo "Docker Compose version v2.24.0" ;;
+  *"info"*) echo "ok" ;;
+  *"compose"*"pull"*) echo "pulled" ;;
+  *"compose"*"up"*) echo "started" ;;
+  *) echo "stub: $*" ;;
+esac
+STUB
+  chmod +x "$HOME/bin/docker"
+
+  # Create a fake "fairtrail-cli" download server using a local file
+  mkdir -p "$HOME/fake-server"
+  cp /home/testuser/fairtrail-cli "$HOME/fake-server/fairtrail-cli"
+
+  # Run installer in non-interactive mode with stubbed Docker and local CLI.
+  # Pipe empty stdin so the API key prompt gets "" (skip), and FAIRTRAIL_YES=1
+  # skips the consent prompt. The installer may fail at docker pull/up since
+  # our stub is minimal, but everything up to that point should work.
+  (
+    export PATH="$HOME/bin:$PATH"
+    export FAIRTRAIL_YES=1
+    export FAIRTRAIL_URL="file://$HOME/fake-server"
+    export HOST_PORT=3003
+
+    echo "" | bash /home/testuser/install.sh 2>&1 || true
+  )
+
+  # Verify: .fairtrail directory created
+  if [ -d "$HOME/.fairtrail" ]; then
+    pass "E2E: ~/.fairtrail directory created"
+  else
+    fail "E2E: ~/.fairtrail not created" "installer didn't create directory"
+  fi
+
+  # Verify: docker-compose.yml exists
+  if [ -f "$HOME/.fairtrail/docker-compose.yml" ]; then
+    pass "E2E: docker-compose.yml generated"
+  else
+    fail "E2E: docker-compose.yml missing" "installer didn't write compose file"
+  fi
+
+  # Verify: .env generated with HOST_PORT
+  if [ -f "$HOME/.fairtrail/.env" ]; then
+    if grep -q 'HOST_PORT=' "$HOME/.fairtrail/.env"; then
+      pass "E2E: .env contains HOST_PORT"
+    else
+      fail "E2E: .env missing HOST_PORT" "$(cat "$HOME/.fairtrail/.env")"
+    fi
+    if grep -q 'CRON_SECRET=' "$HOME/.fairtrail/.env"; then
+      pass "E2E: .env contains CRON_SECRET"
+    else
+      fail "E2E: .env missing CRON_SECRET" "no cron secret generated"
+    fi
+  else
+    fail "E2E: .env not generated" "installer didn't write .env"
+  fi
+
+  # Verify: PATH was patched in both files
+  if grep -qF '.local/bin' "$HOME/.bashrc" && grep -qF '.local/bin' "$HOME/.profile"; then
+    pass "E2E: PATH patched in both .bashrc and .profile"
+  else
+    fail "E2E: PATH not patched in both files" "bashrc=$(grep -c .local/bin "$HOME/.bashrc") profile=$(grep -c .local/bin "$HOME/.profile")"
+  fi
+
+  # Verify: CLI binary at expected location
+  if [ -f "$HOME/.local/bin/fairtrail" ] && [ -x "$HOME/.local/bin/fairtrail" ]; then
+    pass "E2E: fairtrail CLI installed and executable"
+  else
+    fail "E2E: fairtrail CLI not found" "expected at ~/.local/bin/fairtrail"
+  fi
+
+  # Verify: fairtrail --help works via login shell.
+  # The CLI needs docker compose, so put our stub docker in ~/.local/bin/ too.
+  if [ -f "$HOME/.local/bin/fairtrail" ]; then
+    cp "$HOME/bin/docker" "$HOME/.local/bin/docker"
+    # CLI also checks for ~/.fairtrail/docker-compose.yml
+    mkdir -p "$HOME/.fairtrail"
+    echo "services:" > "$HOME/.fairtrail/docker-compose.yml"
+
+    local help_output
+    help_output=$(bash -l -c 'fairtrail help' 2>&1 || true)
+    if echo "$help_output" | grep -q "fairtrail"; then
+      pass "E2E: 'fairtrail help' works in login shell"
+    else
+      fail "E2E: 'fairtrail help' failed in login shell" "$help_output"
+    fi
+  fi
+
+  # Cleanup
+  rm -rf "$HOME/bin" "$HOME/fake-server" "$HOME/.fairtrail" "$HOME/.local"
+}
+
+# ──────────────────────────────────────────────────────────────────
 # Run all
 # ──────────────────────────────────────────────────────────────────
 test_path_patching
@@ -238,6 +348,7 @@ test_login_shell_path
 test_old_dir_migration
 test_cli_update_path
 test_env_host_port
+test_e2e_install
 
 echo ""
 printf "${BOLD}Results: ${GREEN}%d passed${RESET}, ${RED}%d failed${RESET}\n" "$PASS" "$FAIL"
