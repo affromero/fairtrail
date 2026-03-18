@@ -122,6 +122,17 @@ Departure board / atmospheric aviation aesthetic — deep navy, amber glow, prec
 - Cache API responses in Redis (5min TTL)
 - Use `doppler run --` for all scripts that need secrets
 
+## Pre-Release Gate (MANDATORY before `/create-release`)
+
+Both tests must pass before tagging a release:
+
+```bash
+./scripts/docker-smoke-test.sh    # Docker infra: build, health, chromium, extraction, DB
+./scripts/install-flow-test.sh    # User flow: install.sh, CLI commands, search
+```
+
+If either fails, fix the issue and re-run. Do NOT tag without both passing.
+
 ## DON'T
 
 - Use Tailwind, inline styles, or styled-components
