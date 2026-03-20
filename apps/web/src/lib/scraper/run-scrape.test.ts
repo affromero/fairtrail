@@ -111,6 +111,91 @@ describe('runScrapeForQuery', () => {
     });
   });
 
+  it('marks previously available flight as sold_out when it disappears', async () => {
+    mockPrisma.priceSnapshot.findMany.mockResolvedValue([{
+      flightId: 'Delta-1025-JFK-LAX-2026-06-15',
+      price: 350,
+      airline: 'Delta',
+      travelDate: new Date('2026-06-15'),
+      currency: 'USD',
+      bookingUrl: 'https://example.com',
+      stops: 0,
+      duration: '5h',
+      status: 'available',
+    }]);
+
+    // Extraction returns a different flight — the previous one disappeared
+    mockExtractPrices.mockResolvedValue({
+      prices: [{
+        travelDate: '2026-06-15',
+        price: 400,
+        currency: 'USD',
+        airline: 'United',
+        bookingUrl: '',
+        stops: 1,
+        duration: '7h',
+        departureTime: '2:00 PM',
+        seatsLeft: null,
+      }],
+      usage: { inputTokens: 100, outputTokens: 20 },
+    });
+
+    const result = await runScrapeForQuery('q1');
+
+    expect(result.status).toBe('success');
+    // createMany is called twice: once for available flights, once for sold-out
+    expect(mockPrisma.priceSnapshot.createMany).toHaveBeenCalledTimes(2);
+    expect(mockPrisma.priceSnapshot.createMany).toHaveBeenCalledWith({
+      data: expect.arrayContaining([
+        expect.objectContaining({
+          flightId: 'Delta-1025-JFK-LAX-2026-06-15',
+          status: 'sold_out',
+        }),
+      ]),
+    });
+  });
+
+  it('does not create duplicate sold_out snapshot for already sold-out flight', async () => {
+    mockPrisma.priceSnapshot.findMany.mockResolvedValue([{
+      flightId: 'Delta-1025-JFK-LAX-2026-06-15',
+      price: 350,
+      airline: 'Delta',
+      travelDate: new Date('2026-06-15'),
+      currency: 'USD',
+      bookingUrl: 'https://example.com',
+      stops: 0,
+      duration: '5h',
+      status: 'sold_out',
+    }]);
+
+    // Extraction returns a different flight — the sold-out one is still missing
+    mockExtractPrices.mockResolvedValue({
+      prices: [{
+        travelDate: '2026-06-15',
+        price: 400,
+        currency: 'USD',
+        airline: 'United',
+        bookingUrl: '',
+        stops: 1,
+        duration: '7h',
+        departureTime: '2:00 PM',
+        seatsLeft: null,
+      }],
+      usage: { inputTokens: 100, outputTokens: 20 },
+    });
+
+    const result = await runScrapeForQuery('q1');
+
+    expect(result.status).toBe('success');
+    // createMany called only once — for the available United flight, NOT for sold-out Delta
+    expect(mockPrisma.priceSnapshot.createMany).toHaveBeenCalledTimes(1);
+    expect(mockPrisma.priceSnapshot.createMany).toHaveBeenCalledWith({
+      data: expect.arrayContaining([
+        expect.objectContaining({ airline: 'United' }),
+      ]),
+    });
+  });
+
   it('accepts null bookingUrl without error (schema is String?)', async () => {
     mockExtractPrices.mockResolvedValue({
       prices: [{

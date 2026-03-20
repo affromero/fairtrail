@@ -169,16 +169,15 @@ export async function runScrapeForQuery(queryId: string): Promise<ScrapeResult> 
       where: {
         queryId,
         flightId: { not: null },
-        status: 'available',
       },
       orderBy: { scrapedAt: 'desc' },
       distinct: ['flightId'],
-      select: { flightId: true, price: true, airline: true, travelDate: true, currency: true, bookingUrl: true, stops: true, duration: true },
+      select: { flightId: true, price: true, airline: true, travelDate: true, currency: true, bookingUrl: true, stops: true, duration: true, status: true },
     });
 
     const currentFlightIds = new Set(withFlightIds.map((p) => p.flightId));
     const soldOutSnapshots = previousSnapshots
-      .filter((prev) => prev.flightId && !currentFlightIds.has(prev.flightId))
+      .filter((prev) => prev.flightId && !currentFlightIds.has(prev.flightId) && prev.status === 'available')
       .map((prev) => ({
         queryId,
         travelDate: prev.travelDate,
