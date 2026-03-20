@@ -17,8 +17,6 @@ export function DeleteTracker({ queryId }: Props) {
 
   const token = typeof window !== 'undefined' ? getDeleteToken(queryId) : null;
 
-  if (!token) return null;
-
   const handleDelete = async () => {
     setDeleting(true);
     setError(null);
@@ -66,7 +64,7 @@ export function DeleteTracker({ queryId }: Props) {
             onClick={handleDelete}
             disabled={deleting}
           >
-            {deleting ? 'Deleting…' : 'Yes, delete'}
+            {deleting ? 'Deleting...' : 'Yes, delete'}
           </button>
         </div>
       </div>

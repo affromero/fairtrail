@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { getSavedTrackers, removeSavedTracker } from '@/lib/tracker-storage';
+import { getSavedTrackers, getDeleteToken, removeSavedTracker } from '@/lib/tracker-storage';
 import styles from './SavedTrackers.module.css';
 
 interface ActiveQuery {
@@ -134,7 +134,22 @@ export function SavedTrackers() {
     }
   }, []);
 
-  const handleRemove = (id: string) => {
+  const handleRemove = async (id: string) => {
+    const token = getDeleteToken(id);
+    try {
+      const res = await fetch(`/api/queries/${id}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ deleteToken: token }),
+      });
+      const data = await res.json();
+      if (!data.ok) {
+        // API rejected -- still remove from local view
+        console.warn(`Delete API returned: ${data.error}`);
+      }
+    } catch {
+      // Network error -- still remove from local view
+    }
     removeSavedTracker(id);
     setTrackers((prev) => prev.filter((t) => t.id !== id));
   };
@@ -173,16 +188,14 @@ export function SavedTrackers() {
       <div className={styles.list}>
         {trackers.map((t) => (
           <div key={t.id} className={styles.card}>
-            {t.hasDeleteToken && (
-              <button
-                className={styles.remove}
-                onClick={() => handleRemove(t.id)}
-                title="Remove"
-                aria-label="Remove tracker"
-              >
-                &times;
-              </button>
-            )}
+            <button
+              className={styles.remove}
+              onClick={() => handleRemove(t.id)}
+              title="Remove"
+              aria-label="Remove tracker"
+            >
+              &times;
+            </button>
 
             {t.status === 'deleted' ? (
               <div className={styles.content}>

@@ -9,12 +9,10 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
+  const isSelfHosted = process.env.SELF_HOSTED === 'true';
 
   const body = await request.json().catch(() => null);
   const token = body?.deleteToken;
-  if (!token || typeof token !== 'string') {
-    return apiError('Missing delete token', 401);
-  }
 
   const query = await prisma.query.findUnique({
     where: { id },
@@ -22,8 +20,14 @@ export async function PATCH(
   });
 
   if (!query) return apiError('Tracker not found', 404);
-  if (!query.deleteToken || query.deleteToken !== token) {
-    return apiError('Invalid delete token', 403);
+
+  if (!isSelfHosted) {
+    if (!token || typeof token !== 'string') {
+      return apiError('Missing delete token', 401);
+    }
+    if (!query.deleteToken || query.deleteToken !== token) {
+      return apiError('Invalid delete token', 403);
+    }
   }
 
   const interval = Number(body.scrapeInterval);
@@ -54,12 +58,10 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
+  const isSelfHosted = process.env.SELF_HOSTED === 'true';
 
   const body = await request.json().catch(() => null);
   const token = body?.deleteToken;
-  if (!token || typeof token !== 'string') {
-    return apiError('Missing delete token', 401);
-  }
 
   const query = await prisma.query.findUnique({
     where: { id },
@@ -70,8 +72,14 @@ export async function DELETE(
     return apiError('Tracker not found', 404);
   }
 
-  if (!query.deleteToken || query.deleteToken !== token) {
-    return apiError('Invalid delete token', 403);
+  // Self-hosted instances can delete without a token
+  if (!isSelfHosted) {
+    if (!token || typeof token !== 'string') {
+      return apiError('Missing delete token', 401);
+    }
+    if (!query.deleteToken || query.deleteToken !== token) {
+      return apiError('Invalid delete token', 403);
+    }
   }
 
   await prisma.query.delete({ where: { id } });
