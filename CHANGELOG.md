@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.3.9] - 2026-03-20
+
+### Added
+- Podman support: installer and CLI detect Podman as a fallback when Docker is absent ([#13](https://github.com/affromero/fairtrail/issues/13))
+- Podman networking: `host.containers.internal` for Ollama, conditional `extra_hosts` in generated compose
+- Schema assertion test to prevent `bookingUrl` regression
+- DELETE and PATCH endpoint tests covering hosted/self-hosted auth paths
+- `run-scrape.ts` unit tests (previously untested)
+
+### Fixed
+- Flight tracking crash when LLM returns null `bookingUrl` ([#14](https://github.com/affromero/fairtrail/issues/14))
+- Delete button invisible on touch devices and after browser/server reinstall ([#8](https://github.com/affromero/fairtrail/issues/8))
+- Self-hosted users unable to delete or update trackers without original session token
+- Null booking URLs causing crashes in BestPrice, PriceCalendar, PriceHistory components
+
 ## [0.3.8] - 2026-03-18
 
 ### Added
