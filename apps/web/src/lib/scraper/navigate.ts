@@ -67,22 +67,23 @@ export async function navigateGoogleFlights(
   params: FlightSearchParams
 ): Promise<NavigationResult> {
   const url = buildGoogleFlightsUrl(params);
-  const maxAttempts = 2;
+  const maxAttempts = 3;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     const browser = await launchBrowser();
+    const attemptStart = Date.now();
 
     try {
       const context = await createStealthContext(browser);
       const page = await context.newPage();
       console.log(`[navigate] attempt ${attempt}/${maxAttempts} → ${url}`);
-      await page.goto(url, { waitUntil: 'networkidle', timeout: 30_000 });
+
+      const gotoStart = Date.now();
+      await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30_000 });
+      console.log(`[navigate] goto resolved in ${Date.now() - gotoStart}ms`);
 
       // Wait for page to settle — randomized to look human
       await randomDelay(attempt === 1 ? 2000 : 4000, attempt === 1 ? 4000 : 7000);
-
-      // Simulate human browsing behavior
-      await simulateHumanBehavior(page);
 
       // Dismiss consent/cookie dialog — Google renders two identical "Accept all"
       // buttons; without .first() Playwright strict mode throws on the ambiguity
@@ -99,13 +100,16 @@ export async function navigateGoogleFlights(
       // Wait for flight results — look for price elements
       let resultsFound = false;
       try {
+        const selectorStart = Date.now();
         await page.waitForSelector('[data-gs]', { timeout: 15_000 });
+        console.log(`[navigate] selector [data-gs] found in ${Date.now() - selectorStart}ms`);
         resultsFound = true;
       } catch {
-        // Selector not found — page may be blocked, CAPTCHA'd, or empty
+        console.log(`[navigate] selector [data-gs] not found after 15s`);
       }
 
-      // Scroll through results like a human scanning prices
+      // Simulate human behavior only after results load — reduces time
+      // the page spends accumulating resources before we extract data
       if (resultsFound) {
         await simulateHumanBehavior(page);
       }
@@ -114,21 +118,30 @@ export async function navigateGoogleFlights(
       // of HTML but only ~3k of visible text, and flight data starts deep in the DOM
       // where a 50k char cap would never reach it
       const html = await page.evaluate(() => document.body.innerText);
-      console.log(`[navigate] attempt ${attempt}: resultsFound=${resultsFound}, textLength=${html.length}`);
+      console.log(`[navigate] attempt ${attempt}: resultsFound=${resultsFound}, textLength=${html.length}, elapsed=${Date.now() - attemptStart}ms`);
 
       await context.close();
 
       // Retry with fresh browser if no results and we have attempts left
       if (!resultsFound && attempt < maxAttempts) {
         console.log(`[navigate] no results on attempt ${attempt}, retrying after delay…`);
-        await browser.close();
         await new Promise((r) => setTimeout(r, 3000 + Math.random() * 4000));
         continue;
       }
 
       return { html, url, resultsFound, source: 'google_flights' };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const isCrash = /crashed|target closed|disposed/i.test(message);
+      console.error(`[navigate] attempt ${attempt} failed (crash=${isCrash}, elapsed=${Date.now() - attemptStart}ms): ${message}`);
+
+      if (attempt < maxAttempts) {
+        await new Promise((r) => setTimeout(r, 3000 + Math.random() * 4000));
+        continue;
+      }
+      throw error;
     } finally {
-      await browser.close();
+      await browser.close().catch(() => {});
     }
   }
 
@@ -153,6 +166,7 @@ export async function navigateFlightDetail(
   flightIndex: number
 ): Promise<FlightDetailResult> {
   const browser = await launchBrowser();
+  const start = Date.now();
 
   try {
     const context = await createStealthContext(browser);
@@ -160,9 +174,13 @@ export async function navigateFlightDetail(
 
     // Must use one-way search so clicking goes directly to booking options
     const url = buildGoogleFlightsUrl({ ...params, tripType: 'one_way' });
-    await page.goto(url, { waitUntil: 'networkidle', timeout: 30_000 });
+    console.log(`[navigate:detail] → ${url}`);
+
+    const gotoStart = Date.now();
+    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30_000 });
+    console.log(`[navigate:detail] goto resolved in ${Date.now() - gotoStart}ms`);
+
     await randomDelay(2000, 4000);
-    await simulateHumanBehavior(page);
 
     // Dismiss consent
     try {
@@ -177,8 +195,11 @@ export async function navigateFlightDetail(
 
     // Wait for results
     try {
+      const selectorStart = Date.now();
       await page.waitForSelector('li.pIav2d', { timeout: 15_000 });
+      console.log(`[navigate:detail] selector li.pIav2d found in ${Date.now() - selectorStart}ms`);
     } catch {
+      console.log(`[navigate:detail] selector li.pIav2d not found after 15s, elapsed=${Date.now() - start}ms`);
       await context.close();
       return { airlineDirectPrice: null, airlineDirectCurrency: null, bookingUrl: null, allBookingOptions: [] };
     }
@@ -223,6 +244,7 @@ export async function navigateFlightDetail(
 
     // Find the airline-direct option (tagged as "Airline")
     const airlineOption = result.find((o) => o.isAirline);
+    console.log(`[navigate:detail] done: ${result.length} booking options, elapsed=${Date.now() - start}ms`);
 
     return {
       airlineDirectPrice: airlineOption?.price ?? null,
@@ -230,8 +252,12 @@ export async function navigateFlightDetail(
       bookingUrl: null, // booking URL requires following a redirect — use Google Flights link
       allBookingOptions: result,
     };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`[navigate:detail] failed (elapsed=${Date.now() - start}ms): ${message}`);
+    throw error;
   } finally {
-    await browser.close();
+    await browser.close().catch(() => {});
   }
 }
 
@@ -245,11 +271,16 @@ export async function navigateAirlineDirect(
   }
 
   const browser = await launchBrowser();
+  const start = Date.now();
 
   try {
     const context = await createStealthContext(browser);
     const page = await context.newPage();
-    await page.goto(url, { waitUntil: 'networkidle', timeout: 45_000 });
+    console.log(`[navigate:airline] → ${url}`);
+
+    const gotoStart = Date.now();
+    await page.goto(url, { waitUntil: 'load', timeout: 45_000 });
+    console.log(`[navigate:airline] goto resolved in ${Date.now() - gotoStart}ms`);
 
     // Airline sites are slower — wait for dynamic content to render
     await randomDelay(4000, 7000);
@@ -285,10 +316,15 @@ export async function navigateAirlineDirect(
     }
 
     const html = await page.evaluate(() => document.body.innerText);
+    console.log(`[navigate:airline] resultsFound=${resultsFound}, textLength=${html.length}, elapsed=${Date.now() - start}ms`);
 
     await context.close();
     return { html, url, resultsFound, source: 'airline_direct' };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`[navigate:airline] failed (elapsed=${Date.now() - start}ms): ${message}`);
+    throw error;
   } finally {
-    await browser.close();
+    await browser.close().catch(() => {});
   }
 }
