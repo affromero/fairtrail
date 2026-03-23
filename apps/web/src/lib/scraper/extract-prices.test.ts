@@ -54,8 +54,8 @@ describe('extractPrices', () => {
   it('extracts valid prices from llm json array', async () => {
     mockExtract.mockResolvedValue({
       content: JSON.stringify([
-        { travelDate: '2026-06-15', price: 623, currency: 'USD', airline: 'Delta', bookingUrl: 'https://delta.com', stops: 0, duration: '5h 30m', departureTime: '10:25 AM', seatsLeft: 3 },
-        { travelDate: '2026-06-15', price: 450, currency: 'USD', airline: 'United', bookingUrl: 'https://united.com', stops: 1, duration: '8h 10m', departureTime: '2:00 PM', seatsLeft: null },
+        { travelDate: '2026-06-15', price: 623, currency: 'USD', airline: 'Delta', bookingUrl: 'https://delta.com', stops: 0, duration: '5h 30m', departureTime: '10:25 AM', arrivalTime: '3:55 PM', seatsLeft: 3 },
+        { travelDate: '2026-06-15', price: 450, currency: 'USD', airline: 'United', bookingUrl: 'https://united.com', stops: 1, duration: '8h 10m', departureTime: '2:00 PM', arrivalTime: '10:10 PM', seatsLeft: null },
       ]),
       usage: { inputTokens: 500, outputTokens: 100 },
     });
@@ -73,8 +73,8 @@ describe('extractPrices', () => {
   it('filters out entries with zero price', async () => {
     mockExtract.mockResolvedValue({
       content: JSON.stringify([
-        { travelDate: '2026-06-15', price: 0, currency: 'USD', airline: 'Delta', bookingUrl: '', stops: 0, duration: null, departureTime: null, seatsLeft: null },
-        { travelDate: '2026-06-15', price: 300, currency: 'USD', airline: 'United', bookingUrl: '', stops: 0, duration: null, departureTime: null, seatsLeft: null },
+        { travelDate: '2026-06-15', price: 0, currency: 'USD', airline: 'Delta', bookingUrl: '', stops: 0, duration: null, departureTime: null, arrivalTime: null, seatsLeft: null },
+        { travelDate: '2026-06-15', price: 300, currency: 'USD', airline: 'United', bookingUrl: '', stops: 0, duration: null, departureTime: null, arrivalTime: null, seatsLeft: null },
       ]),
       usage: { inputTokens: 200, outputTokens: 50 },
     });
@@ -87,7 +87,7 @@ describe('extractPrices', () => {
   it('filters out entries with empty airline', async () => {
     mockExtract.mockResolvedValue({
       content: JSON.stringify([
-        { travelDate: '2026-06-15', price: 300, currency: 'USD', airline: '', bookingUrl: '', stops: 0, duration: null, departureTime: null, seatsLeft: null },
+        { travelDate: '2026-06-15', price: 300, currency: 'USD', airline: '', bookingUrl: '', stops: 0, duration: null, departureTime: null, arrivalTime: null, seatsLeft: null },
       ]),
       usage: { inputTokens: 200, outputTokens: 50 },
     });
@@ -100,8 +100,8 @@ describe('extractPrices', () => {
   it('coerces null bookingUrl to empty string', async () => {
     mockExtract.mockResolvedValue({
       content: JSON.stringify([
-        { travelDate: '2026-06-15', price: 400, currency: 'USD', airline: 'easyJet', bookingUrl: null, stops: 0, duration: '1h 45m', departureTime: '8:00 AM', seatsLeft: null },
-        { travelDate: '2026-06-15', price: 350, currency: 'USD', airline: 'KLM', stops: 1, duration: '3h', departureTime: '10:00 AM', seatsLeft: null },
+        { travelDate: '2026-06-15', price: 400, currency: 'USD', airline: 'easyJet', bookingUrl: null, stops: 0, duration: '1h 45m', departureTime: '8:00 AM', arrivalTime: '9:45 AM', seatsLeft: null },
+        { travelDate: '2026-06-15', price: 350, currency: 'USD', airline: 'KLM', stops: 1, duration: '3h', departureTime: '10:00 AM', arrivalTime: '1:00 PM', seatsLeft: null },
       ]),
       usage: { inputTokens: 300, outputTokens: 80 },
     });
@@ -115,8 +115,8 @@ describe('extractPrices', () => {
   it('returns all_filtered_out when all entries invalid', async () => {
     mockExtract.mockResolvedValue({
       content: JSON.stringify([
-        { travelDate: '2026-06-15', price: 0, currency: 'USD', airline: 'X', bookingUrl: '', stops: 0, duration: null, departureTime: null, seatsLeft: null },
-        { travelDate: '2026-06-15', price: -5, currency: 'USD', airline: 'Y', bookingUrl: '', stops: 0, duration: null, departureTime: null, seatsLeft: null },
+        { travelDate: '2026-06-15', price: 0, currency: 'USD', airline: 'X', bookingUrl: '', stops: 0, duration: null, departureTime: null, arrivalTime: null, seatsLeft: null },
+        { travelDate: '2026-06-15', price: -5, currency: 'USD', airline: 'Y', bookingUrl: '', stops: 0, duration: null, departureTime: null, arrivalTime: null, seatsLeft: null },
       ]),
       usage: { inputTokens: 200, outputTokens: 50 },
     });
@@ -139,7 +139,7 @@ describe('extractPrices', () => {
   it('coerces null bookingUrl to empty string instead of passing null through', async () => {
     mockExtract.mockResolvedValue({
       content: JSON.stringify([
-        { travelDate: '2026-06-15', price: 350, currency: 'USD', airline: 'Delta', bookingUrl: null, stops: 0, duration: '5h', departureTime: null, seatsLeft: null },
+        { travelDate: '2026-06-15', price: 350, currency: 'USD', airline: 'Delta', bookingUrl: null, stops: 0, duration: '5h', departureTime: null, arrivalTime: null, seatsLeft: null },
       ]),
       usage: { inputTokens: 200, outputTokens: 50 },
     });
@@ -164,7 +164,7 @@ describe('extractPrices', () => {
   it('includes currency detection instruction when currency is null', async () => {
     mockExtract.mockResolvedValue({
       content: JSON.stringify([
-        { travelDate: '2026-06-15', price: 500, currency: 'GBP', airline: 'BA', bookingUrl: '', stops: 0, duration: null, departureTime: null, seatsLeft: null },
+        { travelDate: '2026-06-15', price: 500, currency: 'GBP', airline: 'BA', bookingUrl: '', stops: 0, duration: null, departureTime: null, arrivalTime: null, seatsLeft: null },
       ]),
       usage: { inputTokens: 500, outputTokens: 100 },
     });
@@ -181,7 +181,7 @@ describe('extractPrices', () => {
   it('uses explicit currency in prompt when provided', async () => {
     mockExtract.mockResolvedValue({
       content: JSON.stringify([
-        { travelDate: '2026-06-15', price: 500, currency: 'EUR', airline: 'LH', bookingUrl: '', stops: 0, duration: null, departureTime: null, seatsLeft: null },
+        { travelDate: '2026-06-15', price: 500, currency: 'EUR', airline: 'LH', bookingUrl: '', stops: 0, duration: null, departureTime: null, arrivalTime: null, seatsLeft: null },
       ]),
       usage: { inputTokens: 500, outputTokens: 100 },
     });

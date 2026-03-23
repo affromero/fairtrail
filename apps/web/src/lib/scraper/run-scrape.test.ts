@@ -95,6 +95,7 @@ describe('runScrapeForQuery', () => {
         stops: 0,
         duration: '5h',
         departureTime: null,
+        arrivalTime: null,
         seatsLeft: null,
       }],
       usage: { inputTokens: 100, outputTokens: 20 },
@@ -121,6 +122,8 @@ describe('runScrapeForQuery', () => {
       bookingUrl: 'https://example.com',
       stops: 0,
       duration: '5h',
+      departureTime: '10:25 AM',
+      arrivalTime: '3:25 PM',
       status: 'available',
     }]);
 
@@ -135,6 +138,7 @@ describe('runScrapeForQuery', () => {
         stops: 1,
         duration: '7h',
         departureTime: '2:00 PM',
+        arrivalTime: '5:30 PM',
         seatsLeft: null,
       }],
       usage: { inputTokens: 100, outputTokens: 20 },
@@ -165,6 +169,8 @@ describe('runScrapeForQuery', () => {
       bookingUrl: 'https://example.com',
       stops: 0,
       duration: '5h',
+      departureTime: '10:25 AM',
+      arrivalTime: '3:25 PM',
       status: 'sold_out',
     }]);
 
@@ -179,6 +185,7 @@ describe('runScrapeForQuery', () => {
         stops: 1,
         duration: '7h',
         departureTime: '2:00 PM',
+        arrivalTime: '5:30 PM',
         seatsLeft: null,
       }],
       usage: { inputTokens: 100, outputTokens: 20 },
@@ -207,6 +214,7 @@ describe('runScrapeForQuery', () => {
         stops: 0,
         duration: '5h',
         departureTime: null,
+        arrivalTime: null,
         seatsLeft: null,
       }],
       usage: { inputTokens: 100, outputTokens: 20 },

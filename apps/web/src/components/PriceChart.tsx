@@ -17,6 +17,8 @@ interface Snapshot {
   stops: number;
   duration: string | null;
   flightId: string | null;
+  departureTime: string | null;
+  arrivalTime: string | null;
   seatsLeft: number | null;
   status: string;
   airlineDirectPrice: number | null;
@@ -71,12 +73,20 @@ export function PriceChart({ snapshots, currency = 'USD' }: { snapshots: Snapsho
         name: airline,
         line: { color, width: 2 },
         marker: { color, size: 6 },
-        customdata: points.map((p) => [p.bookingUrl, p.stops, p.duration, p.currency, p.seatsLeft]),
-        hovertemplate:
-          `<b>${sym}%{y:.2f}</b> %{customdata[3]}<br>` +
-          '%{x|%b %d, %H:%M}<br>' +
-          '%{customdata[2]}<br>' +
-          '<extra>%{fullData.name}</extra>',
+        customdata: points.map((p) => [p.bookingUrl]),
+        text: points.map((p) => {
+          const lines = [
+            `<b>${sym}${p.price.toFixed(2)}</b> ${p.currency}`,
+            new Date(p.scrapedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }),
+          ];
+          if (p.departureTime || p.arrivalTime) {
+            lines.push(`${p.departureTime ?? '?'} - ${p.arrivalTime ?? '?'}`);
+          }
+          if (p.duration) lines.push(p.duration);
+          if (p.seatsLeft) lines.push(`${p.seatsLeft} seats left`);
+          return lines.join('<br>');
+        }),
+        hovertemplate: '%{text}<extra>%{fullData.name}</extra>',
       };
     });
 
@@ -89,11 +99,18 @@ export function PriceChart({ snapshots, currency = 'USD' }: { snapshots: Snapsho
         name: 'Sold out',
         line: { color: '#ef4444', width: 0 },
         marker: { color: '#ef4444', size: 10 },
-        customdata: soldOut.map((p) => [p.bookingUrl, p.stops, p.duration, p.currency, p.seatsLeft]),
-        hovertemplate:
-          `<b>${sym}%{y:.2f}</b> (sold out)<br>` +
-          '%{x|%b %d, %H:%M}<br>' +
-          '<extra>Sold out</extra>',
+        customdata: soldOut.map((p) => [p.bookingUrl]),
+        text: soldOut.map((p) => {
+          const lines = [
+            `<b>${sym}${p.price.toFixed(2)}</b> (sold out)`,
+            new Date(p.scrapedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }),
+          ];
+          if (p.departureTime || p.arrivalTime) {
+            lines.push(`${p.departureTime ?? '?'} - ${p.arrivalTime ?? '?'}`);
+          }
+          return lines.join('<br>');
+        }),
+        hovertemplate: '%{text}<extra>Sold out</extra>',
       });
     }
 

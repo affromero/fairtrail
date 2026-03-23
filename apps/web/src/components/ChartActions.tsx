@@ -9,6 +9,8 @@ interface Snapshot {
   currency: string;
   airline: string;
   stops: number;
+  departureTime: string | null;
+  arrivalTime: string | null;
   duration: string | null;
   scrapedAt: string;
 }
@@ -32,7 +34,7 @@ export function ChartActions({ queryId, origin, destination, snapshots }: Props)
   };
 
   const handleExport = () => {
-    const header = 'Date Scraped,Travel Date,Price,Currency,Airline,Stops,Duration\n';
+    const header = 'Date Scraped,Travel Date,Price,Currency,Airline,Stops,Duration,Departure,Arrival\n';
     const rows = snapshots.map((s) =>
       [
         new Date(s.scrapedAt).toISOString(),
@@ -42,6 +44,8 @@ export function ChartActions({ queryId, origin, destination, snapshots }: Props)
         `"${s.airline}"`,
         s.stops,
         s.duration ?? '',
+        s.departureTime ?? '',
+        s.arrivalTime ?? '',
       ].join(',')
     );
     const csv = header + rows.join('\n');

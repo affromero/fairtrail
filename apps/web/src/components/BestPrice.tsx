@@ -7,6 +7,8 @@ interface Snapshot {
   airline: string;
   bookingUrl: string | null;
   stops: number;
+  departureTime: string | null;
+  arrivalTime: string | null;
   duration: string | null;
   scrapedAt: string;
 }
@@ -30,6 +32,7 @@ export function BestPrice({ snapshots }: { snapshots: Snapshot[] }) {
           <span className={styles.meta}>
             {best.stops === 0 ? 'Nonstop' : `${best.stops} stop${best.stops > 1 ? 's' : ''}`}
             {best.duration && ` · ${best.duration}`}
+            {(best.departureTime || best.arrivalTime) && ` · ${best.departureTime ?? '?'} - ${best.arrivalTime ?? '?'}`}
           </span>
         </div>
         {best.bookingUrl && (

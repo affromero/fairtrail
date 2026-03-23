@@ -63,6 +63,13 @@
   font-weight: 600;
 }
 
+.times {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
 .stops {
   font-size: 0.75rem;
   color: var(--text-secondary);

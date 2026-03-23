@@ -55,6 +55,8 @@ model PriceSnapshot {
   stops             Int      @default(0)
   duration          String?
   flightId          String?  // stable identity: airline-HHMM-origin-dest-date
+  departureTime     String?
+  arrivalTime       String?
   seatsLeft         Int?
   status            String   @default("available") // 'available' | 'sold_out'
   airlineDirectPrice Float?

@@ -172,7 +172,7 @@ export async function runScrapeForQuery(queryId: string): Promise<ScrapeResult> 
       },
       orderBy: { scrapedAt: 'desc' },
       distinct: ['flightId'],
-      select: { flightId: true, price: true, airline: true, travelDate: true, currency: true, bookingUrl: true, stops: true, duration: true, status: true },
+      select: { flightId: true, price: true, airline: true, travelDate: true, currency: true, bookingUrl: true, stops: true, duration: true, departureTime: true, arrivalTime: true, status: true },
     });
 
     const currentFlightIds = new Set(withFlightIds.map((p) => p.flightId));
@@ -187,6 +187,8 @@ export async function runScrapeForQuery(queryId: string): Promise<ScrapeResult> 
         bookingUrl: prev.bookingUrl,
         stops: prev.stops,
         duration: prev.duration,
+        departureTime: prev.departureTime,
+        arrivalTime: prev.arrivalTime,
         flightId: prev.flightId,
         status: 'sold_out' as const,
         fetchRunId: fetchRun.id,
@@ -204,6 +206,8 @@ export async function runScrapeForQuery(queryId: string): Promise<ScrapeResult> 
           bookingUrl: p.bookingUrl,
           stops: p.stops,
           duration: p.duration,
+          departureTime: p.departureTime ?? null,
+          arrivalTime: p.arrivalTime ?? null,
           flightId: p.flightId,
           seatsLeft: p.seatsLeft ?? null,
           fetchRunId: fetchRun.id,

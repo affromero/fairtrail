@@ -57,6 +57,8 @@ export async function GET(
           stops: true,
           duration: true,
           flightId: true,
+          departureTime: true,
+          arrivalTime: true,
           seatsLeft: true,
           status: true,
           airlineDirectPrice: true,

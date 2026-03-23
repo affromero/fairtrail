@@ -10,6 +10,8 @@ interface Snapshot {
   stops: number;
   duration: string | null;
   flightId: string | null;
+  departureTime: string | null;
+  arrivalTime: string | null;
   seatsLeft: number | null;
   status: string;
   airlineDirectPrice: number | null;
@@ -63,6 +65,7 @@ export function PriceHistory({ snapshots }: { snapshots: Snapshot[] }) {
             <tr>
               <th>Date</th>
               <th>Airline</th>
+              <th>Times</th>
               <th>Price</th>
               <th>Change</th>
               <th>Stops</th>
@@ -77,6 +80,11 @@ export function PriceHistory({ snapshots }: { snapshots: Snapshot[] }) {
                 <tr key={s.id}>
                   <td className={styles.date}>{formatDateTime(s.scrapedAt)}</td>
                   <td>{s.airline}</td>
+                  <td className={styles.times}>
+                    {s.departureTime || s.arrivalTime
+                      ? `${s.departureTime ?? '?'} - ${s.arrivalTime ?? '?'}`
+                      : null}
+                  </td>
                   <td className={styles.price}>{currencySymbol(s.currency)}{s.price.toLocaleString()}</td>
                   <td>
                     {trend.direction === 'up' && (
