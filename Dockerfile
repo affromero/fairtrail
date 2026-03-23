@@ -84,6 +84,8 @@ COPY --from=proddeps --chown=node:node /app/node_modules/@google ./node_modules/
 RUN mkdir -p /app/data && chown node:node /app/data
 
 COPY --chown=node:node docker-entrypoint.sh ./
+# automatically strip any carriage returns (\r) from docker-entrypoint.sh during the build process 
+RUN sed -i 's/\r$//' docker-entrypoint.sh
 RUN chmod +x docker-entrypoint.sh
 USER node
 EXPOSE 3003
