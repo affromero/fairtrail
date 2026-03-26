@@ -345,6 +345,7 @@ body = {
     'tripType': parsed.get('tripType', 'round_trip'),
     'routes': [{'origin': r['origin'], 'originName': r.get('originName',''),
                 'destination': r['destination'], 'destinationName': r.get('destinationName',''),
+                'date': r.get('date'), 'returnDate': r.get('returnDate'),
                 'selectedFlights': r.get('flights',[])} for r in routes]
 }
 print(json.dumps(body))

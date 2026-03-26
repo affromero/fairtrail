@@ -183,7 +183,7 @@ describe('POST /api/queries', () => {
     const res = await POST(makeRequest(pinnedRoundTrip));
     expect(res.status).toBe(201);
 
-    const createCall = mockQueryCreate.mock.calls[0][0];
+    const createCall = mockQueryCreate.mock.calls[0]![0];
     expect(createCall.data.dateFrom).toEqual(new Date('2026-06-15T00:00:00Z'));
     expect(createCall.data.dateTo).toEqual(new Date('2026-06-22T00:00:00Z'));
 
@@ -208,7 +208,7 @@ describe('POST /api/queries', () => {
     const res = await POST(makeRequest(pinnedOneWay));
     expect(res.status).toBe(201);
 
-    const createCall = mockQueryCreate.mock.calls[0][0];
+    const createCall = mockQueryCreate.mock.calls[0]![0];
     expect(createCall.data.dateFrom).toEqual(new Date('2026-06-15T00:00:00Z'));
     expect(createCall.data.dateTo).toEqual(new Date('2026-06-15T00:00:00Z'));
   });
