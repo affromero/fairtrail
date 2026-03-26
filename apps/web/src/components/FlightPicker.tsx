@@ -13,7 +13,8 @@ export interface RouteFlights {
   destination: string;
   destinationName: string;
   flights: PriceData[];
-  date?: string; // ISO date — set when grouped by travel date
+  date?: string; // ISO date — outbound date when grouped by travel date
+  returnDate?: string; // ISO date — return date for round trips
   error?: string;
 }
 

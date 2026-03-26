@@ -9,7 +9,8 @@ interface RouteInput {
   originName: string;
   destination: string;
   destinationName: string;
-  date?: string; // when set, pins this query to a specific travel date
+  date?: string; // when set, pins this query to a specific outbound date
+  returnDate?: string; // when set, pins return date for round trips
   selectedFlights: Array<{
     travelDate: string;
     price: number;
@@ -99,6 +100,7 @@ export async function POST(request: NextRequest) {
     destination: string;
     destinationName: string;
     date?: string;
+    returnDate?: string;
     deleteToken: string;
   }> = [];
 
@@ -113,9 +115,9 @@ export async function POST(request: NextRequest) {
 
     const deleteToken = crypto.randomUUID();
 
-    // Per-date pinning: when route has a specific date, use it as both dateFrom/dateTo
+    // Per-date pinning: when route has a specific date, pin dateFrom to outbound and dateTo to return
     const routeFrom = route.date ? new Date(route.date + 'T00:00:00Z') : from;
-    const routeTo = route.date ? new Date(route.date + 'T00:00:00Z') : to;
+    const routeTo = route.returnDate ? new Date(route.returnDate + 'T00:00:00Z') : (route.date ? new Date(route.date + 'T00:00:00Z') : to);
     const routeFlex = route.date ? 0 : flex;
     const routeExpiry = new Date(routeTo);
     routeExpiry.setDate(routeExpiry.getDate() + routeFlex);
@@ -166,6 +168,7 @@ export async function POST(request: NextRequest) {
       destination: route.destination,
       destinationName: route.destinationName,
       date: route.date,
+      returnDate: route.returnDate,
       deleteToken,
     });
   }

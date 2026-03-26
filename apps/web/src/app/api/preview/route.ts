@@ -23,7 +23,8 @@ export interface RouteResult {
   destination: string;
   destinationName: string;
   flights: PriceData[];
-  date?: string; // ISO date — set when flights are grouped by travel date
+  date?: string; // ISO date — outbound date when grouped by travel date
+  returnDate?: string; // ISO date — return date for round trips
   error?: string;
 }
 
@@ -292,6 +293,7 @@ export async function POST(request: NextRequest) {
           destinationName: combo.destination.name,
           flights,
           date: outboundDate,
+          returnDate,
         });
       } catch (err) {
         // Partial failure — include route with error, continue with others
@@ -302,6 +304,7 @@ export async function POST(request: NextRequest) {
           destinationName: combo.destination.name,
           flights: [],
           date: outboundDate,
+          returnDate,
           error: err instanceof Error ? err.message : 'Failed to search this route',
         });
       }

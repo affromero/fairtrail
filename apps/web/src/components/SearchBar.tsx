@@ -222,6 +222,7 @@ export function SearchBar({ initialQuery }: { initialQuery?: string } = {}) {
             destination: rs.route.destination,
             destinationName: rs.route.destinationName,
             date: rs.route.date,
+            returnDate: rs.route.returnDate,
             selectedFlights: rs.flights,
           })),
         }),
@@ -234,7 +235,7 @@ export function SearchBar({ initialQuery }: { initialQuery?: string } = {}) {
         return;
       }
 
-      const queries: Array<{ id: string; origin: string; originName: string; destination: string; destinationName: string; date?: string; deleteToken: string }> = data.data.queries;
+      const queries: Array<{ id: string; origin: string; originName: string; destination: string; destinationName: string; date?: string; returnDate?: string; deleteToken: string }> = data.data.queries;
 
       for (const q of queries) {
         addSavedTracker({
@@ -244,7 +245,7 @@ export function SearchBar({ initialQuery }: { initialQuery?: string } = {}) {
           originName: q.originName,
           destinationName: q.destinationName,
           dateFrom: q.date || parsed.dateFrom,
-          dateTo: q.date || parsed.dateTo,
+          dateTo: q.returnDate || parsed.dateTo,
           createdAt: new Date().toISOString(),
           deleteToken: q.deleteToken,
         });
