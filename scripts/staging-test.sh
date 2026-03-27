@@ -181,9 +181,9 @@ echo "# default" > "$TEST_HOME/.profile"
 env \
   HOME="$TEST_HOME" \
   FAIRTRAIL_YES=1 \
-  FAIRTRAIL_IMAGE="fairtrail-staging:latest" \
+  FAIRTRAIL_REPO="$REPO_DIR" \
   FAIRTRAIL_CLI_SOURCE="$REPO_DIR/apps/web/public/fairtrail-cli" \
-  FAIRTRAIL_SKIP_PULL=1 \
+  FAIRTRAIL_SKIP_BUILD=1 \
   FAIRTRAIL_SKIP_START=1 \
   HOST_PORT="$STAGING_PORT" \
   bash "$REPO_DIR/apps/web/public/install.sh" 2>&1 | sed 's/\x1b\[[0-9;]*m//g' | while IFS= read -r line; do

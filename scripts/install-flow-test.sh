@@ -96,10 +96,10 @@ test_entrypoint_port_warning() {
 # ---------------------------------------------------------------------------
 test_install_overrides() {
   local installer="apps/web/public/install.sh"
-  if grep -q 'FAIRTRAIL_IMAGE' "$installer" && grep -q 'FAIRTRAIL_CLI_SOURCE' "$installer"; then
-    pass "install.sh supports test overrides (FAIRTRAIL_IMAGE, FAIRTRAIL_CLI_SOURCE)"
+  if grep -q 'FAIRTRAIL_REPO' "$installer" && grep -q 'FAIRTRAIL_CLI_SOURCE' "$installer"; then
+    pass "install.sh supports test overrides (FAIRTRAIL_REPO, FAIRTRAIL_CLI_SOURCE)"
   else
-    fail "install.sh should support FAIRTRAIL_IMAGE and FAIRTRAIL_CLI_SOURCE overrides"
+    fail "install.sh should support FAIRTRAIL_REPO and FAIRTRAIL_CLI_SOURCE overrides"
   fi
 }
 

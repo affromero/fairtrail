@@ -230,10 +230,21 @@ cmd_update() {
     printf "${YELLOW}${BOLD}!${RESET} CLI update skipped (couldn't reach %s)\n" "$BASE_URL"
   fi
 
-  # Pull latest image and restart
-  dc pull web 2>&1 | while IFS= read -r line; do
+  # Try pulling pre-built image; fall back to local build if unavailable
+  if ! dc pull web 2>&1 | while IFS= read -r line; do
     printf "  ${DIM}%s${RESET}\n" "$line"
-  done
+  done; then
+    printf "${YELLOW}${BOLD}!${RESET} No pre-built image for this architecture, building locally...\n"
+    cd "$FAIRTRAIL_DIR"
+    if [ -d repo/.git ]; then
+      git -C repo pull --ff-only -q 2>/dev/null || true
+    else
+      git clone --depth 1 -q https://github.com/affromero/fairtrail.git repo
+    fi
+    dc build web 2>&1 | while IFS= read -r line; do
+      printf "  ${DIM}%s${RESET}\n" "$line"
+    done
+  fi
 
   dc up -d 2>&1 | while IFS= read -r line; do
     printf "  ${DIM}%s${RESET}\n" "$line"

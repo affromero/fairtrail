@@ -296,9 +296,9 @@ STUB
       fail "E2E: .env missing HOST_PORT" "$(cat "$HOME/.fairtrail/.env")"
     fi
     if grep -q 'CRON_SECRET=' "$HOME/.fairtrail/.env"; then
-      pass "E2E: .env contains CRON_SECRET"
+      fail "E2E: .env should NOT contain CRON_SECRET" "entrypoint generates it at runtime"
     else
-      fail "E2E: .env missing CRON_SECRET" "no cron secret generated"
+      pass "E2E: .env omits CRON_SECRET (generated at runtime by entrypoint)"
     fi
   else
     fail "E2E: .env not generated" "installer didn't write .env"

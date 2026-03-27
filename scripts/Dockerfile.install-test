@@ -8,7 +8,7 @@
 FROM debian:bookworm-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      bash curl ca-certificates grep coreutils xxd \
+      bash curl ca-certificates grep coreutils git \
     && rm -rf /var/lib/apt/lists/*
 
 # Create a non-root user (typical Debian SSH setup)

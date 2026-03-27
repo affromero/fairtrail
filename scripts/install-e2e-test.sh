@@ -115,12 +115,12 @@ info "Running install.sh..."
 env \
   HOME="$TEST_HOME" \
   FAIRTRAIL_YES=1 \
-  FAIRTRAIL_IMAGE="$TEST_IMAGE" \
+  FAIRTRAIL_REPO="$REPO_ROOT" \
   FAIRTRAIL_CLI_SOURCE="$REPO_ROOT/apps/web/public/fairtrail-cli" \
   FAIRTRAIL_API_KEY="test-smoke-key" \
   FAIRTRAIL_API_PROVIDER="ANTHROPIC_API_KEY" \
   FAIRTRAIL_EXTRA_ENV="ANTHROPIC_BASE_URL=http://host.docker.internal:${LLMOCK_PORT}" \
-  FAIRTRAIL_SKIP_PULL=1 \
+  FAIRTRAIL_SKIP_BUILD=1 \
   HOST_PORT="$HOST_PORT" \
   bash "$REPO_ROOT/apps/web/public/install.sh" 2>&1 | while IFS= read -r line; do
     # Strip ANSI color codes for cleaner output

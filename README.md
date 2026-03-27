@@ -172,9 +172,9 @@ curl -s -X POST http://localhost:3003/api/queries \
     "tripType": "round_trip", "routes": [...]
   }' | jq .
 
-# 3. Trigger an immediate scrape
+# 3. Trigger an immediate scrape (CRON_SECRET is auto-generated at startup, check docker logs)
 curl -s http://localhost:3003/api/cron/scrape \
-  -H "Authorization: Bearer $CRON_SECRET" | jq .
+  -H "Authorization: Bearer $(docker compose -f docker-compose.prod.yml logs web 2>&1 | grep -oP 'CRON_SECRET=\K\S+')" | jq .
 
 # 4. Get price data for a query
 curl -s http://localhost:3003/api/queries/{id}/prices | jq .
