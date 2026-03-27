@@ -234,14 +234,6 @@ fi
 # ---------------------------------------------------------------------------
 mkdir -p "$FAIRTRAIL_DIR"
 
-# Clone the repo (used for local Docker builds)
-if [ -d "$FAIRTRAIL_DIR/repo/.git" ]; then
-  info "Updating source..."
-  git -C "$FAIRTRAIL_DIR/repo" pull --ff-only -q 2>/dev/null || true
-else
-  info "Cloning Fairtrail source..."
-  git clone --depth 1 -q "$FAIRTRAIL_REPO" "$FAIRTRAIL_DIR/repo"
-fi
 
 EXTRA_HOSTS_BLOCK=""
 if [ "$CONTAINER_CMD" != "podman" ]; then
@@ -282,8 +274,8 @@ services:
       retries: 5
 
   web:
+    image: ghcr.io/affromero/fairtrail:latest
     build: ./repo
-    image: fairtrail:local
     restart: unless-stopped
     depends_on:
       db:
@@ -566,9 +558,17 @@ cd "$FAIRTRAIL_DIR"
 
 if [ "${FAIRTRAIL_SKIP_BUILD:-}" = "1" ]; then
   ok "Using existing image (build skipped)"
+elif $DC pull web 2>/dev/null; then
+  ok "Pulled pre-built image"
 else
-  info "Building Fairtrail (this takes a few minutes on first run)..."
+  info "No pre-built image for this architecture, building locally..."
+  info "This takes a few minutes on first run"
   echo ""
+
+  # Ensure repo is cloned for local builds
+  if [ ! -d "$FAIRTRAIL_DIR/repo/.git" ]; then
+    git clone --depth 1 -q "$FAIRTRAIL_REPO" "$FAIRTRAIL_DIR/repo"
+  fi
 
   $DC build 2>&1 | while IFS= read -r line; do
     printf "  ${DIM}%s${RESET}\n" "$line"
