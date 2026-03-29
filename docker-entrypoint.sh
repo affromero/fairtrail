@@ -98,6 +98,21 @@ if [ "${SELF_HOSTED:-true}" = "true" ]; then
     npm install -g @openai/codex --prefer-offline --no-audit --no-fund 2>&1 | tail -1
     command -v codex >/dev/null 2>&1 && echo "[setup] Codex CLI ready" || echo "[setup] WARNING: Codex CLI install failed"
   fi
+
+  # Verify Claude Code CLI authentication.
+  # On macOS, OAuth tokens live in the system Keychain which is inaccessible
+  # from Docker. The installer extracts the token into CLAUDE_CODE_OAUTH_TOKEN.
+  # If that env var is missing and the CLI isn't authenticated, warn the user.
+  if command -v claude >/dev/null 2>&1; then
+    if ! claude auth status 2>/dev/null | grep -q '"loggedIn": true'; then
+      echo "[setup] WARNING: Claude Code CLI is not authenticated"
+      echo "[setup]   The CLI cannot access macOS Keychain from inside Docker."
+      echo "[setup]   Fix: add CLAUDE_CODE_OAUTH_TOKEN to ~/.fairtrail/.env"
+      echo "[setup]   Get it with: security find-generic-password -s 'Claude Code-credentials' -w | python3 -c 'import json,sys; print(json.load(sys.stdin)[\"claudeAiOauth\"][\"accessToken\"])'"
+    else
+      echo "[setup] Claude Code CLI authenticated"
+    fi
+  fi
 fi
 
 # --- Start the app ---

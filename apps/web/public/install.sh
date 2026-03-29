@@ -376,6 +376,17 @@ API_KEY_VAL=""
 if command -v claude &>/dev/null && [ -d "$HOME/.claude" ]; then
   CLAUDE_CODE_DETECTED=true
   ok "Claude Code CLI detected — no API key needed"
+
+  # On macOS, Claude Code stores OAuth tokens in the system Keychain, which is
+  # inaccessible from inside Docker.  Extract the token now and pass it via env.
+  CLAUDE_OAUTH_TOKEN=""
+  if [ "$(uname)" = "Darwin" ]; then
+    KEYCHAIN_JSON=$(security find-generic-password -s "Claude Code-credentials" -w 2>/dev/null || true)
+    if [ -n "$KEYCHAIN_JSON" ]; then
+      CLAUDE_OAUTH_TOKEN=$(printf '%s' "$KEYCHAIN_JSON" \
+        | python3 -c 'import json,sys; print(json.load(sys.stdin)["claudeAiOauth"]["accessToken"])' 2>/dev/null || true)
+    fi
+  fi
 fi
 
 if command -v codex &>/dev/null && [ -d "$HOME/.codex" ]; then
@@ -478,6 +489,11 @@ else
       echo ""
       echo "# Ollama (Docker-compatible address)"
       echo "OLLAMA_HOST=${OLLAMA_HOST_VAL}"
+    fi
+    if [ -n "${CLAUDE_OAUTH_TOKEN:-}" ]; then
+      echo ""
+      echo "# Claude Code CLI OAuth token (extracted from macOS Keychain)"
+      echo "CLAUDE_CODE_OAUTH_TOKEN=${CLAUDE_OAUTH_TOKEN}"
     fi
     if [ -n "$FAIRTRAIL_EXTRA_ENV" ]; then
       echo ""

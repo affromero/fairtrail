@@ -70,6 +70,30 @@ dc() {
   $_DC $COMPOSE_FILES "$@"
 }
 
+# On macOS, refresh the Claude Code OAuth token from the system Keychain into
+# .env before starting. Tokens expire, so we re-extract on every start.
+refresh_claude_oauth_token() {
+  [ "$(uname)" != "Darwin" ] && return
+  command -v security &>/dev/null || return
+
+  local keychain_json token
+  keychain_json=$(security find-generic-password -s "Claude Code-credentials" -w 2>/dev/null || true)
+  [ -z "$keychain_json" ] && return
+
+  token=$(printf '%s' "$keychain_json" \
+    | python3 -c 'import json,sys; print(json.load(sys.stdin)["claudeAiOauth"]["accessToken"])' 2>/dev/null || true)
+  [ -z "$token" ] && return
+
+  local env_file="$FAIRTRAIL_DIR/.env"
+  if [ -f "$env_file" ] && grep -q '^CLAUDE_CODE_OAUTH_TOKEN=' "$env_file" 2>/dev/null; then
+    # Update existing token
+    sed -i '' "s|^CLAUDE_CODE_OAUTH_TOKEN=.*|CLAUDE_CODE_OAUTH_TOKEN=${token}|" "$env_file"
+  else
+    # Append token
+    printf '\n# Claude Code CLI OAuth token (extracted from macOS Keychain)\nCLAUDE_CODE_OAUTH_TOKEN=%s\n' "$token" >> "$env_file"
+  fi
+}
+
 format_time() {
   local iso="$1"
   if [ -z "$iso" ] || [ "$iso" = "null" ]; then
@@ -108,6 +132,8 @@ cmd_start_foreground() {
     printf "${RED}${BOLD}✗${RESET} Docker is not running. Start Docker Desktop and try again.\n"
     exit 1
   fi
+
+  refresh_claude_oauth_token
 
   echo ""
   printf "${BOLD}  Fairtrail${RESET}\n"
@@ -151,6 +177,8 @@ cmd_start_background() {
     printf "${RED}${BOLD}✗${RESET} Docker is not running. Start Docker Desktop and try again.\n"
     exit 1
   fi
+
+  refresh_claude_oauth_token
 
   dc up -d 2>&1 | while IFS= read -r line; do
     printf "  ${DIM}%s${RESET}\n" "$line"
