@@ -328,8 +328,13 @@ Google Flights has an undocumented internal API (`GetShoppingResults`, `GetCalen
 
 **What it costs you:**
 
-| Capability | Playwright + LLM | Direct API |
+|  | Fairtrail | [fli](https://github.com/punitarani/fli) |
 |---|---|---|
+| Approach | Playwright + LLM extraction | Reverse-engineered internal API |
+| Language | TypeScript (Next.js) | Python |
+| Speed | 3-10s per search (browser + LLM) | Sub-second (single HTTP POST) |
+| LLM cost | ~$0.001/search (Haiku) | None |
+| Docker image | ~400MB (Chromium) | ~20MB |
 | Booking links | Yes -- captures redirect URLs | No |
 | Currency control | Yes (`&curr=`, `&gl=` params) | No -- determined by server IP geolocation |
 | Fare class / cabin details | Yes -- visible in page | No |
@@ -338,6 +343,8 @@ Google Flights has an undocumented internal API (`GetShoppingResults`, `GetCalen
 | Departure/arrival times | Yes | Yes |
 | Multi-city | Yes | Partial (open PR) |
 | Proxy support | Native (Playwright launch args) | None built-in |
+| Price tracking | Built-in (cron + Postgres) | Manual re-querying |
+| Shareable charts | Yes (`/q/[id]`) | No |
 
 **The deeper reason:** Fairtrail is a price *tracker*, not a price *search engine*. It runs a cron every 3 hours across a handful of active queries. Speed doesn't matter -- data completeness does. Booking links, seat counts, and fare classes are what make the price chart useful for deciding when to buy.
 
