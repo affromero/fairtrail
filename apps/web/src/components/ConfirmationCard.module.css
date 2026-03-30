@@ -248,6 +248,9 @@
 }
 
 .vpnChevron {
+  color: var(--muted);
+  transition: transform 0.3s ease;
+}
 
 .vpnChevronOpen {
   transform: rotate(180deg);
