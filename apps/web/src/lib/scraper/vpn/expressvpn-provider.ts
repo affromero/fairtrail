@@ -3,9 +3,8 @@ import type { VpnProvider, VpnStatus } from './types';
 const POLL_INTERVAL_MS = 3000;
 const CONNECT_TIMEOUT_MS = 45000;
 
-/** ExpressVPN sidecar REST API base URL (internal Docker network) */
+/** ExpressVPN REST API base URL (sidecar or macOS bridge) */
 const DEFAULT_API_URL = 'http://expressvpn:8000';
-const SOCKS5_PROXY = 'socks5://expressvpn:1080';
 
 /** Maps ISO 3166-1 alpha-2 country codes to ExpressVPN server aliases */
 const EXPRESSVPN_SERVERS: Record<string, string> = {
@@ -44,8 +43,10 @@ async function sidecarApi(path: string, method: 'GET' | 'POST' = 'GET'): Promise
 export class ExpressVpnProvider implements VpnProvider {
   readonly type = 'expressvpn' as const;
 
-  getProxyUrl(): string {
-    return process.env.EXPRESSVPN_SOCKS_URL || SOCKS5_PROXY;
+  getProxyUrl(): string | undefined {
+    // Only return proxy URL if SOCKS5 is explicitly configured (Docker sidecar mode).
+    // On macOS bridge mode, the host VPN routes all container traffic -- no proxy needed.
+    return process.env.EXPRESSVPN_SOCKS_URL || undefined;
   }
 
   async getStatus(): Promise<VpnStatus> {
@@ -144,6 +145,7 @@ export class ExpressVpnProvider implements VpnProvider {
   }
 
   isSystemWide(): boolean {
-    return false; // SOCKS5 proxy -- per-context, not system-wide
+    // System-wide when using macOS bridge (no SOCKS5); per-context when using Docker sidecar
+    return !process.env.EXPRESSVPN_SOCKS_URL;
   }
 }
