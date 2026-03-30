@@ -51,6 +51,7 @@ services:
       REDIS_URL: redis://redis:6379
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
       EXPRESSVPN_API_URL: http://host.docker.internal:8000
+      CRON_SECRET: test-cron-secret
       CHROME_PATH: /usr/bin/chromium-browser
       NODE_ENV: production
       SELF_HOSTED: "true"

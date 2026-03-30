@@ -118,10 +118,7 @@ describe('settings page parity with admin config', () => {
     expect(SETTINGS_PAGE).toContain('setDefaultCountry(');
   });
 
-  it('settings page renders input fields for currency and country', () => {
+  it('settings page renders currency selector', () => {
     expect(SETTINGS_PAGE).toContain('Default Currency');
-    expect(SETTINGS_PAGE).toContain('Default Country');
-    expect(SETTINGS_PAGE).toContain('maxLength={3}');
-    expect(SETTINGS_PAGE).toContain('maxLength={2}');
   });
 });

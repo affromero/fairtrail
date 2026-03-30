@@ -35,11 +35,6 @@ interface ConversationMessage {
 }
 
 export function SearchBar({ initialQuery }: { initialQuery?: string } = {}) {
-  const [inviteValid, setInviteValid] = useState<boolean | null>(null);
-  const [inviteCode, setInviteCode] = useState('');
-  const [inviteLoading, setInviteLoading] = useState(false);
-  const [inviteError, setInviteError] = useState<string | null>(null);
-
   const [query, setQuery] = useState(initialQuery ?? '');
   const [parsed, setParsed] = useState<ParsedQuery | null>(null);
   const [loading, setLoading] = useState(false);
@@ -47,48 +42,13 @@ export function SearchBar({ initialQuery }: { initialQuery?: string } = {}) {
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    fetch('/api/invite/status')
-      .then((r) => r.json())
-      .then((d) => setInviteValid(d.ok ? d.data.valid : false))
-      .catch(() => setInviteValid(false));
-
     fetch('/api/admin/config')
       .then((r) => r.json())
       .then((d) => { if (d.ok && d.data.defaultCurrency) setAdminCurrency(d.data.defaultCurrency); })
       .catch(() => {});
   }, []);
 
-  const handleInviteSubmit = async () => {
-    const code = inviteCode.trim();
-    if (!code) return;
 
-    setInviteLoading(true);
-    setInviteError(null);
-
-    try {
-      const res = await fetch('/api/invite/validate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code }),
-      });
-      const data = await res.json();
-      if (data.ok) {
-        setInviteValid(true);
-      } else {
-        setInviteError(data.error || 'Invalid code');
-      }
-    } catch {
-      setInviteError('Network error — please try again');
-    } finally {
-      setInviteLoading(false);
-    }
-  };
-
-  const handleInviteKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !inviteLoading) {
-      handleInviteSubmit();
-    }
-  };
 
   // Narrowing state
   const [conversation, setConversation] = useState<ConversationMessage[]>([]);
@@ -314,48 +274,6 @@ export function SearchBar({ initialQuery }: { initialQuery?: string } = {}) {
   const showConfirmation = parsed && !previewRoutes && !createdTrackers && !previewLoading;
   const showPreviewLoading = parsed && previewLoading && !previewRoutes;
   const showPicker = parsed && previewRoutes && !createdTrackers;
-
-  if (inviteValid === null) {
-    return <div className={styles.root} />;
-  }
-
-  if (!inviteValid) {
-    return (
-      <div className={styles.root}>
-        <div className={styles.inputWrapper}>
-          <input
-            type="text"
-            className={styles.input}
-            placeholder="Enter your invite code"
-            value={inviteCode}
-            onChange={(e) => setInviteCode(e.target.value)}
-            onKeyDown={handleInviteKeyDown}
-            disabled={inviteLoading}
-            autoFocus
-          />
-          <button
-            className={styles.searchButton}
-            onClick={handleInviteSubmit}
-            disabled={inviteLoading || !inviteCode.trim()}
-          >
-            {inviteLoading ? (
-              <span className={styles.spinner} />
-            ) : (
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M5 12h14M12 5l7 7-7 7" />
-              </svg>
-            )}
-          </button>
-        </div>
-        <p className={styles.inviteHint}>
-          You need an invite code to search flights
-        </p>
-        {inviteError && (
-          <div className={styles.error}>{inviteError}</div>
-        )}
-      </div>
-    );
-  }
 
   return (
     <div className={styles.root}>

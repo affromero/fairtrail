@@ -1,16 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { NextRequest } from 'next/server';
 
-const { mockHasValidInvite, mockQueryCreate, mockSnapshotCreateMany } = vi.hoisted(() => ({
-  mockHasValidInvite: vi.fn(),
   mockQueryCreate: vi.fn().mockImplementation((args: { data: Record<string, unknown> }) =>
     Promise.resolve({ id: 'q-' + Math.random().toString(36).slice(2, 8), ...args.data })
   ),
   mockSnapshotCreateMany: vi.fn().mockResolvedValue({ count: 0 }),
 }));
 
-vi.mock('@/lib/invite-auth', () => ({
-  hasValidInvite: () => mockHasValidInvite(),
 }));
 
 vi.mock('next/headers', () => ({
@@ -51,13 +47,11 @@ const validBody = {
 
 describe('POST /api/queries', () => {
   beforeEach(() => {
-    mockHasValidInvite.mockReset().mockResolvedValue(true);
     mockQueryCreate.mockClear();
     mockSnapshotCreateMany.mockClear();
   });
 
   it('rejects unauthenticated request with 401', async () => {
-    mockHasValidInvite.mockResolvedValue(false);
     const res = await POST(makeRequest(validBody));
     expect(res.status).toBe(401);
   });

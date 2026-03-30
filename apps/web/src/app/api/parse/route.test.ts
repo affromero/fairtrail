@@ -1,11 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { NextRequest } from 'next/server';
 
-const mockHasValidInvite = vi.fn();
 const mockParseFlightQuery = vi.fn();
 
-vi.mock('@/lib/invite-auth', () => ({
-  hasValidInvite: () => mockHasValidInvite(),
 }));
 
 vi.mock('@/lib/scraper/parse-query', () => ({
@@ -35,17 +32,13 @@ function makeRequest(body: unknown): NextRequest {
 
 describe('POST /api/parse', () => {
   beforeEach(() => {
-    mockHasValidInvite.mockReset();
     mockParseFlightQuery.mockReset();
-    mockHasValidInvite.mockResolvedValue(true);
   });
 
   it('rejects unauthenticated request with 401', async () => {
-    mockHasValidInvite.mockResolvedValue(false);
     const res = await POST(makeRequest({ query: 'JFK to LAX June 15' }));
     expect(res.status).toBe(401);
     const body = await res.json();
-    expect(body.error).toContain('Invite code required');
   });
 
   it('rejects missing query field with 400', async () => {
