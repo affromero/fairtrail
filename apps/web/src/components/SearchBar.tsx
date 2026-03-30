@@ -377,6 +377,35 @@ export function SearchBar({ initialQuery }: { initialQuery?: string } = {}) {
         ))}
       </div>
 
+      {!parsed && !loading && (
+        <button
+          type="button"
+          className={styles.randomFlight}
+          onClick={() => {
+            const routes = [
+              'NYC to London next week',
+              'LAX to Tokyo in 2 weeks round trip',
+              'Chicago to Rome next month flexible',
+              'Miami to Bogota this weekend one way',
+              'San Francisco to Paris June 20 ± 3 days',
+              'Boston to Barcelona next month under $600',
+              'Seattle to Seoul in 3 weeks',
+              'Denver to Amsterdam next month economy',
+              'Dallas to Cancun this weekend',
+              'Atlanta to Dublin in 2 weeks round trip',
+            ];
+            const pick = routes[Math.floor(Math.random() * routes.length)]!;
+            setQuery(pick);
+            doParse(pick, []);
+          }}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+            <path d="M2 18h1.4c1.3 0 2.5-.6 3.3-1.7l6.1-8.6c.7-1.1 2-1.7 3.3-1.7H22M22 6l-4-4M22 6l-4 4M2 6h1.4c1.3 0 2.5.6 3.3 1.7l6.1 8.6c.7 1.1 2 1.7 3.3 1.7H22M22 18l-4-4M22 18l-4 4" />
+          </svg>
+          Try a random flight
+        </button>
+      )}
+
       {error && (
         <div className={styles.error}>
           {error}
