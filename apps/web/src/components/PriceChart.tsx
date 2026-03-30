@@ -252,7 +252,7 @@ export function PriceChart({ snapshots, currency = 'USD' }: { snapshots: Snapsho
           margin: { t: 20, r: 20, b: 50, l: 60 },
           xaxis: {
             gridcolor: '#243049',
-            tickformat: '%b %d',
+            tickformat: '%b %d %H:%M',
             title: { text: '' },
           },
           yaxis: {
