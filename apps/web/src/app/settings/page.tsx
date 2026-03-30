@@ -468,13 +468,31 @@ export default function SettingsPage() {
           </div>
 
           <div className={styles.vpnActivation}>
-            <label className={styles.label}>ExpressVPN Activation Code</label>
-            <div className={styles.vpnCodeRow}>
+            <label className={styles.label}>
+              ExpressVPN Activation Code
+              {hasVpnCode && <span className={styles.vpnCodeSaved}> (saved)</span>}
+            </label>
+            {hasVpnCode && !vpnActivationCode && (
+              <div className={styles.vpnCodeMasked}>
+                <span>{'*'.repeat(20)}</span>
+                <button
+                  type="button"
+                  className={styles.vpnCodeChange}
+                  onClick={() => {
+                    const el = document.getElementById('vpn-activation-input') as HTMLInputElement;
+                    el?.focus();
+                  }}
+                >
+                  Change
+                </button>
+              </div>
+            )}
+            <div className={styles.vpnCodeRow} style={hasVpnCode && !vpnActivationCode ? { display: 'none' } : undefined}>
               <input
                 id="vpn-activation-input"
                 type="password"
                 className={styles.input}
-                placeholder={hasVpnCode ? 'Leave blank to keep current' : 'Paste your activation code'}
+                placeholder="Paste your activation code"
                 value={vpnActivationCode}
                 onChange={(e) => setVpnActivationCode(e.target.value)}
               />
@@ -526,6 +544,8 @@ export default function SettingsPage() {
                     setVpnActivationCode('');
                     setVpnProvider('expressvpn');
                     setVpnCodeMessage('VPN configured');
+                    // Refresh live status
+                    fetch('/api/vpn/status').then((r) => r.json()).then((s) => { if (s.ok) setVpnLive(s.data); }).catch(() => {});
                   } else {
                     setVpnCodeMessage(data.error || 'Failed to save');
                   }

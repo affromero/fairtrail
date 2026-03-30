@@ -479,6 +479,40 @@
   flex-shrink: 0;
 }
 
+.vpnCodeSaved {
+  color: #22c55e;
+  font-size: 0.75rem;
+  font-weight: 400;
+}
+
+.vpnCodeMasked {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem 0.75rem;
+  background: var(--elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md, 8px);
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  color: var(--muted);
+  letter-spacing: 0.15em;
+}
+
+.vpnCodeChange {
+  background: none;
+  border: none;
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  cursor: pointer;
+  padding: 0;
+}
+
+.vpnCodeChange:hover {
+  text-decoration: underline;
+}
+
 .vpnCodeRow {
   display: flex;
   gap: 0.75rem;
