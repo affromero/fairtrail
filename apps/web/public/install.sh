@@ -531,8 +531,12 @@ printf "  ${BOLD}VPN Price Comparison (optional)${RESET}\n"
 printf "  ${DIM}Compare flight prices from different countries using ExpressVPN.${RESET}\n"
 printf "  ${DIM}Requires an ExpressVPN subscription.${RESET}\n"
 printf "\n"
-printf "  Set up ExpressVPN? [y/N] "
-read -r SETUP_VPN < /dev/tty
+if [ "${FAIRTRAIL_YES:-}" = "1" ]; then
+  SETUP_VPN="n"
+else
+  printf "  Set up ExpressVPN? [y/N] "
+  read -r SETUP_VPN < /dev/tty
+fi
 if [ "$SETUP_VPN" = "y" ] || [ "$SETUP_VPN" = "Y" ]; then
   printf "  Paste your activation code (from ${UNDERLINE}https://www.expressvpn.com/setup${RESET}): "
   read -r EXPRESSVPN_CODE < /dev/tty
