@@ -50,9 +50,9 @@ describe('POST /api/queries', () => {
     mockSnapshotCreateMany.mockClear();
   });
 
-  it('rejects unauthenticated request with 401', async () => {
+  it('allows unauthenticated request (public endpoint)', async () => {
     const res = await POST(makeRequest(validBody));
-    expect(res.status).toBe(401);
+    expect(res.status).toBe(201);
   });
 
   it('rejects invalid json body with 400', async () => {
