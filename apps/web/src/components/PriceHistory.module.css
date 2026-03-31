@@ -2,6 +2,16 @@
   width: 100%;
 }
 
+.countryHeader {
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--accent);
+  padding: 0.75rem 0 0.25rem;
+  margin-top: 0.5rem;
+  border-bottom: 1px solid rgba(6, 182, 212, 0.15);
+}
+
 .title {
   font-family: var(--font-display);
   font-size: 0.875rem;

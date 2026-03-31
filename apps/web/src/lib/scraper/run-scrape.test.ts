@@ -34,6 +34,21 @@ vi.mock('./airline-urls', () => ({
   isKnownAirline: vi.fn().mockReturnValue(false),
 }));
 
+vi.mock('./country-profiles', () => ({
+  getCountryProfile: vi.fn().mockReturnValue(undefined),
+}));
+
+vi.mock('./vpn', () => ({
+  createVpnProvider: vi.fn().mockReturnValue({
+    type: 'none',
+    getStatus: vi.fn().mockResolvedValue({ connected: false, currentLocation: null, currentCountry: null }),
+    connect: vi.fn().mockResolvedValue(true),
+    disconnect: vi.fn().mockResolvedValue(undefined),
+    listLocations: vi.fn().mockResolvedValue([]),
+    isSystemWide: vi.fn().mockReturnValue(false),
+  }),
+}));
+
 vi.mock('fs/promises', () => ({
   mkdir: vi.fn().mockResolvedValue(undefined),
   writeFile: vi.fn().mockResolvedValue(undefined),
@@ -72,6 +87,8 @@ describe('runScrapeForQuery', () => {
       scrapeInterval: 3,
       defaultCurrency: null,
       defaultCountry: null,
+      vpnProvider: null,
+      vpnCountries: [],
     });
     mockPrisma.priceSnapshot.findMany.mockResolvedValue([]);
     mockPrisma.priceSnapshot.createMany.mockResolvedValue({ count: 1 });

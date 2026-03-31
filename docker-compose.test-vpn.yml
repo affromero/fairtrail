@@ -1,0 +1,64 @@
+# Test compose for macOS: uses vpn-bridge.mjs on the host
+#
+# 1. Start the VPN bridge on the host:
+#    node scripts/vpn-bridge.mjs
+#
+# 2. Start the containers:
+#    ANTHROPIC_API_KEY=... docker compose -f docker-compose.test-vpn.yml up -d
+#
+# 3. Access: http://localhost:3005
+#
+# The bridge controls ExpressVPN on the Mac via AppleScript.
+# Docker Desktop routes container traffic through the host's VPN.
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: fairtrail
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: testpass
+    volumes:
+      - vpntest-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes:
+      - vpntest-redisdata:/data
+
+  web:
+    image: fairtrail:vpn-test
+    restart: unless-stopped
+    init: true
+    ipc: host
+    shm_size: '2gb'
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "3005:3003"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      DATABASE_URL: postgresql://postgres:testpass@db:5432/fairtrail
+      REDIS_URL: redis://redis:6379
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      EXPRESSVPN_API_URL: http://host.docker.internal:8000
+      CRON_SECRET: test-cron-secret
+      CHROME_PATH: /usr/bin/chromium-browser
+      NODE_ENV: production
+      SELF_HOSTED: "true"
+    volumes:
+      - ~/.claude:/home/node/.claude-host:ro
+      - ~/.codex:/home/node/.codex-host:ro
+
+volumes:
+  vpntest-pgdata:
+  vpntest-redisdata:

@@ -11,17 +11,30 @@ import { LinkBanner, type CreatedTracker } from './LinkBanner';
 import type { PriceData } from '@/lib/scraper/extract-prices';
 import { detectLocaleCurrency } from '@/lib/currency';
 
+function playNotificationSound() {
+  try {
+    const ctx = new AudioContext();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.frequency.setValueAtTime(880, ctx.currentTime);
+    osc.frequency.setValueAtTime(1100, ctx.currentTime + 0.1);
+    gain.gain.setValueAtTime(0.08, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3);
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + 0.3);
+  } catch {
+    // Audio not available
+  }
+}
+
 interface ConversationMessage {
   role: 'user' | 'assistant';
   content: string;
 }
 
 export function SearchBar({ initialQuery }: { initialQuery?: string } = {}) {
-  const [inviteValid, setInviteValid] = useState<boolean | null>(null);
-  const [inviteCode, setInviteCode] = useState('');
-  const [inviteLoading, setInviteLoading] = useState(false);
-  const [inviteError, setInviteError] = useState<string | null>(null);
-
   const [query, setQuery] = useState(initialQuery ?? '');
   const [parsed, setParsed] = useState<ParsedQuery | null>(null);
   const [loading, setLoading] = useState(false);
@@ -29,43 +42,13 @@ export function SearchBar({ initialQuery }: { initialQuery?: string } = {}) {
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    fetch('/api/invite/status')
+    fetch('/api/admin/config')
       .then((r) => r.json())
-      .then((d) => setInviteValid(d.ok ? d.data.valid : false))
-      .catch(() => setInviteValid(false));
+      .then((d) => { if (d.ok && d.data.defaultCurrency) setAdminCurrency(d.data.defaultCurrency); })
+      .catch(() => {});
   }, []);
 
-  const handleInviteSubmit = async () => {
-    const code = inviteCode.trim();
-    if (!code) return;
 
-    setInviteLoading(true);
-    setInviteError(null);
-
-    try {
-      const res = await fetch('/api/invite/validate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code }),
-      });
-      const data = await res.json();
-      if (data.ok) {
-        setInviteValid(true);
-      } else {
-        setInviteError(data.error || 'Invalid code');
-      }
-    } catch {
-      setInviteError('Network error — please try again');
-    } finally {
-      setInviteLoading(false);
-    }
-  };
-
-  const handleInviteKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !inviteLoading) {
-      handleInviteSubmit();
-    }
-  };
 
   // Narrowing state
   const [conversation, setConversation] = useState<ConversationMessage[]>([]);
@@ -75,6 +58,10 @@ export function SearchBar({ initialQuery }: { initialQuery?: string } = {}) {
   // Preview state — routes instead of flat flights
   const [previewRoutes, setPreviewRoutes] = useState<RouteFlights[] | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
+
+  // VPN country comparison
+  const [vpnCountries, setVpnCountries] = useState<string[]>([]);
+  const [adminCurrency, setAdminCurrency] = useState<string | null>(null);
 
   // Link banner state — multiple trackers
   const [createdTrackers, setCreatedTrackers] = useState<CreatedTracker[] | null>(null);
@@ -103,10 +90,9 @@ export function SearchBar({ initialQuery }: { initialQuery?: string } = {}) {
       const { parsed: p, confidence, ambiguities: ambs } = data.data;
 
       // If the LLM didn't detect a currency (null = user didn't mention one),
-      // use the browser's locale currency instead
+      // use admin default currency, then browser locale as last resort
       if (p && !p.currency) {
-        const localeCurrency = detectLocaleCurrency();
-        p.currency = localeCurrency;
+        p.currency = adminCurrency || detectLocaleCurrency();
       }
 
       if (confidence === 'high' && p) {
@@ -175,6 +161,7 @@ export function SearchBar({ initialQuery }: { initialQuery?: string } = {}) {
       }
 
       // Handle both new (routes array) and legacy (flat flights) responses
+      playNotificationSound();
       if (data.data.routes) {
         setPreviewRoutes(data.data.routes);
       } else if (data.data.flights) {
@@ -216,6 +203,7 @@ export function SearchBar({ initialQuery }: { initialQuery?: string } = {}) {
           currency: parsed.currency,
           cabinClass: parsed.cabinClass,
           tripType: parsed.tripType,
+          vpnCountries,
           routes: routeSelections.map((rs) => ({
             origin: rs.route.origin,
             originName: rs.route.originName,
@@ -287,48 +275,6 @@ export function SearchBar({ initialQuery }: { initialQuery?: string } = {}) {
   const showPreviewLoading = parsed && previewLoading && !previewRoutes;
   const showPicker = parsed && previewRoutes && !createdTrackers;
 
-  if (inviteValid === null) {
-    return <div className={styles.root} />;
-  }
-
-  if (!inviteValid) {
-    return (
-      <div className={styles.root}>
-        <div className={styles.inputWrapper}>
-          <input
-            type="text"
-            className={styles.input}
-            placeholder="Enter your invite code"
-            value={inviteCode}
-            onChange={(e) => setInviteCode(e.target.value)}
-            onKeyDown={handleInviteKeyDown}
-            disabled={inviteLoading}
-            autoFocus
-          />
-          <button
-            className={styles.searchButton}
-            onClick={handleInviteSubmit}
-            disabled={inviteLoading || !inviteCode.trim()}
-          >
-            {inviteLoading ? (
-              <span className={styles.spinner} />
-            ) : (
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M5 12h14M12 5l7 7-7 7" />
-              </svg>
-            )}
-          </button>
-        </div>
-        <p className={styles.inviteHint}>
-          You need an invite code to search flights
-        </p>
-        {inviteError && (
-          <div className={styles.error}>{inviteError}</div>
-        )}
-      </div>
-    );
-  }
-
   return (
     <div className={styles.root}>
       <div className={styles.inputWrapper}>
@@ -373,6 +319,43 @@ export function SearchBar({ initialQuery }: { initialQuery?: string } = {}) {
         ))}
       </div>
 
+      {!parsed && !loading && (
+        <button
+          type="button"
+          className={styles.randomFlight}
+          onClick={() => {
+            // Generate dates 3-6 weeks from now for realistic searches
+            const base = new Date();
+            base.setDate(base.getDate() + 21 + Math.floor(Math.random() * 21));
+            const dep = base.toISOString().split('T')[0]!;
+            const ret = new Date(base);
+            ret.setDate(ret.getDate() + 5 + Math.floor(Math.random() * 5));
+            const retStr = ret.toISOString().split('T')[0]!;
+
+            const routes = [
+              `JFK to CDG ${dep} to ${retStr} round trip economy`,
+              `LAX to NRT ${dep} to ${retStr} round trip economy`,
+              `ORD to FCO ${dep} to ${retStr} round trip economy`,
+              `MIA to BOG ${dep} one way economy`,
+              `SFO to LHR ${dep} to ${retStr} round trip economy`,
+              `BOS to BCN ${dep} to ${retStr} round trip economy`,
+              `SEA to ICN ${dep} to ${retStr} round trip economy`,
+              `DEN to AMS ${dep} to ${retStr} round trip economy`,
+              `DFW to CUN ${dep} to ${retStr} round trip economy`,
+              `ATL to DUB ${dep} to ${retStr} round trip economy`,
+            ];
+            const pick = routes[Math.floor(Math.random() * routes.length)]!;
+            setQuery(pick);
+            doParse(pick, []);
+          }}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+            <path d="M2 18h1.4c1.3 0 2.5-.6 3.3-1.7l6.1-8.6c.7-1.1 2-1.7 3.3-1.7H22M22 6l-4-4M22 6l-4 4M2 6h1.4c1.3 0 2.5.6 3.3 1.7l6.1 8.6c.7 1.1 2 1.7 3.3 1.7H22M22 18l-4-4M22 18l-4 4" />
+          </svg>
+          Try a random flight
+        </button>
+      )}
+
       {error && (
         <div className={styles.error}>
           {error}
@@ -395,6 +378,8 @@ export function SearchBar({ initialQuery }: { initialQuery?: string } = {}) {
           onTrack={handlePreview}
           onEdit={handleReset}
           loading={loading}
+          vpnCountries={vpnCountries}
+          onVpnCountriesChange={setVpnCountries}
         />
       )}
 

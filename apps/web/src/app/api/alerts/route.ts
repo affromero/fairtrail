@@ -1,13 +1,9 @@
 import { apiSuccess } from '@/lib/api-response';
 import { prisma } from '@/lib/prisma';
-import { hasValidInvite } from '@/lib/invite-auth';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
-  if (!(await hasValidInvite())) {
-    return apiSuccess({ alerts: [] });
-  }
 
   // Get active non-seed queries
   const queries = await prisma.query.findMany({

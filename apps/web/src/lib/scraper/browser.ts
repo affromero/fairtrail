@@ -1,4 +1,5 @@
 import type { Browser, BrowserContext } from 'playwright';
+import type { CountryProfile } from './country-profiles';
 
 // Chrome-only user agents — Google blocks non-Chrome heavily
 const USER_AGENTS = [
@@ -34,22 +35,42 @@ export async function launchBrowser(): Promise<Browser> {
       '--disable-setuid-sandbox',
       '--disable-dev-shm-usage',
       '--disable-gpu',
+      '--disable-software-rasterizer',
       '--disable-blink-features=AutomationControlled',
       '--disable-infobars',
       '--window-size=1440,900',
+      // Docker Desktop (macOS/Windows) runs in a VM where Chromium's GPU
+      // crashes. These extra flags are safe everywhere but only needed in VMs.
+      // Always include them -- the perf cost is negligible for headless scraping.
+      '--single-process',
+      '--use-gl=angle',
+      '--use-angle=swiftshader',
+      '--in-process-gpu',
     ],
   });
 }
 
-export async function createStealthContext(browser: Browser): Promise<BrowserContext> {
+export interface StealthContextOptions {
+  countryProfile?: CountryProfile;
+  proxyUrl?: string; // e.g. 'socks5://expressvpn:1080'
+}
+
+const DEFAULT_TIMEZONES = ['America/New_York', 'America/Chicago', 'America/Los_Angeles', 'Europe/London', 'Europe/Berlin'];
+
+export async function createStealthContext(browser: Browser, options: StealthContextOptions = {}): Promise<BrowserContext> {
+  const profile = options.countryProfile;
   const viewport = randomPick(VIEWPORTS);
+  const proxy = options.proxyUrl ? { server: options.proxyUrl } : undefined;
   const context = await browser.newContext({
     userAgent: randomPick(USER_AGENTS),
     viewport,
-    locale: 'en-US',
-    timezoneId: randomPick(['America/New_York', 'America/Chicago', 'America/Los_Angeles', 'Europe/London', 'Europe/Berlin']),
+    locale: profile?.locale ?? 'en-US',
+    timezoneId: profile ? randomPick(profile.timezones) : randomPick(DEFAULT_TIMEZONES),
+    geolocation: profile?.geolocation,
+    permissions: profile?.geolocation ? ['geolocation'] : [],
+    proxy,
     extraHTTPHeaders: {
-      'Accept-Language': 'en-US,en;q=0.9',
+      'Accept-Language': profile?.acceptLanguage ?? 'en-US,en;q=0.9',
       'Accept-Encoding': 'gzip, deflate, br',
       'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
       'Upgrade-Insecure-Requests': '1',
@@ -61,7 +82,8 @@ export async function createStealthContext(browser: Browser): Promise<BrowserCon
   });
 
   // Comprehensive anti-detection: webdriver, chrome.runtime, plugins, languages
-  await context.addInitScript(() => {
+  const profileLocale = profile?.locale ?? null;
+  await context.addInitScript((locale: string | null) => {
     // Hide webdriver flag
     Object.defineProperty(navigator, 'webdriver', { get: () => false });
 
@@ -82,9 +104,9 @@ export async function createStealthContext(browser: Browser): Promise<BrowserCon
       ],
     });
 
-    // Mock languages (should match Accept-Language header)
+    // Mock languages to match country profile (should align with Accept-Language header)
     Object.defineProperty(navigator, 'languages', {
-      get: () => ['en-US', 'en'],
+      get: () => locale ? [locale, locale.split('-')[0]!, 'en'].filter((v, i, a) => a.indexOf(v) === i) : ['en-US', 'en'],
     });
 
     // Mock permissions query (headless returns inconsistent results)
@@ -115,7 +137,7 @@ export async function createStealthContext(browser: Browser): Promise<BrowserCon
     Object.defineProperty(navigator, 'deviceMemory', {
       get: () => 8,
     });
-  });
+  }, profileLocale);
 
   return context;
 }

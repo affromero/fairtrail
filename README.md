@@ -15,12 +15,12 @@ Track flight prices over time. Self-hosted. Open source. Bring your own LLM.
 
 <br>
 
-<img src="assets/demo.gif" alt="Fairtrail — price evolution charts cycling through JFK→CDG, LAX→NRT, ORD→FCO" width="100%">
+<img src="assets/demo.gif" alt="Fairtrail -- price evolution charts cycling through JFK->CDG, LAX->NRT, ORD->FCO" width="100%">
 
 <details>
-<summary>CLI Demo — headless mode with Claude Code & Codex</summary>
+<summary>CLI Demo -- headless mode with Claude Code & Codex</summary>
 <br>
-<img src="packages/cli/demo/fairtrail-demo.gif" alt="Fairtrail CLI — search with Claude Code and Codex side by side, then live price charts" width="100%">
+<img src="packages/cli/demo/fairtrail-demo.gif" alt="Fairtrail CLI -- search with Claude Code and Codex side by side, then live price charts" width="100%">
 </details>
 
 <details>
@@ -28,7 +28,7 @@ Track flight prices over time. Self-hosted. Open source. Bring your own LLM.
 <br>
 <img src="assets/home.png" alt="Landing page (dark)" width="100%">
 <br><br>
-<img src="assets/chart-jfk-cdg.png" alt="JFK → CDG price chart" width="100%">
+<img src="assets/chart-jfk-cdg.png" alt="JFK -> CDG price chart" width="100%">
 </details>
 
 </div>
@@ -41,186 +41,181 @@ Track flight prices over time. Self-hosted. Open source. Bring your own LLM.
 curl -fsSL https://fairtrail.org/install.sh | bash
 ```
 
-If you have [Claude Code](https://docs.anthropic.com/en/docs/claude-code) or [Codex](https://github.com/openai/codex) installed, the setup script detects it automatically — **no API key needed**. Otherwise, it asks you to paste one.
+If you have [Claude Code](https://docs.anthropic.com/en/docs/claude-code) or [Codex](https://github.com/openai/codex) installed, the setup script detects it automatically. Otherwise, it asks you to paste an API key.
 
 Once it finishes:
 
-1. Open [localhost:3003](http://localhost:3003) — or run `fairtrail search "NYC to Tokyo in July under $800"`
-2. Fairtrail starts tracking prices immediately — come back anytime to see the trend
+1. Open [localhost:3003](http://localhost:3003)
+2. Or run `fairtrail search "NYC to Tokyo in July under $800"`
+3. Fairtrail starts tracking prices immediately
 
 ## Why Fairtrail?
 
-Airlines change flight prices hundreds of times a day. They know exactly when you searched, how many times you came back, and how desperate you are. They use this to maximize what you pay — not minimize it.
+Airlines change flight prices hundreds of times a day. They use dynamic pricing to maximize what you pay. **No one shows you the price trend because the companies with the data profit from hiding it.**
 
-**No one shows you the price trend because the companies with the data profit from hiding it:**
+<details>
+<summary>The longer version</summary>
 
-1. **Aggregators want you inside their app.** Google Flights and Hopper track price history internally but lock it behind your account — or don't show it at all.
+1. **Aggregators want you inside their app.** Google Flights and Hopper track price history internally but lock it behind your account.
 2. **"Buy or Wait" is more profitable than transparency.** A black-box prediction keeps you dependent on their platform.
 3. **Airlines don't want price transparency.** If you can see that a route dips 3 weeks before departure, that undermines dynamic pricing.
 
-Fairtrail exists because the data is useful to *you* — just not to the companies that have it.
+Fairtrail exists because the data is useful to *you* -- just not to the companies that have it.
+</details>
 
 ### What you get
 
-- **Natural language search** — `"NYC to Paris around June 15 ± 3 days"`
-- **Price evolution charts** — see how fares move over days and weeks
-- **Shareable links** — send `/q/abc123` to anyone, no login required
-- **Direct booking links** — click any data point to go straight to the airline
-- **Airline comparison** — see which carriers are cheapening vs. getting expensive
-- **Self-hosted** — your searches stay private, your data stays on your machine
-- **Agent-friendly API** — hook Claude Code, Codex, or any agent into your instance
+- **Natural language search** -- `"NYC to Paris around June 15 +/- 3 days"`
+- **Price evolution charts** -- see how fares move over days and weeks
+- **Shareable links** -- send `/q/abc123` to anyone, no login required
+- **Direct booking links** -- click any data point to go straight to the airline
+- **Airline comparison** -- see which carriers are cheapening vs. getting expensive
+- **VPN price comparison** -- test the myth: do prices change when you browse from different countries?
+- **Self-hosted** -- your searches stay private, your data stays on your machine
+- **Agent-friendly API** -- hook Claude Code, Codex, or any agent into your instance
 
-### Why self-host instead of using fairtrail.org?
+## VPN Price Comparison
 
-- **It can't work any other way.** A centralized service scraping Google Flights gets IP-banned within days. Thousands of self-hosted instances, each making a few quiet requests from different IPs, is the only architecture that survives. Decentralization isn't a philosophy — it's the only design that works.
-- **Your searches stay private.** No one sees what routes you're watching or when you're planning to travel. Airlines can't use your search history against you.
-- **You control the scrape frequency.** Default is every 3 hours. Want every hour? Change one setting.
-- **Free with Claude Code, Codex, or a local model.** Use your existing CLI subscription, or run Ollama / llama.cpp / vLLM locally - zero API cost.
-- **Your data, your database.** Price history lives in your own Postgres. Export it, analyze it, keep it forever.
+Test the myth that VPN location affects flight prices. Fairtrail can scrape the same query from multiple countries and show the results side by side.
+
+### How it works
+
+1. An [ExpressVPN](https://www.expressvpn.com) sidecar container runs alongside Fairtrail
+2. For each scrape run, Fairtrail routes Playwright through the VPN's SOCKS5 proxy
+3. All browser signals align to the target country (IP, locale, timezone, Accept-Language, geolocation)
+4. Your local (no VPN) price is always captured as a baseline
+5. The chart shows a per-country comparison view
+
+### Setup
+
+1. Go to **Settings** and paste your [ExpressVPN activation code](https://www.expressvpn.com/setup) (encrypted before storage)
+2. Start Fairtrail with VPN support:
+   ```bash
+   docker compose -f docker-compose.prod.yml -f docker-compose.vpn.yml up -d
+   ```
+3. When creating a new tracker, toggle **"Compare prices from different countries"** and pick which countries to compare
+4. Each scrape run: local baseline first, then each VPN country sequentially
+5. On the chart page, use the **view filter** to switch between:
+   - All countries (full detail)
+   - Country comparison (cheapest price per country over time)
+   - Local only / individual country isolation
+
+<details>
+<summary>docker-compose.vpn.yml details</summary>
+
+The VPN sidecar uses [`misioslav/expressvpn`](https://hub.docker.com/r/misioslav/expressvpn) and exposes:
+- SOCKS5 proxy on port 1080 (internal, used by Playwright)
+- REST API on port 8000 (internal, used by Fairtrail to switch countries)
+
+Requirements:
+- `EXPRESSVPN_CODE` in `~/.fairtrail/.env`
+- Docker host must have `/dev/net/tun` (kernel TUN module)
+- The sidecar needs `NET_ADMIN` capability
+
+Only Playwright traffic goes through the VPN. Database, Redis, and web UI traffic stay on normal Docker networking.
+</details>
+
+<details>
+<summary>Supported countries</summary>
+
+US, GB, DE, FR, ES, IT, NL, IE, JP, KR, IN, AU, CA, MX, BR, AR, CO, TH, SG, HK
+
+Each country profile aligns: locale, timezone, Accept-Language header, and geolocation to match the VPN exit point. Currency stays user-controlled (independent from VPN country).
+</details>
 
 ## Requirements
 
-- [Docker Desktop](https://docs.docker.com/get-docker/) (runs everything behind the scenes — you won't interact with it directly)
+- [Docker Desktop](https://docs.docker.com/get-docker/)
 - One of:
-  - [Claude Code](https://docs.anthropic.com/en/docs/claude-code) (free with Claude Pro/Max) — auto-detected
-  - [Codex](https://github.com/openai/codex) (free with ChatGPT Pro) — auto-detected
+  - [Claude Code](https://docs.anthropic.com/en/docs/claude-code) (free with Claude Pro/Max)
+  - [Codex](https://github.com/openai/codex) (free with ChatGPT Pro)
   - An API key from Anthropic, OpenAI, or Google
-  - [Ollama](https://ollama.com), [llama.cpp](https://github.com/ggml-org/llama.cpp), or [vLLM](https://docs.vllm.ai) - first-class local model support, configurable from the admin UI
+  - [Ollama](https://ollama.com), [llama.cpp](https://github.com/ggml-org/llama.cpp), or [vLLM](https://docs.vllm.ai)
 
-## LLM Providers
+<details>
+<summary>LLM Providers</summary>
 
-Fairtrail needs an LLM for two things: parsing natural language queries and extracting price data from Google Flights pages. Pick **any one** of these:
+Fairtrail needs an LLM for two things: parsing natural language queries and extracting price data from Google Flights pages.
 
 | Provider | Auth | Cost | Notes |
 |----------|------|------|-------|
-| **Claude Code** | Auto-detected (host `~/.claude`) | Free (Pro/Max plan) | Subscription CLI — mounts auth read-only |
-| **Codex CLI** | Auto-detected (host `~/.codex`) | Free (ChatGPT Pro) | Subscription CLI — mounts auth read-only |
+| **Claude Code** | Auto-detected (host `~/.claude`) | Free (Pro/Max plan) | Subscription CLI |
+| **Codex CLI** | Auto-detected (host `~/.codex`) | Free (ChatGPT Pro) | Subscription CLI |
 | **Anthropic** | `ANTHROPIC_API_KEY` | Pay-per-token | Claude Haiku 4.5 (default) |
 | **OpenAI** | `OPENAI_API_KEY` | Pay-per-token | GPT-4.1 Mini |
 | **Google** | `GOOGLE_AI_API_KEY` | Pay-per-token | Gemini 2.5 Flash |
-| **Ollama** | None (local) | Free | First-class provider - select in admin UI, type your model ID |
-| **llama.cpp** | None (local) | Free | First-class provider - select in admin UI, type your model ID |
-| **vLLM** | None (local) | Free | First-class provider - GPU-accelerated inference server (port 8000) |
+| **Ollama** | None (local) | Free | Select in admin UI |
+| **llama.cpp** | None (local) | Free | Select in admin UI |
+| **vLLM** | None (local) | Free | GPU-accelerated (port 8000) |
 | **OpenAI + custom URL** | `OPENAI_BASE_URL` | Varies | OpenRouter or any OpenAI-compatible endpoint |
 
 **Three ways to use Fairtrail:**
 
-- **Subscription users** (Claude Pro/Max, ChatGPT Pro) — the installer detects `claude` or `codex` on your machine and mounts their config dirs read-only into the container. Your auth tokens are never copied; the container cannot modify them.
-- **API key users** — paste an Anthropic, OpenAI, or Google key. Passed via env var, never written to disk.
-- **Local model users** — select Ollama, llama.cpp, or vLLM in the admin UI, type your model ID, and optionally set a custom base URL. No API key needed.
-
-## Configuration
-
-All settings are in `~/.fairtrail/.env` (generated by the installer). Key options:
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `ANTHROPIC_API_KEY` | — | Anthropic API key (one LLM provider required) |
-| `OPENAI_API_KEY` | — | OpenAI API key |
-| `OPENAI_BASE_URL` | — | Custom endpoint for OpenAI provider (vLLM, OpenRouter) |
-| `GOOGLE_AI_API_KEY` | — | Google AI API key |
-| `OLLAMA_HOST` | `http://localhost:11434` | Ollama server address (base URL derived as `$OLLAMA_HOST/v1`) |
-| `POSTGRES_PASSWORD` | `postgres` | Database password |
-| `ADMIN_PASSWORD` | Auto-generated | Admin panel password |
-| `CRON_ENABLED` | `true` | Enable built-in scrape scheduler |
-| `CRON_INTERVAL_HOURS` | `3` | Hours between scrape runs |
-| `HOST_PORT` | `3003` | Host port to access Fairtrail (container always listens on 3003 internally) |
-
-Secrets left empty are auto-generated on first run and printed in Docker logs.
-
-## Community Data
-
-Fairtrail is **fully decentralized**. You run everything — scraping, LLM calls, storage — on your own machine. There is no central server doing work for you.
-
-**What fairtrail.org does:** aggregates anonymized price data that self-hosted instances **opt in** to share. Think of it as a community price database that grows as more people run Fairtrail.
-
-**What gets shared (opt-in only):**
-- Route (origin/destination airports)
-- Travel date, price, currency, airline, stops, cabin class
-- When the data was scraped
-
-**What is never shared:**
-- Your queries, search history, or preferences
-- Your LLM API keys
-- Your IP address or identity
-
-Enable community sharing during the setup wizard or later in `/admin → Config`. Explore community data at [fairtrail.org/explore](https://fairtrail.org/explore).
-
-## Agent & CLI Integration
-
-Your local Fairtrail instance exposes a REST API that any agent, script, or CLI tool can use. No SDK needed — just HTTP calls to `localhost:3003`.
-
-See [`AGENTS.md`](AGENTS.md) for the full API reference.
-
-### Quick example
-
-```bash
-# 1. Parse a natural language query
-curl -s -X POST http://localhost:3003/api/parse \
-  -H "Content-Type: application/json" \
-  -d '{"query": "NYC to Paris around June 15 ± 3 days"}' | jq .
-
-# 2. Create a tracked query (use the parsed response)
-curl -s -X POST http://localhost:3003/api/queries \
-  -H "Content-Type: application/json" \
-  -d '{
-    "rawInput": "NYC to Paris around June 15 ± 3 days",
-    "origin": "JFK", "originName": "New York JFK",
-    "destination": "CDG", "destinationName": "Paris CDG",
-    "dateFrom": "2026-06-12", "dateTo": "2026-06-18",
-    "flexibility": 3, "cabinClass": "economy",
-    "tripType": "round_trip", "routes": [...]
-  }' | jq .
-
-# 3. Trigger an immediate scrape (CRON_SECRET is auto-generated at startup, check docker logs)
-curl -s http://localhost:3003/api/cron/scrape \
-  -H "Authorization: Bearer $(docker compose -f docker-compose.prod.yml logs web 2>&1 | grep -oP 'CRON_SECRET=\K\S+')" | jq .
-
-# 4. Get price data for a query
-curl -s http://localhost:3003/api/queries/{id}/prices | jq .
-```
+- **Subscription users** (Claude Pro/Max, ChatGPT Pro) -- auto-detected, auth tokens mounted read-only.
+- **API key users** -- paste a key, passed via env var, never written to disk.
+- **Local model users** -- select Ollama/llama.cpp/vLLM in the admin UI, type your model ID.
+</details>
 
 ## How It Works
 
 ```
-You type: "SFO to Tokyo sometime in July ± 5 days"
-                        │
-                        ▼
-              ┌─────────────────┐
-              │   LLM Parser    │  Extracts origin, destination,
-              │  (Claude/GPT)   │  date range, flexibility
-              └────────┬────────┘
-                       │
-                       ▼
-              ┌─────────────────┐
-              │   Playwright    │  Navigates Google Flights
-              │   (headless)    │  with your exact query
-              └────────┬────────┘
-                       │
-                       ▼
-              ┌─────────────────┐
-              │  LLM Extractor  │  Reads the page, extracts
-              │  (configurable) │  structured price data
-              └────────┬────────┘
-                       │
-                       ▼
-              ┌─────────────────┐
-              │   PostgreSQL    │  Stores price snapshots
-              │   + Prisma     │  with timestamps
-              └────────┬────────┘
-                       │
-                       ▼
-              ┌─────────────────┐
-              │  Plotly.js      │  Interactive chart at
-              │  /q/[id]       │  a shareable public URL
-              └─────────────────┘
+You type: "SFO to Tokyo sometime in July +/- 5 days"
+                        |
+                        v
+              +------------------+
+              |   LLM Parser     |  Extracts origin, destination,
+              |  (Claude/GPT)    |  date range, flexibility
+              +--------+---------+
+                       |
+                       v
+              +------------------+
+              |   Playwright     |  Navigates Google Flights
+              |   (headless)     |  with your exact query
+              +--------+---------+
+                       |
+                       v
+              +------------------+
+              |  LLM Extractor   |  Reads the page, extracts
+              |  (configurable)  |  structured price data
+              +--------+---------+
+                       |
+                       v
+              +------------------+
+              |   PostgreSQL     |  Stores price snapshots
+              |   + Prisma      |  with timestamps
+              +--------+---------+
+                       |
+                       v
+              +------------------+
+              |  Plotly.js       |  Interactive chart at
+              |  /q/[id]        |  a shareable public URL
+              +------------------+
 ```
 
 The built-in cron runs on a configurable interval (default: every 3h). Each run captures prices across all active queries and the chart pages update automatically.
 
-## Headless CLI
+## Managing Fairtrail
 
-Run Fairtrail entirely in the terminal — no browser needed.
+```
+Usage: fairtrail [command]
+
+Commands:
+  (none)       Start Fairtrail (Ctrl+C to stop)
+  search ".."  Search and track a flight from the terminal
+  start        Start in background
+  stop         Stop -- pauses all price tracking until you start again
+  logs         View live logs
+  status       Check if running
+  update       Pull latest version and restart
+  version      Show version and commit
+  uninstall    Remove Fairtrail and all data
+  help         Show this help
+```
+
+<details>
+<summary>Headless CLI</summary>
+
+Run Fairtrail entirely in the terminal:
 
 ```bash
 fairtrail --headless                              # Interactive search wizard
@@ -233,57 +228,110 @@ fairtrail --headless --view <id> --tmux           # Split grouped routes into tm
 
 Without `--headless`, `--view` opens the chart in your browser and `--list` opens the admin dashboard.
 
-<img src="packages/cli/demo/fairtrail-demo.gif" alt="Fairtrail CLI — Claude Code vs Codex side by side, search and live price charts" width="100%">
+**Features:**
+- Natural language search, same as the web
+- Braille chart with per-airline colored trend lines
+- Live refresh with countdown bar
+- Multi-destination ("Frankfurt to Bogota or Medellin")
+- tmux integration for grouped routes
+- Backend selection: `--backend claude-code|codex|anthropic|openai|google|ollama|llamacpp|vllm`
 
-### Features
+<img src="packages/cli/demo/fairtrail-demo.gif" alt="Fairtrail CLI" width="100%">
+</details>
 
-- **Natural language search** — same as the web, powered by your chosen AI backend
-- **Braille chart** — Unicode price evolution chart with per-airline colored trend lines
-- **Live refresh** — countdown bar, auto-refreshes from DB, flashes when new data arrives
-- **Multi-destination** — "Frankfurt to Bogota or Medellin" searches both routes
-- **tmux integration** — `--tmux` splits each grouped route into its own pane
-- **Backend selection** — `--backend claude-code|codex|anthropic|openai|google|ollama|llamacpp|vllm`
+<details>
+<summary>Configuration</summary>
 
-## Managing Fairtrail
+All settings are in `~/.fairtrail/.env` (generated by the installer):
 
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ANTHROPIC_API_KEY` | -- | Anthropic API key |
+| `OPENAI_API_KEY` | -- | OpenAI API key |
+| `OPENAI_BASE_URL` | -- | Custom endpoint (vLLM, OpenRouter) |
+| `GOOGLE_AI_API_KEY` | -- | Google AI API key |
+| `OLLAMA_HOST` | `http://localhost:11434` | Ollama server address |
+| `POSTGRES_PASSWORD` | `postgres` | Database password |
+| `ADMIN_PASSWORD` | Auto-generated | Admin panel password |
+| `CRON_ENABLED` | `true` | Enable built-in scrape scheduler |
+| `CRON_INTERVAL_HOURS` | `3` | Hours between scrape runs |
+| `HOST_PORT` | `3003` | Host port for Fairtrail |
+| `EXPRESSVPN_CODE` | -- | ExpressVPN activation code (for VPN comparison) |
+</details>
+
+<details>
+<summary>Why self-host instead of using fairtrail.org?</summary>
+
+- **It can't work any other way.** A centralized service scraping Google Flights gets IP-banned within days. Thousands of self-hosted instances, each making a few quiet requests from different IPs, is the only architecture that survives.
+- **Your searches stay private.** No one sees what routes you're watching.
+- **You control the scrape frequency.** Default is every 3 hours. Want every hour? Change one setting.
+- **Free with Claude Code, Codex, or a local model.**
+- **Your data, your database.** Price history lives in your own Postgres.
+</details>
+
+<details>
+<summary>Community Data</summary>
+
+Fairtrail is fully decentralized. You run everything on your own machine.
+
+**fairtrail.org** aggregates anonymized price data that self-hosted instances **opt in** to share.
+
+**What gets shared (opt-in only):** route, travel date, price, currency, airline, stops, cabin class, scrape timestamp.
+
+**What is never shared:** your queries, search history, preferences, API keys, IP address, or identity.
+
+Enable in Settings or during setup. Explore community data at [fairtrail.org/explore](https://fairtrail.org/explore).
+</details>
+
+<details>
+<summary>Agent & CLI Integration</summary>
+
+Your local instance exposes a REST API. See [`AGENTS.md`](AGENTS.md) for the full reference.
+
+```bash
+# Parse a natural language query
+curl -s -X POST http://localhost:3003/api/parse \
+  -H "Content-Type: application/json" \
+  -d '{"query": "NYC to Paris around June 15 +/- 3 days"}' | jq .
+
+# Create a tracked query
+curl -s -X POST http://localhost:3003/api/queries \
+  -H "Content-Type: application/json" \
+  -d '{ ... }' | jq .
+
+# Trigger an immediate scrape
+curl -s http://localhost:3003/api/cron/scrape \
+  -H "Authorization: Bearer $CRON_SECRET" | jq .
+
+# Get price data
+curl -s http://localhost:3003/api/queries/{id}/prices | jq .
 ```
-Usage: fairtrail [command]
+</details>
 
-Commands:
-  (none)       Start Fairtrail (Ctrl+C to stop)
-  search ".."  Search and track a flight from the terminal
-  start        Start in background
-  stop         Stop — pauses all price tracking until you start again
-  logs         View live logs
-  status       Check if running
-  update       Pull latest version and restart
-  version      Show version and commit
-  uninstall    Remove Fairtrail and all data
-  help         Show this help
-```
+<details>
+<summary>Settings</summary>
 
-Stopping Fairtrail pauses all scraping — no queries run while it's off. Your data and queries are saved. Just run `fairtrail` again to resume tracking.
+Access at `/admin` (no login required on self-hosted instances):
+
+- **Manage queries** -- pause, resume, delete, adjust scrape frequency
+- **Configure LLM** -- choose extraction provider and model
+- **Monitor costs** -- see LLM API usage per scrape run
+- **View fetch history** -- success/failure status, errors, snapshot counts
+- **VPN setup** -- paste ExpressVPN activation code, configure default countries
+</details>
 
 ## Development
 
 ```bash
-# Install dependencies
 npm install
-
-# Start database + cache
 docker compose up -d db redis
-
-# Apply schema
 npm run db:push
-
-# Generate Prisma client
 npm run db:generate
-
-# Start dev server (set env vars or use `doppler run --`)
 npm run dev
 ```
 
-## Tech Stack
+<details>
+<summary>Tech Stack</summary>
 
 | Layer | Technology |
 |-------|------------|
@@ -294,74 +342,61 @@ npm run dev
 | LLM | Anthropic, OpenAI, Google, Claude Code, Codex, Ollama, llama.cpp, or vLLM |
 | Charts | Plotly.js (interactive) |
 | Cron | Built-in (node-cron) or external trigger |
-
-## Settings
-
-Access at `/admin` (no login required on self-hosted instances):
-
-- **Manage queries** — pause, resume, delete, adjust scrape frequency
-- **Configure LLM** — choose extraction provider and model
-- **Monitor costs** — see LLM API usage per scrape run
-- **View fetch history** — success/failure status, errors, snapshot counts
+| VPN | ExpressVPN sidecar (Docker, SOCKS5 proxy) |
+</details>
 
 ## Contributing
 
 Pull requests welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
-## Disclaimer
+<details>
+<summary>Why Playwright + LLM Instead of Google's Internal API?</summary>
 
-**Fairtrail is an informational tool only.** Flight prices shown are scraped from third-party sources and may be inaccurate, outdated, or incomplete. Airlines change prices based on demand, search history, seat availability, and other factors — the price you see in Fairtrail may differ from the price you're offered at checkout. **Do not make purchasing decisions based solely on Fairtrail data.** Always verify prices directly with the airline or booking platform before buying. The authors are not responsible for any financial loss, missed deals, or incorrect pricing information.
+Google Flights has an undocumented internal API that returns structured JSON without a browser. The [`fli`](https://github.com/punitarani/fli) project reverse-engineers it. We investigated and decided against it.
 
-## Legal
-
-Fairtrail is a personal tool that scrapes publicly available flight pricing data. In the US, scraping publicly accessible websites does not violate the [Computer Fraud and Abuse Act](https://en.wikipedia.org/wiki/Computer_Fraud_and_Abuse_Act) ([*hiQ Labs v. LinkedIn*, 9th Cir. 2022](https://en.wikipedia.org/wiki/HiQ_Labs_v._LinkedIn)). Fairtrail does not circumvent any login, paywall, or technical access control.
-
-That said, automated access to third-party websites may conflict with their terms of service. **Users are solely responsible for complying with the terms of service of any website they interact with through Fairtrail.** This project is not affiliated with, endorsed by, or associated with Google, any airline, or any travel booking platform.
-
-This software is provided as-is for personal and educational use.
-
-## Why Playwright + LLM Instead of Google's Internal API?
-
-Google Flights has an undocumented internal API (`GetShoppingResults`, `GetCalendarGraph`) that returns structured JSON without a browser. The [`fli`](https://github.com/punitarani/fli) project reverse-engineers it. We investigated this approach and decided against it. Here's why.
-
-**What the direct API gives you:** sub-second searches, no browser dependency, no Chromium in Docker, no LLM cost per extraction.
+**What the direct API gives you:** sub-second searches, no browser, no LLM cost.
 
 **What it costs you:**
 
 |  | Fairtrail | [fli](https://github.com/punitarani/fli) |
 |---|---|---|
 | Approach | Playwright + LLM extraction | Reverse-engineered internal API |
-| Language | TypeScript (Next.js) | Python |
-| Speed | 3-10s per search (browser + LLM) | Sub-second (single HTTP POST) |
-| LLM cost | None (local/subscription) or pay-per-token | None |
-| Docker image | ~400MB (Chromium) | ~20MB |
-| Booking links | Yes -- captures redirect URLs | No |
-| Currency control | Yes (`&curr=`, `&gl=` params) | No -- determined by server IP geolocation |
-| Fare class / cabin details | Yes -- visible in page | No |
-| Seats remaining | Yes -- "3 seats left" badges | No |
-| Baggage info | Yes -- in expanded details | No |
-| Departure/arrival times | Yes | Yes |
-| Multi-city | Yes | Partial (open PR) |
-| Proxy support | Native (Playwright launch args) | None built-in |
-| Price tracking | Built-in (cron + Postgres) | Manual re-querying |
+| Speed | 3-10s per search | Sub-second |
+| Booking links | Yes | No |
+| Currency control | Yes (`&curr=`, `&gl=` params) | No |
+| Fare class / cabin | Yes | No |
+| Seats remaining | Yes | No |
+| VPN comparison | Yes (Docker sidecar) | No |
+| Price tracking | Built-in (cron + Postgres) | Manual |
 | Shareable charts | Yes (`/q/[id]`) | No |
 
-**The deeper reason:** Fairtrail is a price *tracker*, not a price *search engine*. It runs a cron every 3 hours across a handful of active queries. Speed doesn't matter -- data completeness does. Booking links, seat counts, and fare classes are what make the price chart useful for deciding when to buy.
+Both approaches share the same risk: Google can break either one at any time. We'd rather depend on the stable, public-facing UI than on undocumented internal array positions.
 
-Both approaches share the same fundamental risk: Google can break either one at any time. DOM changes break Playwright selectors; internal response structure changes break array-index parsing. Neither has a contract. We'd rather depend on the stable, public-facing UI than on undocumented internal array positions where airline data lives at `fl[22][0]` and prices at `data[1][0][-1]`.
+**Use Fairtrail if** you want to track prices over time, see trends, get booking links, and share charts.
 
-**Use Fairtrail if** you want to track prices over time, see trends, get booking links, and share charts. You care about data completeness more than speed.
-
-**Use [fli](https://github.com/punitarani/fli) if** you want instant, programmatic flight lookups from scripts or agents. You don't need booking URLs, price history, or a UI -- just fast structured results.
+**Use [fli](https://github.com/punitarani/fli) if** you want instant programmatic lookups from scripts.
+</details>
 
 ## Related Projects
 
 | Project | Description |
 |---------|-------------|
-| [**fli**](https://github.com/punitarani/fli) | Google Flights API reverse-engineering (Python) -- see [comparison above](#why-playwright--llm-instead-of-googles-internal-api) |
+| [**fli**](https://github.com/punitarani/fli) | Google Flights API reverse-engineering (Python) |
 | [**PriceToken**](https://github.com/affromero/pricetoken) | Real-time LLM pricing API, npm/PyPI packages, and live dashboard |
 | [**gitpane**](https://github.com/affromero/gitpane) | Multi-repo Git workspace dashboard for the terminal |
 | [**kin3o**](https://github.com/affromero/kin3o) | AI-powered Lottie animation generator CLI |
+
+<details>
+<summary>Disclaimer & Legal</summary>
+
+**Fairtrail is an informational tool only.** Flight prices shown are scraped from third-party sources and may be inaccurate, outdated, or incomplete. Airlines change prices based on demand, search history, seat availability, and other factors. **Do not make purchasing decisions based solely on Fairtrail data.** Always verify prices directly with the airline before buying.
+
+Fairtrail is a personal tool that scrapes publicly available flight pricing data. In the US, scraping publicly accessible websites does not violate the [Computer Fraud and Abuse Act](https://en.wikipedia.org/wiki/Computer_Fraud_and_Abuse_Act) ([*hiQ Labs v. LinkedIn*, 9th Cir. 2022](https://en.wikipedia.org/wiki/HiQ_Labs_v._LinkedIn)). Fairtrail does not circumvent any login, paywall, or technical access control.
+
+**Users are solely responsible for complying with the terms of service of any website they interact with through Fairtrail.** This project is not affiliated with Google, any airline, or any travel booking platform.
+
+This software is provided as-is for personal and educational use.
+</details>
 
 ## License
 

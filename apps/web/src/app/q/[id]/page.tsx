@@ -62,6 +62,7 @@ interface QueryWithSnapshots {
     groupId: string | null;
     currency: string | null;
     scrapeInterval: number;
+    vpnCountries: string[];
   };
   snapshots: Array<{
     id: string;
@@ -78,6 +79,7 @@ interface QueryWithSnapshots {
     seatsLeft: number | null;
     status: string;
     airlineDirectPrice: number | null;
+    vpnCountry: string | null;
     scrapedAt: string;
   }>;
   lastRun: { startedAt: Date } | null;
@@ -105,6 +107,7 @@ async function loadQueryWithSnapshots(id: string): Promise<QueryWithSnapshots | 
       seatsLeft: true,
       status: true,
       airlineDirectPrice: true,
+      vpnCountry: true,
       scrapedAt: true,
     },
   });
@@ -277,6 +280,13 @@ export default async function ChartPage({ params }: Props) {
 
           <section className={styles.chart}>
             <PriceChart snapshots={qData.snapshots} currency={qData.query.currency ?? 'USD'} />
+            {qData.query.vpnCountries.length > 0 && !qData.snapshots.some((s) => s.vpnCountry) && (
+              <p className={styles.vpnPending}>
+                VPN comparison in progress -- prices from {qData.query.vpnCountries.map((c) =>
+                  String.fromCodePoint(...c.split('').map((ch) => 0x1f1e6 + ch.charCodeAt(0) - 65)) + ' ' + c
+                ).join(', ')} will appear after the next scrape
+              </p>
+            )}
           </section>
 
           <section className={styles.best}>
@@ -298,6 +308,7 @@ export default async function ChartPage({ params }: Props) {
           <p className={styles.footerText}>
             Tracked since {formatDate(primary.query.createdAt)}
             {allQueries[0]?.lastRun && ` · Last checked ${timeAgo(allQueries[0].lastRun.startedAt)}`}
+            {allQueries[0]?.lastRun && !expired && ` · Next check in ~${primary.query.scrapeInterval}h`}
           </p>
           {!expired && (
             <>

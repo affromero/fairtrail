@@ -62,6 +62,7 @@ export async function GET(
           seatsLeft: true,
           status: true,
           airlineDirectPrice: true,
+          vpnCountry: true,
           scrapedAt: true,
         },
       }),

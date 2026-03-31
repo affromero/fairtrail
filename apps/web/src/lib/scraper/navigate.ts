@@ -1,6 +1,7 @@
 import type { Page } from 'playwright';
 import { launchBrowser, createStealthContext } from './browser';
 import { getAirlineUrl } from './airline-urls';
+import type { CountryProfile } from './country-profiles';
 
 /** Random delay between min and max milliseconds */
 function randomDelay(min: number, max: number): Promise<void> {
@@ -64,7 +65,9 @@ export function buildGoogleFlightsUrl(params: FlightSearchParams): string {
 }
 
 export async function navigateGoogleFlights(
-  params: FlightSearchParams
+  params: FlightSearchParams,
+  countryProfile?: CountryProfile,
+  proxyUrl?: string
 ): Promise<NavigationResult> {
   const url = buildGoogleFlightsUrl(params);
   const maxAttempts = 3;
@@ -74,7 +77,7 @@ export async function navigateGoogleFlights(
     const attemptStart = Date.now();
 
     try {
-      const context = await createStealthContext(browser);
+      const context = await createStealthContext(browser, { countryProfile, proxyUrl });
       const page = await context.newPage();
       console.log(`[navigate] attempt ${attempt}/${maxAttempts} → ${url}`);
 
@@ -263,7 +266,9 @@ export async function navigateFlightDetail(
 
 export async function navigateAirlineDirect(
   params: FlightSearchParams,
-  airlineName: string
+  airlineName: string,
+  countryProfile?: CountryProfile,
+  proxyUrl?: string
 ): Promise<NavigationResult> {
   const url = getAirlineUrl(airlineName, params);
   if (!url) {
@@ -274,7 +279,7 @@ export async function navigateAirlineDirect(
   const start = Date.now();
 
   try {
-    const context = await createStealthContext(browser);
+    const context = await createStealthContext(browser, { countryProfile, proxyUrl });
     const page = await context.newPage();
     console.log(`[navigate:airline] → ${url}`);
 

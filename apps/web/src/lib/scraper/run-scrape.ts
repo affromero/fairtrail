@@ -4,10 +4,13 @@ import { navigateGoogleFlights, navigateAirlineDirect, type NavigationResult } f
 import { extractPrices, type ExtractionFailureReason } from './extract-prices';
 import { getModelCosts } from './ai-registry';
 import { isKnownAirline } from './airline-urls';
+import { getCountryProfile } from './country-profiles';
+import { createVpnProvider, type VpnProviderType } from './vpn';
 
 const RETRYABLE_FAILURES: ExtractionFailureReason[] = ['empty_extraction', 'page_not_loaded', 'no_json_in_response'];
 const MAX_EXTRACT_ATTEMPTS = 2;
 const DEBUG_DIR = '/tmp/fairtrail-debug';
+const VPN_INTER_COUNTRY_DELAY_MS = 12000;
 
 async function saveDebugHtml(queryId: string, html: string, attempt: number): Promise<void> {
   try {
@@ -29,247 +32,311 @@ interface ScrapeResult {
   error?: string;
 }
 
-export async function runScrapeForQuery(queryId: string): Promise<ScrapeResult> {
+/** Scrape a single query for a single country pass (local or VPN). */
+async function scrapeQueryForCountry(
+  queryId: string,
+  query: { origin: string; destination: string; preferredAirlines: string[]; maxPrice: number | null; maxStops: number | null; timePreference: string; cabinClass: string },
+  searchParams: import('./navigate').FlightSearchParams,
+  config: { provider?: string; model?: string } | null,
+  vpnCountry: string | null,
+  proxyUrl: string | undefined,
+  fetchRunId: string,
+): Promise<ScrapeResult> {
+  const effectiveCurrency = searchParams.currency ?? null;
+  const countryProfile = vpnCountry ? getCountryProfile(vpnCountry) : undefined;
+
+  const directAirlines = query.preferredAirlines.filter(isKnownAirline);
+  const useAirlineDirect = directAirlines.length > 0;
+
+  const travelDateFallback = searchParams.dateFrom.toISOString().split('T')[0]!;
+  const filters = {
+    maxPrice: query.maxPrice,
+    maxStops: query.maxStops,
+    preferredAirlines: query.preferredAirlines,
+    timePreference: query.timePreference,
+    cabinClass: query.cabinClass,
+  };
+  const provider = config?.provider ?? 'anthropic';
+  const model = config?.model ?? 'claude-haiku-4-5-20251001';
+  const costs = getModelCosts(provider, model);
+
+  let allPrices: import('./extract-prices').PriceData[] = [];
+  let totalInputTokens = 0;
+  let totalOutputTokens = 0;
+  let lastFailureReason: string | undefined;
+  const sources = new Set<string>();
+
+  async function navigateAll(): Promise<NavigationResult[]> {
+    if (useAirlineDirect) {
+      const results = await Promise.all(
+        directAirlines.map(async (airline) => {
+          try {
+            const result = await navigateAirlineDirect(searchParams, airline, countryProfile, proxyUrl);
+            if (!result.resultsFound) return null; // airline site blocked/empty
+            return result;
+          } catch {
+            return null;
+          }
+        })
+      );
+      const valid = results.filter((r): r is NavigationResult => r !== null);
+      // If all airline-direct attempts failed, fall back to Google Flights
+      if (valid.length === 0) {
+        return [await navigateGoogleFlights(searchParams, countryProfile, proxyUrl)];
+      }
+      return valid;
+    }
+    return [await navigateGoogleFlights(searchParams, countryProfile, proxyUrl)];
+  }
+
+  for (let attempt = 1; attempt <= MAX_EXTRACT_ATTEMPTS; attempt++) {
+    const vpnLabel = vpnCountry ? ` vpn=${vpnCountry}` : '';
+    console.log(`[scrape] query=${queryId}${vpnLabel} extract attempt ${attempt}/${MAX_EXTRACT_ATTEMPTS}`);
+
+    const navResults = await navigateAll();
+
+    for (const nav of navResults) {
+      sources.add(nav.source);
+      const { prices, usage, failureReason } = await extractPrices(
+        nav.html, nav.url, travelDateFallback, filters, undefined, nav.resultsFound, nav.source, effectiveCurrency
+      );
+      allPrices = allPrices.concat(prices);
+      totalInputTokens += usage.inputTokens;
+      totalOutputTokens += usage.outputTokens;
+      if (failureReason) {
+        lastFailureReason = failureReason;
+        await saveDebugHtml(queryId, nav.html, attempt);
+      }
+    }
+
+    if (allPrices.length > 0) break;
+
+    if (attempt < MAX_EXTRACT_ATTEMPTS && lastFailureReason && RETRYABLE_FAILURES.includes(lastFailureReason as ExtractionFailureReason)) {
+      const delay = 5000 + Math.random() * 5000;
+      console.log(`[scrape] query=${queryId} retrying after ${Math.round(delay)}ms (reason: ${lastFailureReason})`);
+      await new Promise((r) => setTimeout(r, delay));
+    }
+  }
+
+  // Deduplicate by airline + price + date + vpnCountry
+  const seen = new Set<string>();
+  allPrices = allPrices.filter((p) => {
+    const key = `${p.airline}:${p.price}:${p.travelDate}:${vpnCountry ?? ''}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+
+  allPrices.sort((a, b) => a.price - b.price);
+
+  const extractionCost =
+    (totalInputTokens / 1000) * costs.costPer1kInput +
+    (totalOutputTokens / 1000) * costs.costPer1kOutput;
+
+  await prisma.apiUsageLog.create({
+    data: {
+      provider,
+      model,
+      inputTokens: totalInputTokens,
+      outputTokens: totalOutputTokens,
+      costUsd: extractionCost,
+      operation: 'extract-prices',
+      durationMs: 0,
+    },
+  });
+
+  // Build stable flightId for each price
+  const withFlightIds = allPrices.map((p) => {
+    const timePart = (p.departureTime ?? '').replace(/[^0-9]/g, '') || '0000';
+    const airlinePart = p.airline.replace(/[^a-zA-Z0-9]/g, '').substring(0, 20);
+    const flightId = `${airlinePart}-${timePart}-${query.origin}-${query.destination}-${p.travelDate}`;
+    return { ...p, flightId };
+  });
+
+  // Sold-out detection: scope by BOTH queryId AND vpnCountry to avoid cross-country false positives
+  const previousSnapshots = await prisma.priceSnapshot.findMany({
+    where: {
+      queryId,
+      vpnCountry: vpnCountry ?? null,
+      flightId: { not: null },
+    },
+    orderBy: { scrapedAt: 'desc' },
+    distinct: ['flightId'],
+    select: { flightId: true, price: true, airline: true, travelDate: true, currency: true, bookingUrl: true, stops: true, duration: true, departureTime: true, arrivalTime: true, status: true },
+  });
+
+  const currentFlightIds = new Set(withFlightIds.map((p) => p.flightId));
+  const soldOutSnapshots = previousSnapshots
+    .filter((prev) => prev.flightId && !currentFlightIds.has(prev.flightId) && prev.status === 'available')
+    .map((prev) => ({
+      queryId,
+      travelDate: prev.travelDate,
+      price: prev.price,
+      currency: prev.currency,
+      airline: prev.airline,
+      bookingUrl: prev.bookingUrl,
+      stops: prev.stops,
+      duration: prev.duration,
+      departureTime: prev.departureTime,
+      arrivalTime: prev.arrivalTime,
+      flightId: prev.flightId,
+      status: 'sold_out' as const,
+      vpnCountry,
+      fetchRunId,
+    }));
+
+  if (withFlightIds.length > 0) {
+    await prisma.priceSnapshot.createMany({
+      data: withFlightIds.map((p) => ({
+        queryId,
+        travelDate: new Date(p.travelDate),
+        price: p.price,
+        currency: p.currency,
+        airline: p.airline,
+        bookingUrl: p.bookingUrl,
+        stops: p.stops,
+        duration: p.duration,
+        departureTime: p.departureTime ?? null,
+        arrivalTime: p.arrivalTime ?? null,
+        flightId: p.flightId,
+        seatsLeft: p.seatsLeft ?? null,
+        vpnCountry,
+        fetchRunId,
+      })),
+    });
+  }
+
+  if (soldOutSnapshots.length > 0) {
+    await prisma.priceSnapshot.createMany({
+      data: soldOutSnapshots,
+    });
+  }
+
+  console.log(`[scrape] query=${queryId} vpn=${vpnCountry ?? 'local'} finished — ${allPrices.length} prices, cost=$${extractionCost.toFixed(4)}`);
+  const failureReason = allPrices.length === 0 ? lastFailureReason : undefined;
+  const failureMessages: Record<string, string> = {
+    page_not_loaded: 'Page did not load results — blocked, CAPTCHA, or timeout.',
+    no_json_in_response: 'LLM response contained no parseable JSON array. Page HTML may be a consent wall, error page, or empty shell.',
+    empty_extraction: 'LLM parsed the page but returned 0 flights. Page likely loaded without flight content (rate-limited or empty response).',
+    all_filtered_out: 'Flights were extracted but all removed by query filters (price/stops/airline).',
+  };
+  const errorMsg = failureReason ? failureMessages[failureReason] : undefined;
+
+  const sourceLabel = sources.size === 1 ? [...sources][0]! : [...sources].join('+');
+
+  await prisma.fetchRun.update({
+    where: { id: fetchRunId },
+    data: {
+      status: allPrices.length > 0 ? 'success' : 'failed',
+      source: sourceLabel,
+      snapshotsCount: allPrices.length,
+      extractionCost,
+      error: errorMsg,
+      completedAt: new Date(),
+    },
+  });
+
+  return {
+    queryId,
+    status: allPrices.length > 0 ? 'success' : 'failed',
+    snapshotsCount: allPrices.length,
+    extractionCost,
+    error: errorMsg,
+  };
+}
+
+/** Scrape a single query (no VPN logic -- called by runScrapeAll which handles country grouping). */
+export async function runScrapeForQuery(
+  queryId: string,
+  vpnCountry?: string | null,
+  proxyUrl?: string,
+): Promise<ScrapeResult> {
   const query = await prisma.query.findUnique({ where: { id: queryId } });
   if (!query || !query.active) {
     return { queryId, status: 'failed', snapshotsCount: 0, extractionCost: 0, error: 'Query not found or inactive' };
   }
 
+  const config = await prisma.extractionConfig.findFirst({ where: { id: 'singleton' } });
+  const effectiveCurrency = query.currency ?? config?.defaultCurrency ?? null;
+  const effectiveCountry = vpnCountry ?? config?.defaultCountry ?? null;
+
+  const searchParams = query.isSeed
+    ? {
+        origin: query.origin,
+        destination: query.destination,
+        dateFrom: new Date(),
+        dateTo: new Date(Date.now() + query.lookAheadDays * 24 * 60 * 60 * 1000),
+        cabinClass: query.cabinClass,
+        tripType: query.tripType,
+        currency: effectiveCurrency,
+        country: effectiveCountry,
+      }
+    : { ...query, cabinClass: query.cabinClass, tripType: query.tripType, currency: effectiveCurrency, country: effectiveCountry };
+
   const fetchRun = await prisma.fetchRun.create({
-    data: { queryId, status: 'in_progress' },
+    data: { queryId, status: 'in_progress', vpnCountry: vpnCountry ?? null },
   });
 
   try {
-    // Fetch config early for currency/country resolution and model costs
-    const config = await prisma.extractionConfig.findFirst({ where: { id: 'singleton' } });
-
-    // 3-tier currency resolution: query-level > admin config default > null (auto-detect)
-    const effectiveCurrency = query.currency ?? config?.defaultCurrency ?? null;
-    const effectiveCountry = config?.defaultCountry ?? null;
-
-    // For seed queries, compute rolling date window from today
-    const searchParams = query.isSeed
-      ? {
-          origin: query.origin,
-          destination: query.destination,
-          dateFrom: new Date(),
-          dateTo: new Date(Date.now() + query.lookAheadDays * 24 * 60 * 60 * 1000),
-          cabinClass: query.cabinClass,
-          tripType: query.tripType,
-          currency: effectiveCurrency,
-          country: effectiveCountry,
-        }
-      : { ...query, cabinClass: query.cabinClass, tripType: query.tripType, currency: effectiveCurrency, country: effectiveCountry };
-
-    // Route: airline-direct for single known airline, Google Flights otherwise
-    const directAirlines = query.preferredAirlines.filter(isKnownAirline);
-    const useAirlineDirect = directAirlines.length > 0;
-
-    const travelDateFallback = searchParams.dateFrom.toISOString().split('T')[0]!;
-    const filters = {
-      maxPrice: query.maxPrice,
-      maxStops: query.maxStops,
-      preferredAirlines: query.preferredAirlines,
-      timePreference: query.timePreference,
-      cabinClass: query.cabinClass,
-    };
-    const provider = config?.provider ?? 'anthropic';
-    const model = config?.model ?? 'claude-haiku-4-5-20251001';
-    const costs = getModelCosts(provider, model);
-
-    let allPrices: import('./extract-prices').PriceData[] = [];
-    let totalInputTokens = 0;
-    let totalOutputTokens = 0;
-    let lastFailureReason: string | undefined;
-    const sources = new Set<string>();
-
-    async function navigateAll(): Promise<NavigationResult[]> {
-      if (useAirlineDirect) {
-        return Promise.all(
-          directAirlines.map(async (airline) => {
-            try {
-              return await navigateAirlineDirect(searchParams, airline);
-            } catch {
-              return navigateGoogleFlights(searchParams);
-            }
-          })
-        );
-      }
-      return [await navigateGoogleFlights(searchParams)];
-    }
-
-    for (let attempt = 1; attempt <= MAX_EXTRACT_ATTEMPTS; attempt++) {
-      console.log(`[scrape] query=${queryId} extract attempt ${attempt}/${MAX_EXTRACT_ATTEMPTS}`);
-
-      const navResults = await navigateAll();
-
-      for (const nav of navResults) {
-        sources.add(nav.source);
-        const { prices, usage, failureReason } = await extractPrices(
-          nav.html, nav.url, travelDateFallback, filters, undefined, nav.resultsFound, nav.source, effectiveCurrency
-        );
-        allPrices = allPrices.concat(prices);
-        totalInputTokens += usage.inputTokens;
-        totalOutputTokens += usage.outputTokens;
-        if (failureReason) {
-          lastFailureReason = failureReason;
-          await saveDebugHtml(queryId, nav.html, attempt);
-        }
-      }
-
-      if (allPrices.length > 0) break;
-
-      // Retry only for transient failures
-      if (attempt < MAX_EXTRACT_ATTEMPTS && lastFailureReason && RETRYABLE_FAILURES.includes(lastFailureReason as ExtractionFailureReason)) {
-        const delay = 5000 + Math.random() * 5000;
-        console.log(`[scrape] query=${queryId} retrying after ${Math.round(delay)}ms (reason: ${lastFailureReason})`);
-        await new Promise((r) => setTimeout(r, delay));
-      }
-    }
-
-    // Deduplicate by airline + price + date
-    const seen = new Set<string>();
-    allPrices = allPrices.filter((p) => {
-      const key = `${p.airline}:${p.price}:${p.travelDate}`;
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    });
-
-    // Sort by price
-    allPrices.sort((a, b) => a.price - b.price);
-
-    const extractionCost =
-      (totalInputTokens / 1000) * costs.costPer1kInput +
-      (totalOutputTokens / 1000) * costs.costPer1kOutput;
-
-    // Log API usage
-    await prisma.apiUsageLog.create({
-      data: {
-        provider,
-        model,
-        inputTokens: totalInputTokens,
-        outputTokens: totalOutputTokens,
-        costUsd: extractionCost,
-        operation: 'extract-prices',
-        durationMs: 0,
-      },
-    });
-
-    // Build stable flightId for each price
-    const withFlightIds = allPrices.map((p) => {
-      const timePart = (p.departureTime ?? '').replace(/[^0-9]/g, '') || '0000';
-      const airlinePart = p.airline.replace(/[^a-zA-Z0-9]/g, '').substring(0, 20);
-      const flightId = `${airlinePart}-${timePart}-${query.origin}-${query.destination}-${p.travelDate}`;
-      return { ...p, flightId };
-    });
-
-    // Sold-out detection: compare with previous scrape
-    const previousSnapshots = await prisma.priceSnapshot.findMany({
-      where: {
-        queryId,
-        flightId: { not: null },
-      },
-      orderBy: { scrapedAt: 'desc' },
-      distinct: ['flightId'],
-      select: { flightId: true, price: true, airline: true, travelDate: true, currency: true, bookingUrl: true, stops: true, duration: true, departureTime: true, arrivalTime: true, status: true },
-    });
-
-    const currentFlightIds = new Set(withFlightIds.map((p) => p.flightId));
-    const soldOutSnapshots = previousSnapshots
-      .filter((prev) => prev.flightId && !currentFlightIds.has(prev.flightId) && prev.status === 'available')
-      .map((prev) => ({
-        queryId,
-        travelDate: prev.travelDate,
-        price: prev.price,
-        currency: prev.currency,
-        airline: prev.airline,
-        bookingUrl: prev.bookingUrl,
-        stops: prev.stops,
-        duration: prev.duration,
-        departureTime: prev.departureTime,
-        arrivalTime: prev.arrivalTime,
-        flightId: prev.flightId,
-        status: 'sold_out' as const,
-        fetchRunId: fetchRun.id,
-      }));
-
-    // Save price snapshots
-    if (withFlightIds.length > 0) {
-      await prisma.priceSnapshot.createMany({
-        data: withFlightIds.map((p) => ({
-          queryId,
-          travelDate: new Date(p.travelDate),
-          price: p.price,
-          currency: p.currency,
-          airline: p.airline,
-          bookingUrl: p.bookingUrl,
-          stops: p.stops,
-          duration: p.duration,
-          departureTime: p.departureTime ?? null,
-          arrivalTime: p.arrivalTime ?? null,
-          flightId: p.flightId,
-          seatsLeft: p.seatsLeft ?? null,
-          fetchRunId: fetchRun.id,
-        })),
-      });
-    }
-
-    // Record sold-out flights
-    if (soldOutSnapshots.length > 0) {
-      await prisma.priceSnapshot.createMany({
-        data: soldOutSnapshots,
-      });
-    }
-
-    // Build error message for 0-result runs
-    console.log(`[scrape] query=${queryId} finished — ${allPrices.length} prices, cost=$${extractionCost.toFixed(4)}`);
-    const failureReason = allPrices.length === 0 ? lastFailureReason : undefined;
-    const failureMessages: Record<string, string> = {
-      page_not_loaded: 'Page did not load results — blocked, CAPTCHA, or timeout.',
-      no_json_in_response: 'LLM response contained no parseable JSON array. Page HTML may be a consent wall, error page, or empty shell.',
-      empty_extraction: 'LLM parsed the page but returned 0 flights. Page likely loaded without flight content (rate-limited or empty response).',
-      all_filtered_out: 'Flights were extracted but all removed by query filters (price/stops/airline).',
-    };
-    const errorMsg = failureReason ? failureMessages[failureReason] : undefined;
-
-    // Track which source(s) were used
-    const sourceLabel = sources.size === 1 ? [...sources][0]! : [...sources].join('+');
-
-    // Update fetch run
-    await prisma.fetchRun.update({
-      where: { id: fetchRun.id },
-      data: {
-        status: allPrices.length > 0 ? 'success' : 'failed',
-        source: sourceLabel,
-        snapshotsCount: allPrices.length,
-        extractionCost,
-        error: errorMsg,
-        completedAt: new Date(),
-      },
-    });
-
-    return {
-      queryId,
-      status: allPrices.length > 0 ? 'success' : 'failed',
-      snapshotsCount: allPrices.length,
-      extractionCost,
-      error: errorMsg,
-    };
+    return await scrapeQueryForCountry(
+      queryId, query, searchParams, config, vpnCountry ?? null, proxyUrl, fetchRun.id
+    );
   } catch (err) {
     const errorMsg = err instanceof Error ? err.message : String(err);
-
     await prisma.fetchRun.update({
       where: { id: fetchRun.id },
-      data: {
-        status: 'failed',
-        error: errorMsg,
-        completedAt: new Date(),
-      },
+      data: { status: 'failed', error: errorMsg, completedAt: new Date() },
     });
-
     return { queryId, status: 'failed', snapshotsCount: 0, extractionCost: 0, error: errorMsg };
   }
+}
+
+/** Scrape a single query across all its VPN countries (local + VPN passes). */
+export async function runFullScrapeForQuery(queryId: string): Promise<ScrapeResult[]> {
+  const query = await prisma.query.findUnique({ where: { id: queryId } });
+  if (!query) return [];
+
+  const config = await prisma.extractionConfig.findFirst({ where: { id: 'singleton' } });
+  const vpnProviderType = (config?.vpnProvider as VpnProviderType) ?? 'none';
+  const vpnProvider = createVpnProvider(vpnProviderType);
+  const defaultVpnCountries = config?.vpnCountries ?? [];
+  const proxyUrl = vpnProvider.getProxyUrl?.() ?? undefined;
+
+  const countries = query.vpnCountries.length > 0 ? query.vpnCountries : defaultVpnCountries;
+  const countriesToScrape: (string | null)[] = countries.length > 0
+    ? [null, ...countries]
+    : [null];
+
+  const results: ScrapeResult[] = [];
+
+  for (let ci = 0; ci < countriesToScrape.length; ci++) {
+    const country = countriesToScrape[ci]!;
+    const isVpnPass = country !== null;
+
+    if (isVpnPass) {
+      const connected = await vpnProvider.connect(country);
+      if (!connected) {
+        console.error(`[scrape] failed to connect VPN to ${country}, skipping`);
+        continue;
+      }
+      await new Promise((r) => setTimeout(r, 3000));
+    } else if (ci > 0) {
+      await vpnProvider.disconnect();
+    }
+
+    const result = await runScrapeForQuery(queryId, country, isVpnPass ? proxyUrl : undefined);
+    results.push(result);
+
+    if (isVpnPass && ci < countriesToScrape.length - 1) {
+      await new Promise((r) => setTimeout(r, VPN_INTER_COUNTRY_DELAY_MS + Math.random() * 3000));
+    }
+  }
+
+  if (countries.length > 0) {
+    await vpnProvider.disconnect();
+  }
+
+  return results;
 }
 
 export async function cleanupUnvisitedQueries(): Promise<number> {
@@ -304,9 +371,14 @@ export async function runScrapeAll(): Promise<ScrapeResult[]> {
 }
 
 async function runScrapeAllInner(): Promise<ScrapeResult[]> {
-  // Get global scrape interval default
   const config = await prisma.extractionConfig.findFirst({ where: { id: 'singleton' } });
   const globalInterval = config?.scrapeInterval ?? 3;
+
+  // Create VPN provider from config
+  const vpnProviderType = (config?.vpnProvider as VpnProviderType) ?? 'none';
+  const vpnProvider = createVpnProvider(vpnProviderType);
+  const defaultVpnCountries = config?.vpnCountries ?? [];
+  const proxyUrl = vpnProvider.getProxyUrl?.() ?? undefined;
 
   const activeQueries = await prisma.query.findMany({
     where: {
@@ -325,32 +397,81 @@ async function runScrapeAllInner(): Promise<ScrapeResult[]> {
     },
   });
 
-  // Filter: only scrape if enough time has passed since last run
-  // Use per-query scrapeInterval, falling back to global default
   const now = Date.now();
   const dueQueries = activeQueries.filter((q) => {
     const lastRun = q.fetchRuns[0];
-    if (!lastRun) return true; // never scraped
+    if (!lastRun) return true;
     const hoursSince = (now - lastRun.startedAt.getTime()) / (1000 * 60 * 60);
     return hoursSince >= (q.scrapeInterval ?? globalInterval);
   });
 
   const results: ScrapeResult[] = [];
 
-  console.log(`[scrape-all] ${dueQueries.length}/${activeQueries.length} queries due for scraping`);
+  // Collect union of all VPN countries across all due queries
+  // Per-query vpnCountries override the global default
+  const allVpnCountries = new Set<string>();
+  const queryCountryMap = new Map<string, string[]>();
+  for (const q of dueQueries) {
+    const countries = q.vpnCountries.length > 0 ? q.vpnCountries : defaultVpnCountries;
+    queryCountryMap.set(q.id, countries);
+    for (const c of countries) allVpnCountries.add(c);
+  }
 
-  // Run sequentially to avoid overwhelming Google Flights
-  for (const query of dueQueries) {
-    const result = await runScrapeForQuery(query.id);
-    results.push(result);
+  // Group by country to minimize VPN reconnects:
+  // all queries[local] -> switch to DE -> queries that need DE -> switch to JP -> queries that need JP
+  const countriesToScrape: (string | null)[] = allVpnCountries.size > 0
+    ? [null, ...Array.from(allVpnCountries)]
+    : [null];
 
-    // Delay between queries to reduce detection risk
-    if (activeQueries.indexOf(query) < activeQueries.length - 1) {
-      await new Promise((resolve) => setTimeout(resolve, 5000 + Math.random() * 5000));
+  const vpnLabel = allVpnCountries.size > 0 ? ` (VPN: ${Array.from(allVpnCountries).join(',')})` : '';
+  console.log(`[scrape-all] ${dueQueries.length}/${activeQueries.length} queries due for scraping${vpnLabel}`);
+
+  for (let ci = 0; ci < countriesToScrape.length; ci++) {
+    const country = countriesToScrape[ci]!;
+    const isVpnPass = country !== null;
+
+    // Switch VPN for this country pass
+    if (isVpnPass) {
+      console.log(`[scrape-all] switching VPN to ${country}...`);
+      const connected = await vpnProvider.connect(country);
+      if (!connected) {
+        console.error(`[scrape-all] failed to connect VPN to ${country}, skipping all queries for this country`);
+        continue;
+      }
+      await new Promise((r) => setTimeout(r, 3000));
+    } else if (ci > 0) {
+      await vpnProvider.disconnect();
+    }
+
+    // Scrape queries that need this country
+    const queriesForCountry = isVpnPass
+      ? dueQueries.filter((q) => (queryCountryMap.get(q.id) ?? []).includes(country))
+      : dueQueries; // local pass: all queries
+
+    for (let qi = 0; qi < queriesForCountry.length; qi++) {
+      const query = queriesForCountry[qi]!;
+      const result = await runScrapeForQuery(
+        query.id,
+        country,
+        isVpnPass ? proxyUrl : undefined,
+      );
+      results.push(result);
+
+      if (qi < queriesForCountry.length - 1) {
+        await new Promise((resolve) => setTimeout(resolve, 5000 + Math.random() * 5000));
+      }
+    }
+
+    if (isVpnPass && ci < countriesToScrape.length - 1) {
+      await new Promise((r) => setTimeout(r, VPN_INTER_COUNTRY_DELAY_MS + Math.random() * 3000));
     }
   }
 
-  // Sync to community hub if opted in
+  // Disconnect VPN after all passes
+  if (allVpnCountries.size > 0) {
+    await vpnProvider.disconnect();
+  }
+
   await trySyncToHub();
 
   return results;

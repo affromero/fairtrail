@@ -206,6 +206,341 @@
   border-radius: var(--radius-sm);
 }
 
+.vpnCountries {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.vpnBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  background: var(--elevated);
+  border: 1px solid var(--border);
+  font-size: 0.8125rem;
+  font-family: var(--font-mono);
+  color: var(--text);
+}
+
+.vpnBadgeRemove {
+  background: none;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 1rem;
+  line-height: 1;
+  padding: 0 0.15rem;
+}
+
+.vpnBadgeRemove:hover {
+  color: var(--text);
+}
+
+.vpnAddRow {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.vpnAddRow .input {
+  flex: 1;
+  max-width: 120px;
+}
+
+.providerGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+}
+
+.providerCard {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.75rem;
+  background: var(--surface);
+  border: 2px solid var(--border);
+  border-radius: var(--radius-md, 8px);
+  cursor: pointer;
+  transition: border-color 0.2s;
+  text-align: left;
+}
+
+.providerCard:hover {
+  border-color: var(--accent);
+}
+
+.providerCardSelected {
+  border-color: var(--accent);
+  background: var(--elevated);
+}
+
+.providerCardUnavailable {
+  opacity: 0.5;
+}
+
+.providerCardName {
+  font-family: var(--font-display);
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.providerCardStatus {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  color: var(--muted);
+}
+
+.providerCardSelected .providerCardStatus {
+  color: var(--accent);
+}
+
+.providerCardWrapper {
+  display: contents;
+}
+
+.providerConfigure {
+  grid-column: 1 / -1;
+  padding: 0.75rem;
+  background: var(--elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md, 8px);
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.providerConfigHint {
+  font-size: 0.8125rem;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.providerConfigHint code {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  background: var(--surface);
+  padding: 0.15rem 0.4rem;
+  border-radius: 3px;
+  color: var(--accent);
+}
+
+.providerConfigRow {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.providerConfigRow .input {
+  flex: 1;
+}
+
+.vpnProviderGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+  margin-bottom: 1.25rem;
+}
+
+.vpnCard {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.75rem;
+  background: var(--surface);
+  border: 2px solid var(--border);
+  border-radius: var(--radius-md, 8px);
+  cursor: pointer;
+  transition: border-color 0.2s;
+  text-align: left;
+}
+
+.vpnCard:hover {
+  border-color: var(--accent);
+}
+
+.vpnCardActive {
+  border-color: var(--accent);
+  background: var(--elevated);
+}
+
+.vpnCardDisabled {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.75rem;
+  background: var(--surface);
+  border: 2px solid var(--border);
+  border-radius: var(--radius-md, 8px);
+  opacity: 0.4;
+  text-align: left;
+}
+
+.vpnCardHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.vpnCardName {
+  font-family: var(--font-display);
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.vpnCardDesc {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  color: var(--muted);
+}
+
+.vpnCardStatusReady {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: #22c55e;
+}
+
+.vpnCardActive .vpnCardStatusReady {
+  color: #22c55e;
+}
+
+.vpnCardStatusWarn {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: #f59e0b;
+}
+
+.vpnCardStatusOff {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  color: var(--muted);
+}
+
+.vpnActivation {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.vpnSteps {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.vpnStep {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  font-size: 0.8125rem;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.vpnStep a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.vpnStep a:hover {
+  text-decoration: underline;
+}
+
+.vpnStep code {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  background: var(--elevated);
+  padding: 0.1rem 0.3rem;
+  border-radius: 3px;
+}
+
+.vpnStepNum {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.25rem;
+  height: 1.25rem;
+  border-radius: 50%;
+  background: rgba(6, 182, 212, 0.1);
+  border: 1px solid rgba(6, 182, 212, 0.3);
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.vpnCodeSaved {
+  color: #22c55e;
+  font-size: 0.75rem;
+  font-weight: 400;
+}
+
+.vpnCodeMasked {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem 0.75rem;
+  background: var(--elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md, 8px);
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  color: var(--muted);
+  letter-spacing: 0.15em;
+}
+
+.vpnCodeChange {
+  background: none;
+  border: none;
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  cursor: pointer;
+  padding: 0;
+}
+
+.vpnCodeChange:hover {
+  text-decoration: underline;
+}
+
+.vpnCodeRow {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.vpnCodeRow .input {
+  flex: 1;
+}
+
+.vpnGetCode {
+  font-size: 0.8125rem;
+  color: var(--accent);
+  text-decoration: none;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+}
+
+.vpnGetCode:hover {
+  text-decoration: underline;
+}
+
+.vpnCodeSet {
+  color: var(--accent);
+  font-size: 0.75rem;
+  font-weight: 400;
+}
+
 .providerHint {
   font-size: 0.75rem;
   color: var(--muted);

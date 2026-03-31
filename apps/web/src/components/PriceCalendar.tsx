@@ -8,6 +8,7 @@ interface Snapshot {
   currency: string;
   airline: string;
   bookingUrl: string | null;
+  vpnCountry?: string | null;
 }
 
 interface Props {

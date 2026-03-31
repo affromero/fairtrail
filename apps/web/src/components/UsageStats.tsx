@@ -55,7 +55,7 @@ export function UsageStats() {
       </div>
       <div className={styles.card}>
         <span className={styles.value}>${stats.llmCost30d}</span>
-        <span className={styles.label}>Cost 30d</span>
+        <span className={styles.label}>LLM cost (30d)</span>
       </div>
       {stats.cron.nextScrape && (
         <span className={styles.cron}>

@@ -1,15 +1,11 @@
 import { apiSuccess } from '@/lib/api-response';
 import { prisma } from '@/lib/prisma';
-import { hasValidInvite } from '@/lib/invite-auth';
 
 export const dynamic = 'force-dynamic';
 
 const isSelfHosted = process.env.SELF_HOSTED === 'true';
 
 export async function GET() {
-  if (!(await hasValidInvite())) {
-    return apiSuccess({ queries: [] });
-  }
 
   // Self-hosted: include paused queries too so users can resume them
   const queries = await prisma.query.findMany({

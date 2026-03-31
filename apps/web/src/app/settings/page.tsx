@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
-import { EXTRACTION_PROVIDERS, LOCAL_PROVIDERS } from '@/lib/scraper/ai-registry';
+import { EXTRACTION_PROVIDERS, LOCAL_PROVIDERS, CLI_PROVIDERS } from '@/lib/scraper/ai-registry';
 import styles from './page.module.css';
 
 interface Config {
@@ -15,6 +15,9 @@ interface Config {
   customBaseUrl: string | null;
   defaultCurrency: string | null;
   defaultCountry: string | null;
+  vpnProvider: string | null;
+  vpnCountries: string[];
+  hasVpnActivationCode: boolean;
 }
 
 export default function SettingsPage() {
@@ -26,6 +29,17 @@ export default function SettingsPage() {
   const [customBaseUrl, setCustomBaseUrl] = useState('');
   const [defaultCurrency, setDefaultCurrency] = useState('');
   const [defaultCountry, setDefaultCountry] = useState('');
+  const [vpnProvider, setVpnProvider] = useState('none');
+  const [vpnCountries, setVpnCountries] = useState<string[]>([]);
+  const [vpnActivationCode, setVpnActivationCode] = useState('');
+  const [vpnCodeSaving, setVpnCodeSaving] = useState(false);
+  const [vpnCodeMessage, setVpnCodeMessage] = useState('');
+  const [hasVpnCode, setHasVpnCode] = useState(false);
+  const [vpnLive, setVpnLive] = useState<{ configured: boolean; sidecarRunning: boolean; ready: boolean } | null>(null);
+  const [detectedProviders, setDetectedProviders] = useState<string[]>([]);
+  const [configuringProvider, setConfiguringProvider] = useState<string | null>(null);
+  const [providerKeyInput, setProviderKeyInput] = useState('');
+  const [providerKeySaving, setProviderKeySaving] = useState(false);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
 
@@ -60,6 +74,16 @@ export default function SettingsPage() {
   }, []);
 
   useEffect(() => {
+    fetch('/api/setup/status')
+      .then((r) => r.json())
+      .then((d) => { setDetectedProviders(d.detectedProviders ?? d.data?.detectedProviders ?? []); })
+      .catch(() => {});
+
+    fetch('/api/vpn/status')
+      .then((r) => r.json())
+      .then((d) => { if (d.ok) setVpnLive(d.data); })
+      .catch(() => {});
+
     fetch('/api/admin/config')
       .then((r) => r.json())
       .then((d) => {
@@ -70,6 +94,9 @@ export default function SettingsPage() {
           setCustomBaseUrl(d.data.customBaseUrl || '');
           setDefaultCurrency(d.data.defaultCurrency || '');
           setDefaultCountry(d.data.defaultCountry || '');
+          setVpnProvider(d.data.vpnProvider || 'none');
+          setVpnCountries(d.data.vpnCountries || []);
+          setHasVpnCode(d.data.hasVpnActivationCode || false);
           const pc = EXTRACTION_PROVIDERS[d.data.provider];
           const knownModel = pc?.models.find((m) => m.id === d.data.model);
           if (knownModel) {
@@ -120,6 +147,8 @@ export default function SettingsPage() {
         customBaseUrl: customBaseUrl.trim() || null,
         defaultCurrency: defaultCurrency.trim().toUpperCase() || null,
         defaultCountry: defaultCountry.trim().toUpperCase() || null,
+        vpnProvider: vpnProvider === 'none' ? null : vpnProvider,
+        vpnCountries,
       }),
     });
 
@@ -155,15 +184,107 @@ export default function SettingsPage() {
 
           <div className={styles.field}>
             <label className={styles.label}>Provider</label>
-            <select
-              className={styles.select}
-              value={provider}
-              onChange={(e) => handleProviderChange(e.target.value)}
-            >
-              {Object.entries(EXTRACTION_PROVIDERS).map(([key, p]) => (
-                <option key={key} value={key}>{p.displayName}</option>
-              ))}
-            </select>
+            <div className={styles.providerGrid}>
+              {Object.entries(EXTRACTION_PROVIDERS).map(([key, p]) => {
+                const detected = detectedProviders.includes(key);
+                const isCli = !!CLI_PROVIDERS[key];
+                const isLocal = LOCAL_PROVIDERS.has(key);
+                return (
+                  <div key={key} className={styles.providerCardWrapper}>
+                    <button
+                      type="button"
+                      className={`${styles.providerCard} ${provider === key ? styles.providerCardSelected : ''} ${!detected && !isLocal ? styles.providerCardUnavailable : ''}`}
+                      onClick={() => {
+                        if (detected || isLocal) {
+                          handleProviderChange(key);
+                          setConfiguringProvider(null);
+                        } else {
+                          setConfiguringProvider(configuringProvider === key ? null : key);
+                          setProviderKeyInput('');
+                        }
+                      }}
+                    >
+                      <span className={styles.providerCardName}>{p.displayName}</span>
+                      <span className={styles.providerCardStatus}>
+                        {detected
+                          ? isCli ? 'Your subscription' : isLocal ? 'Local' : 'Ready'
+                          : isCli ? 'Set up' : isLocal ? 'Local' : 'Add key'}
+                      </span>
+                    </button>
+                    {configuringProvider === key && !detected && (
+                      <div className={styles.providerConfigure}>
+                        {isCli && key === 'claude-code' ? (
+                          <>
+                            <p className={styles.providerConfigHint}>
+                              Run <code>claude setup-token</code> in your terminal, then paste the token:
+                            </p>
+                            <div className={styles.providerConfigRow}>
+                              <input
+                                type="password"
+                                className={styles.input}
+                                placeholder="Paste setup token"
+                                value={providerKeyInput}
+                                onChange={(e) => setProviderKeyInput(e.target.value)}
+                                autoFocus
+                              />
+                              <button
+                                className={styles.saveButton}
+                                disabled={providerKeySaving || !providerKeyInput}
+                                onClick={async () => {
+                                  setProviderKeySaving(true);
+                                  // TODO: save Claude Code setup token to container
+                                  // For now, show instructions
+                                  setProviderKeySaving(false);
+                                  setMessage('Add CLAUDE_CODE_OAUTH_TOKEN to ~/.fairtrail/.env and restart');
+                                  setConfiguringProvider(null);
+                                }}
+                              >
+                                Save
+                              </button>
+                            </div>
+                          </>
+                        ) : isCli && key === 'codex' ? (
+                          <>
+                            <p className={styles.providerConfigHint}>
+                              Codex CLI needs to be installed on the host. Run <code>npm i -g @openai/codex</code>.
+                            </p>
+                          </>
+                        ) : (
+                          <>
+                            <p className={styles.providerConfigHint}>
+                              Paste your {p.displayName} API key:
+                            </p>
+                            <div className={styles.providerConfigRow}>
+                              <input
+                                type="password"
+                                className={styles.input}
+                                placeholder={`${p.envKey}`}
+                                value={providerKeyInput}
+                                onChange={(e) => setProviderKeyInput(e.target.value)}
+                                autoFocus
+                              />
+                              <button
+                                className={styles.saveButton}
+                                disabled={providerKeySaving || !providerKeyInput}
+                                onClick={async () => {
+                                  setProviderKeySaving(true);
+                                  setMessage(`Add ${p.envKey}=${providerKeyInput.slice(0, 8)}... to ~/.fairtrail/.env and restart`);
+                                  setProviderKeySaving(false);
+                                  setConfiguringProvider(null);
+                                  setProviderKeyInput('');
+                                }}
+                              >
+                                Save
+                              </button>
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
           </div>
 
           <div className={styles.field}>
@@ -245,38 +366,192 @@ export default function SettingsPage() {
           </div>
 
           <div className={styles.field}>
-            <label className={styles.label}>Default Currency (ISO 4217)</label>
-            <input
-              type="text"
-              className={styles.input}
-              placeholder="e.g. EUR, GBP — empty = auto-detect"
-              value={defaultCurrency}
-              onChange={(e) => setDefaultCurrency(e.target.value.toUpperCase())}
-              maxLength={3}
-            />
+            <label className={styles.label}>Default Currency</label>
+            <select
+              className={styles.select}
+              value={['', 'USD', 'EUR', 'GBP', 'JPY', 'CAD', 'AUD', 'CHF', 'CNY', 'INR', 'MXN', 'BRL', 'KRW', 'SGD', 'HKD', 'SEK', 'NOK', 'DKK', 'NZD', 'THB', 'COP', 'ARS'].includes(defaultCurrency) ? defaultCurrency : '_custom'}
+              onChange={(e) => setDefaultCurrency(e.target.value === '_custom' ? '' : e.target.value)}
+            >
+              <option value="">Auto-detect</option>
+              <option value="USD">USD - US Dollar</option>
+              <option value="EUR">EUR - Euro</option>
+              <option value="GBP">GBP - British Pound</option>
+              <option value="JPY">JPY - Japanese Yen</option>
+              <option value="CAD">CAD - Canadian Dollar</option>
+              <option value="AUD">AUD - Australian Dollar</option>
+              <option value="CHF">CHF - Swiss Franc</option>
+              <option value="CNY">CNY - Chinese Yuan</option>
+              <option value="INR">INR - Indian Rupee</option>
+              <option value="MXN">MXN - Mexican Peso</option>
+              <option value="BRL">BRL - Brazilian Real</option>
+              <option value="KRW">KRW - South Korean Won</option>
+              <option value="SGD">SGD - Singapore Dollar</option>
+              <option value="HKD">HKD - Hong Kong Dollar</option>
+              <option value="SEK">SEK - Swedish Krona</option>
+              <option value="NOK">NOK - Norwegian Krone</option>
+              <option value="DKK">DKK - Danish Krone</option>
+              <option value="NZD">NZD - New Zealand Dollar</option>
+              <option value="THB">THB - Thai Baht</option>
+              <option value="COP">COP - Colombian Peso</option>
+              <option value="ARS">ARS - Argentine Peso</option>
+              <option value="_custom">Other...</option>
+            </select>
+            {!['', 'USD', 'EUR', 'GBP', 'JPY', 'CAD', 'AUD', 'CHF', 'CNY', 'INR', 'MXN', 'BRL', 'KRW', 'SGD', 'HKD', 'SEK', 'NOK', 'DKK', 'NZD', 'THB', 'COP', 'ARS'].includes(defaultCurrency) && (
+              <input
+                type="text"
+                className={styles.input}
+                placeholder="3-letter ISO 4217 code"
+                value={defaultCurrency}
+                onChange={(e) => setDefaultCurrency(e.target.value.toUpperCase())}
+                maxLength={3}
+              />
+            )}
           </div>
-
-          <div className={styles.field}>
-            <label className={styles.label}>Default Country (ISO 3166-1)</label>
-            <input
-              type="text"
-              className={styles.input}
-              placeholder="e.g. DE, GB — empty = auto-detect"
-              value={defaultCountry}
-              onChange={(e) => setDefaultCountry(e.target.value.toUpperCase())}
-              maxLength={2}
-            />
-          </div>
-
-          <p className={styles.providerHint}>
-            Env key: <code className={styles.code}>{providerConfig?.envKey ?? 'N/A'}</code>
-          </p>
 
           <div className={styles.actions}>
             <button className={styles.saveButton} onClick={handleSave} disabled={saving}>
               {saving ? 'Saving...' : 'Save'}
             </button>
             {message && <span className={styles.message}>{message}</span>}
+          </div>
+        </div>
+
+        <div className={styles.section}>
+          <h2 className={styles.sectionTitle}>VPN Price Comparison</h2>
+          <p className={styles.toggleHint}>
+            Test the myth: do flight prices change based on your VPN location?
+          </p>
+
+          <div className={styles.vpnProviderGrid}>
+            <button
+              type="button"
+              className={`${styles.vpnCard} ${vpnProvider === 'expressvpn' && hasVpnCode ? styles.vpnCardActive : ''}`}
+              onClick={() => {
+                if (!hasVpnCode) {
+                  const el = document.getElementById('vpn-activation-input');
+                  el?.focus();
+                }
+              }}
+            >
+              <div className={styles.vpnCardHeader}>
+                <span className={styles.vpnCardName}>ExpressVPN</span>
+                <span className={vpnLive?.ready ? styles.vpnCardStatusReady : hasVpnCode ? styles.vpnCardStatusWarn : styles.vpnCardStatusOff}>
+                  {vpnLive?.ready ? 'Connected' : hasVpnCode ? (vpnLive?.sidecarRunning === false ? 'Sidecar offline' : 'Code saved') : 'Not set up'}
+                </span>
+              </div>
+              <span className={styles.vpnCardDesc}>Docker sidecar with SOCKS5 proxy</span>
+            </button>
+
+            <div className={styles.vpnCardDisabled}>
+              <div className={styles.vpnCardHeader}>
+                <span className={styles.vpnCardName}>NordVPN</span>
+                <span className={styles.vpnCardStatusOff}>Coming soon</span>
+              </div>
+              <span className={styles.vpnCardDesc}>WireGuard-based sidecar</span>
+            </div>
+
+            <div className={styles.vpnCardDisabled}>
+              <div className={styles.vpnCardHeader}>
+                <span className={styles.vpnCardName}>Mullvad</span>
+                <span className={styles.vpnCardStatusOff}>Coming soon</span>
+              </div>
+              <span className={styles.vpnCardDesc}>Privacy-focused SOCKS5</span>
+            </div>
+
+            <div className={styles.vpnCardDisabled}>
+              <div className={styles.vpnCardHeader}>
+                <span className={styles.vpnCardName}>Custom Proxy</span>
+                <span className={styles.vpnCardStatusOff}>Coming soon</span>
+              </div>
+              <span className={styles.vpnCardDesc}>SOCKS5/HTTP proxy URLs</span>
+            </div>
+          </div>
+
+          <div className={styles.vpnActivation}>
+            <label className={styles.label}>
+              ExpressVPN Activation Code
+              {hasVpnCode && <span className={styles.vpnCodeSaved}> (saved)</span>}
+            </label>
+            {hasVpnCode && !vpnActivationCode && (
+              <div className={styles.vpnCodeMasked}>
+                <span>{'*'.repeat(20)}</span>
+                <button
+                  type="button"
+                  className={styles.vpnCodeChange}
+                  onClick={() => {
+                    const el = document.getElementById('vpn-activation-input') as HTMLInputElement;
+                    el?.focus();
+                  }}
+                >
+                  Change
+                </button>
+              </div>
+            )}
+            <div className={styles.vpnCodeRow} style={hasVpnCode && !vpnActivationCode ? { display: 'none' } : undefined}>
+              <input
+                id="vpn-activation-input"
+                type="password"
+                className={styles.input}
+                placeholder="Paste your activation code"
+                value={vpnActivationCode}
+                onChange={(e) => setVpnActivationCode(e.target.value)}
+              />
+              <a
+                href="https://www.expressvpn.com/setup"
+                target="_blank"
+                rel="noopener noreferrer"
+                className={styles.vpnGetCode}
+                title="Get your activation code"
+              >
+                Get code
+              </a>
+            </div>
+
+            <div className={styles.vpnSteps}>
+              <div className={styles.vpnStep}>
+                <span className={styles.vpnStepNum}>1</span>
+                <span>Visit <a href="https://www.expressvpn.com/setup" target="_blank" rel="noopener noreferrer">expressvpn.com/setup</a> and copy your activation code</span>
+              </div>
+              <div className={styles.vpnStep}>
+                <span className={styles.vpnStepNum}>2</span>
+                <span>Paste it above and save -- your code is encrypted before storage</span>
+              </div>
+            </div>
+
+            <div className={styles.actions}>
+              <button
+                className={styles.saveButton}
+                disabled={vpnCodeSaving || !vpnActivationCode}
+                onClick={async () => {
+                  setVpnCodeSaving(true);
+                  setVpnCodeMessage('');
+                  const res = await fetch('/api/admin/config', {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      vpnActivationCode: vpnActivationCode,
+                      vpnProvider: 'expressvpn',
+                    }),
+                  });
+                  const data = await res.json();
+                  if (data.ok) {
+                    setConfig(data.data);
+                    setHasVpnCode(true);
+                    setVpnActivationCode('');
+                    setVpnProvider('expressvpn');
+                    setVpnCodeMessage('VPN configured');
+                    // Refresh live status
+                    fetch('/api/vpn/status').then((r) => r.json()).then((s) => { if (s.ok) setVpnLive(s.data); }).catch(() => {});
+                  } else {
+                    setVpnCodeMessage(data.error || 'Failed to save');
+                  }
+                  setVpnCodeSaving(false);
+                }}
+              >
+                {vpnCodeSaving ? 'Saving...' : hasVpnCode ? 'Update Code' : 'Save Code'}
+              </button>
+              {vpnCodeMessage && <span className={styles.message}>{vpnCodeMessage}</span>}
+            </div>
           </div>
         </div>
 

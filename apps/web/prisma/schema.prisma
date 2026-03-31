@@ -31,6 +31,7 @@ model Query {
   lookAheadDays   Int      @default(14)
   expiresAt       DateTime
   firstViewedAt   DateTime?
+  vpnCountries    String[] @default([]) // ISO 3166-1 codes for VPN comparison
   scrapeInterval  Int      @default(3) // hours
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
@@ -60,6 +61,7 @@ model PriceSnapshot {
   seatsLeft         Int?
   status            String   @default("available") // 'available' | 'sold_out'
   airlineDirectPrice Float?
+  vpnCountry        String?  // ISO 3166-1 alpha-2 — VPN exit country during scrape
   scrapedAt         DateTime @default(now())
   fetchRunId        String?
 
@@ -78,6 +80,7 @@ model FetchRun {
   source         String    @default("google_flights") // 'google_flights' | 'airline_direct'
   snapshotsCount Int       @default(0)
   extractionCost Float?
+  vpnCountry     String?   // ISO 3166-1 alpha-2 — VPN exit country during this run
   error          String?
   startedAt      DateTime  @default(now())
   completedAt    DateTime?
@@ -101,20 +104,12 @@ model ExtractionConfig {
   defaultCurrency      String?   // ISO 4217 (EUR, GBP). null = Google auto-detects
   defaultCountry       String?   // ISO 3166-1 alpha-2 (DE, GB). null = Google auto-detects
   customBaseUrl        String?   // e.g. http://localhost:11434/v1
+  vpnProvider          String?   // 'none' | 'expressvpn'
+  vpnCountries         String[]  @default([]) // default VPN countries (used when query has none)
+  vpnActivationCode    String?   // encrypted VPN activation code
   updatedAt            DateTime  @updatedAt
 }
 
-model InviteCode {
-  id        String    @id @default(cuid())
-  code      String    @unique
-  label     String?
-  usesCount Int       @default(0)
-  active    Boolean   @default(true)
-  createdAt DateTime  @default(now())
-  expiresAt DateTime?
-
-  @@index([active])
-}
 
 model ApiUsageLog {
   id           String   @id @default(cuid())

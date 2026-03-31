@@ -7,6 +7,31 @@
   overflow: hidden;
 }
 
+.viewFilter {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.viewSelect {
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  color: var(--text);
+  background: var(--elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm, 4px);
+  padding: 0.35rem 0.6rem;
+  cursor: pointer;
+}
+
+.viewSelect:focus {
+  outline: 1px solid var(--accent);
+  outline-offset: 1px;
+}
+
 .empty {
   width: 100%;
   padding: 3rem 1.5rem;

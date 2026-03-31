@@ -43,9 +43,13 @@ else
   exit 1
 fi
 
-# Resolve override file if it exists
+# Resolve override files
 COMPOSE_FILES="-f docker-compose.yml"
 [ -f "docker-compose.override.yml" ] && COMPOSE_FILES="$COMPOSE_FILES -f docker-compose.override.yml"
+# Auto-include VPN sidecar if activation code is configured
+if [ -f "docker-compose.vpn.yml" ] && grep -q "EXPRESSVPN_CODE" .env 2>/dev/null; then
+  COMPOSE_FILES="$COMPOSE_FILES -f docker-compose.vpn.yml"
+fi
 
 # Detect compose command based on detected container runtime
 if [ "$CONTAINER_CMD" = "podman" ]; then

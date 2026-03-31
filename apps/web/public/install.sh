@@ -523,6 +523,72 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+# 6b. Optional: ExpressVPN for price comparison across countries
+# ---------------------------------------------------------------------------
+printf "\n"
+printf "  ${BOLD}VPN Price Comparison (optional)${RESET}\n"
+printf "  ${DIM}Compare flight prices from different countries using ExpressVPN.${RESET}\n"
+printf "  ${DIM}Requires an ExpressVPN subscription.${RESET}\n"
+printf "\n"
+printf "  Set up ExpressVPN? [y/N] "
+read -r SETUP_VPN
+if [ "$SETUP_VPN" = "y" ] || [ "$SETUP_VPN" = "Y" ]; then
+  printf "  Paste your activation code (from ${UNDERLINE}https://www.expressvpn.com/setup${RESET}): "
+  read -r EXPRESSVPN_CODE
+  if [ -n "$EXPRESSVPN_CODE" ]; then
+    # Append to .env
+    {
+      echo ""
+      echo "# ExpressVPN (VPN price comparison)"
+      echo "EXPRESSVPN_CODE=${EXPRESSVPN_CODE}"
+    } >> "$FAIRTRAIL_DIR/.env"
+
+    # Generate docker-compose.vpn.yml
+    cat > "$FAIRTRAIL_DIR/docker-compose.vpn.yml" << 'VPNYAML'
+services:
+  expressvpn:
+    image: misioslav/expressvpn:latest
+    container_name: fairtrail-expressvpn
+    restart: unless-stopped
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    environment:
+      - ACTIVATION_CODE=${EXPRESSVPN_CODE}
+      - SERVER=smart
+      - PROTOCOL=auto
+      - SOCKS_ENABLED=true
+      - SOCKS_PORT=1080
+      - API_ENABLED=true
+      - API_PORT=8000
+      - HEALTHCHECK=true
+      - NETWORK=on
+    stdin_open: true
+    tty: true
+    healthcheck:
+      test: ["CMD", "expressvpnctl", "status"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  web:
+    environment:
+      - EXPRESSVPN_API_URL=http://expressvpn:8000
+      - EXPRESSVPN_SOCKS_URL=socks5://expressvpn:1080
+    depends_on:
+      expressvpn:
+        condition: service_healthy
+VPNYAML
+    ok "VPN configured — sidecar will start automatically"
+  else
+    printf "  ${DIM}Skipped (no code entered)${RESET}\n"
+  fi
+else
+  printf "  ${DIM}Skipped${RESET}\n"
+fi
+
+# ---------------------------------------------------------------------------
 # 7. Generate docker-compose.override.yml for CLI volume mounts
 # ---------------------------------------------------------------------------
 NEED_OVERRIDE=false

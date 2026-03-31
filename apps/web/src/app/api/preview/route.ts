@@ -8,7 +8,6 @@ import { extractPrices, type PriceData, type ExtractionFailureReason } from '@/l
 import { getModelCosts } from '@/lib/scraper/ai-registry';
 import { isKnownAirline } from '@/lib/scraper/airline-urls';
 import { createHash } from 'crypto';
-import { hasValidInvite } from '@/lib/invite-auth';
 import type { Airport } from '@/lib/scraper/parse-query';
 
 const RETRYABLE_FAILURES: ExtractionFailureReason[] = ['empty_extraction', 'page_not_loaded', 'no_json_in_response'];
@@ -174,15 +173,14 @@ async function scrapeRoute(params: ScrapeRouteParams): Promise<PriceData[]> {
 }
 
 export async function POST(request: NextRequest) {
-  if (!(await hasValidInvite())) {
-    return apiError('Invite code required', 401);
-  }
 
   const body = await request.json().catch(() => null);
   if (!body) return apiError('Invalid JSON body', 400);
 
   const { dateFrom, dateTo, maxPrice, maxStops, preferredAirlines, timePreference, cabinClass, tripType, currency: bodyCurrency } = body;
-  const currency: string | null = typeof bodyCurrency === 'string' && bodyCurrency ? bodyCurrency : null;
+  // Admin default currency takes priority over browser-detected currency
+  const config = await prisma.extractionConfig.findFirst({ where: { id: 'singleton' } });
+  const currency: string | null = config?.defaultCurrency ?? (typeof bodyCurrency === 'string' && bodyCurrency ? bodyCurrency : null);
 
   // Multi-date support: individual outbound/return dates
   const outboundDates: string[] | undefined = Array.isArray(body.outboundDates) ? body.outboundDates : undefined;

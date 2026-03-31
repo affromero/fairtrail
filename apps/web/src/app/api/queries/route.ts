@@ -2,7 +2,6 @@ import crypto from 'crypto';
 import { NextRequest } from 'next/server';
 import { apiSuccess, apiError } from '@/lib/api-response';
 import { prisma } from '@/lib/prisma';
-import { hasValidInvite } from '@/lib/invite-auth';
 
 interface RouteInput {
   origin: string;
@@ -23,9 +22,6 @@ interface RouteInput {
 }
 
 export async function POST(request: NextRequest) {
-  if (!(await hasValidInvite())) {
-    return apiError('Invite code required', 401);
-  }
 
   const body = await request.json().catch(() => null);
   if (!body) return apiError('Invalid JSON body', 400);
@@ -42,8 +38,12 @@ export async function POST(request: NextRequest) {
     cabinClass,
     tripType,
     currency: bodyCurrency,
+    vpnCountries: bodyVpnCountries,
   } = body;
   const currency: string | null = typeof bodyCurrency === 'string' && bodyCurrency ? bodyCurrency : null;
+  const vpnCountries: string[] = Array.isArray(bodyVpnCountries)
+    ? bodyVpnCountries.filter((c: unknown) => typeof c === 'string' && /^[A-Z]{2}$/.test(c))
+    : [];
 
   // Support both new (routes array) and legacy (single origin/destination) formats
   let routeInputs: RouteInput[];
@@ -139,6 +139,7 @@ export async function POST(request: NextRequest) {
         cabinClass: cabinClass || 'economy',
         tripType: tripType === 'one_way' ? 'one_way' : 'round_trip',
         currency,
+        vpnCountries,
         expiresAt: routeExpiry,
         firstViewedAt: new Date(),
         deleteToken,
@@ -170,6 +171,14 @@ export async function POST(request: NextRequest) {
       date: route.date,
       returnDate: route.returnDate,
       deleteToken,
+    });
+  }
+
+  // Fire immediate scrape for all created queries including VPN passes (background, non-blocking)
+  const { runFullScrapeForQuery } = await import('@/lib/scraper/run-scrape');
+  for (const q of results) {
+    runFullScrapeForQuery(q.id).catch((err) => {
+      console.error(`[queries] background scrape failed for ${q.id}:`, err instanceof Error ? err.message : err);
     });
   }
 

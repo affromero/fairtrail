@@ -15,17 +15,12 @@ interface Config {
   defaultCurrency: string | null;
   defaultCountry: string | null;
   customBaseUrl: string | null;
+  vpnProvider: string | null;
+  vpnCountries: string[];
+  hasVpnActivationCode: boolean;
 }
 
-interface InviteCode {
-  id: string;
-  code: string;
-  label: string | null;
-  usesCount: number;
-  active: boolean;
-  createdAt: string;
-  expiresAt: string | null;
-}
+
 
 export default function ConfigPage() {
   const [config, setConfig] = useState<Config | null>(null);
@@ -36,17 +31,14 @@ export default function ConfigPage() {
   const [defaultCurrency, setDefaultCurrency] = useState('');
   const [defaultCountry, setDefaultCountry] = useState('');
   const [customBaseUrl, setCustomBaseUrl] = useState('');
+  const [vpnProvider, setVpnProvider] = useState('none');
+  const [vpnCountries, setVpnCountries] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
 
   const [adminPassword, setAdminPassword] = useState('');
   const [savingPassword, setSavingPassword] = useState(false);
   const [passwordMessage, setPasswordMessage] = useState('');
-
-  const [invites, setInvites] = useState<InviteCode[]>([]);
-  const [newLabel, setNewLabel] = useState('');
-  const [generatingInvite, setGeneratingInvite] = useState(false);
-  const [copiedId, setCopiedId] = useState<string | null>(null);
 
   const [localModels, setLocalModels] = useState<{ id: string; name: string; size: string }[]>([]);
   const [localModelsLoading, setLocalModelsLoading] = useState(false);
@@ -78,12 +70,6 @@ export default function ConfigPage() {
       .finally(() => setLocalModelsLoading(false));
   }, []);
 
-  const loadInvites = useCallback(() => {
-    fetch('/api/admin/invites')
-      .then((r) => r.json())
-      .then((d) => { if (d.ok) setInvites(d.data); });
-  }, []);
-
   useEffect(() => {
     fetch('/api/admin/config')
       .then((r) => r.json())
@@ -95,6 +81,8 @@ export default function ConfigPage() {
           setDefaultCurrency(d.data.defaultCurrency || '');
           setDefaultCountry(d.data.defaultCountry || '');
           setCustomBaseUrl(d.data.customBaseUrl || '');
+          setVpnProvider(d.data.vpnProvider || 'none');
+          setVpnCountries(d.data.vpnCountries || []);
           const pc = EXTRACTION_PROVIDERS[d.data.provider];
           const knownModel = pc?.models.find((m) => m.id === d.data.model);
           if (knownModel) {
@@ -107,8 +95,7 @@ export default function ConfigPage() {
           fetchLocalModels(d.data.provider);
         }
       });
-    loadInvites();
-  }, [loadInvites, fetchLocalModels]);
+  }, [fetchLocalModels]);
 
   const providerConfig = EXTRACTION_PROVIDERS[provider];
   const models = providerConfig?.models ?? [];
@@ -147,6 +134,8 @@ export default function ConfigPage() {
         defaultCurrency: defaultCurrency.trim().toUpperCase() || null,
         defaultCountry: defaultCountry.trim().toUpperCase() || null,
         customBaseUrl: newBaseUrl,
+        vpnProvider: vpnProvider === 'none' ? null : vpnProvider,
+        vpnCountries,
       }),
     });
 
@@ -184,43 +173,6 @@ export default function ConfigPage() {
       setPasswordMessage(data.error || 'Failed to save');
     }
     setSavingPassword(false);
-  };
-
-  const handleGenerateInvite = async () => {
-    setGeneratingInvite(true);
-
-    const res = await fetch('/api/admin/invites', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ label: newLabel.trim() || null }),
-    });
-
-    const data = await res.json();
-    if (data.ok) {
-      setNewLabel('');
-      loadInvites();
-    }
-    setGeneratingInvite(false);
-  };
-
-  const handleToggleInvite = async (id: string, active: boolean) => {
-    await fetch(`/api/admin/invites/${id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ active }),
-    });
-    loadInvites();
-  };
-
-  const handleDeleteInvite = async (id: string) => {
-    await fetch(`/api/admin/invites/${id}`, { method: 'DELETE' });
-    loadInvites();
-  };
-
-  const handleCopyCode = (invite: InviteCode) => {
-    navigator.clipboard.writeText(invite.code);
-    setCopiedId(invite.id);
-    setTimeout(() => setCopiedId(null), 2000);
   };
 
   if (!config) {
@@ -362,62 +314,6 @@ export default function ConfigPage() {
         </div>
       </div>
 
-      <div className={styles.form}>
-        <h2 className={styles.sectionTitle}>Invite Codes</h2>
-
-        <div className={styles.inviteGenRow}>
-          <input
-            type="text"
-            className={styles.input}
-            placeholder="Label (optional, e.g. 'for John')"
-            value={newLabel}
-            onChange={(e) => setNewLabel(e.target.value)}
-          />
-          <button
-            className={styles.saveButton}
-            onClick={handleGenerateInvite}
-            disabled={generatingInvite}
-          >
-            {generatingInvite ? 'Generating...' : 'Generate Code'}
-          </button>
-        </div>
-
-        {invites.length > 0 && (
-          <div className={styles.inviteList}>
-            {invites.map((inv) => (
-              <div key={inv.id} className={`${styles.inviteRow} ${!inv.active ? styles.inviteInactive : ''}`}>
-                <div className={styles.inviteMain}>
-                  <button
-                    className={styles.inviteCode}
-                    onClick={() => handleCopyCode(inv)}
-                    title="Click to copy"
-                  >
-                    {copiedId === inv.id ? 'Copied!' : inv.code.slice(0, 8) + '...'}
-                  </button>
-                  {inv.label && <span className={styles.inviteLabel}>{inv.label}</span>}
-                </div>
-                <div className={styles.inviteMeta}>
-                  <span className={styles.inviteUses}>{inv.usesCount} uses</span>
-                  <button
-                    type="button"
-                    className={`${styles.toggle} ${inv.active ? styles.toggleOn : ''}`}
-                    onClick={() => handleToggleInvite(inv.id, !inv.active)}
-                  >
-                    <span className={styles.toggleKnob} />
-                  </button>
-                  <button
-                    className={styles.inviteDelete}
-                    onClick={() => handleDeleteInvite(inv.id)}
-                    title="Delete"
-                  >
-                    &times;
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
 
       <div className={styles.form}>
         <h2 className={styles.sectionTitle}>Admin Password</h2>

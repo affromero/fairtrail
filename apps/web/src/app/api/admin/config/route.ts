@@ -4,12 +4,14 @@ import { prisma } from '@/lib/prisma';
 import { EXTRACTION_PROVIDERS } from '@/lib/scraper/ai-registry';
 import { hashPassword } from '@/lib/password';
 import { registerForCommunity } from '@/lib/community-sync';
+import { encryptVpnCode } from '@/lib/vpn-crypto';
 
 function stripHashes(config: Record<string, unknown>) {
-  const { adminPasswordHash, ...rest } = config;
+  const { adminPasswordHash, vpnActivationCode, ...rest } = config;
   return {
     ...rest,
     hasAdminPassword: !!adminPasswordHash,
+    hasVpnActivationCode: !!vpnActivationCode,
   };
 }
 
@@ -80,6 +82,30 @@ export async function PATCH(request: NextRequest) {
     }
     data.defaultCountry = body.defaultCountry;
   }
+  if (body.vpnProvider !== undefined) {
+    const validProviders = ['none', 'expressvpn'];
+    if (body.vpnProvider !== null && !validProviders.includes(body.vpnProvider)) {
+      return apiError(`vpnProvider must be one of: ${validProviders.join(', ')}`, 400);
+    }
+    data.vpnProvider = body.vpnProvider;
+  }
+  if (body.vpnCountries !== undefined) {
+    if (!Array.isArray(body.vpnCountries)) {
+      return apiError('vpnCountries must be an array of 2-letter country codes', 400);
+    }
+    for (const code of body.vpnCountries) {
+      if (typeof code !== 'string' || !/^[A-Z]{2}$/.test(code)) {
+        return apiError(`Invalid country code in vpnCountries: ${code}`, 400);
+      }
+    }
+    data.vpnCountries = body.vpnCountries;
+  }
+  if (typeof body.vpnActivationCode === 'string' && body.vpnActivationCode.length > 0) {
+    data.vpnActivationCode = encryptVpnCode(body.vpnActivationCode);
+  } else if (body.vpnActivationCode === null) {
+    data.vpnActivationCode = null;
+  }
+
   if (body.customBaseUrl !== undefined) {
     if (body.customBaseUrl !== null && typeof body.customBaseUrl !== 'string') {
       return apiError('customBaseUrl must be a URL string or null', 400);

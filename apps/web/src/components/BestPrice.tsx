@@ -10,6 +10,7 @@ interface Snapshot {
   departureTime: string | null;
   arrivalTime: string | null;
   duration: string | null;
+  vpnCountry: string | null;
   scrapedAt: string;
 }
 

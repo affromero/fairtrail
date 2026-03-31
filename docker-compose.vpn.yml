@@ -1,0 +1,50 @@
+# ExpressVPN sidecar for VPN country-switching
+#
+# Usage:
+#   docker compose -f docker-compose.prod.yml -f docker-compose.vpn.yml up -d
+#
+# Requirements:
+#   - ExpressVPN subscription + activation code
+#   - Set EXPRESSVPN_CODE in ~/.fairtrail/.env
+#
+# The sidecar exposes:
+#   - SOCKS5 proxy on port 1080 (internal only, used by Playwright)
+#   - REST API on port 8000 (internal only, used by Fairtrail to switch countries)
+#
+# Fairtrail connects Playwright through socks5://expressvpn:1080 when scraping
+# with VPN enabled. Country switching is done via the REST API.
+
+services:
+  expressvpn:
+    image: misioslav/expressvpn:latest
+    container_name: fairtrail-expressvpn
+    restart: unless-stopped
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    environment:
+      - ACTIVATION_CODE=${EXPRESSVPN_CODE}
+      - SERVER=smart
+      - PROTOCOL=auto
+      - SOCKS_ENABLED=true
+      - SOCKS_PORT=1080
+      - API_ENABLED=true
+      - API_PORT=8000
+      - HEALTHCHECK=true
+      - NETWORK=on
+    stdin_open: true
+    tty: true
+    healthcheck:
+      test: ["CMD", "expressvpnctl", "status"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  web:
+    environment:
+      - EXPRESSVPN_API_URL=http://expressvpn:8000
+      - EXPRESSVPN_SOCKS_URL=socks5://expressvpn:1080
+    depends_on:
+      expressvpn:
+        condition: service_healthy
