@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.4.0] - 2026-03-30
+
+### Added
+- **VPN Price Comparison**: scrape from multiple countries to test if VPN location affects flight prices. ExpressVPN via Docker sidecar (Linux) or macOS host bridge (Unix socket JSON-RPC)
+- **Global Price Check** country picker on confirmation card with 20 countries and live VPN status
+- **Chart country filter**: All / Country comparison / Local only / per-country views
+- **Price History grouped by VPN country** with section headers and flag badges
+- **Settings redesign**: grid-style provider cards, inline API key/token config, VPN provider grid with encrypted activation code
+- **Currency dropdown** with 21 currencies + free text fallback
+- **"Try a random flight"** button for quick onboarding
+- **Notification sound** on search complete
+- **Immediate scrape on query creation**
+- Per-query `vpnCountries`, `docker-compose.vpn.yml`, `scripts/vpn-bridge.mjs`
+
+### Fixed
+- Admin `defaultCurrency` overrides browser locale in parse and preview
+- Airline-direct falls back to Google Flights when blocked
+- Chromium Docker Desktop compatibility
+- Unified hover tooltip, time on X-axis
+
+### Removed
+- **Invite code system** removed (self-hosted only, no gating needed)
+
 ## [0.3.12] - 2026-03-29
 
 ### Added
