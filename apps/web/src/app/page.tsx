@@ -153,6 +153,18 @@ export default async function HomePage() {
               <p className={styles.providersHint}>
                 Test the myth: do flight prices change when you browse from different countries?
               </p>
+              <details className={styles.stealthDetails}>
+                <summary className={styles.stealthSummary}>What Fairtrail does beyond switching your IP</summary>
+                <ul className={styles.stealthList}>
+                  <li>Timezone, locale, and Accept-Language aligned to the target country</li>
+                  <li>Geolocation API returns matching coordinates</li>
+                  <li>WebRTC leak prevention (real IP never exposed via ICE candidates)</li>
+                  <li>DNS queries routed through the VPN tunnel</li>
+                  <li>Canvas, WebGL, and AudioContext fingerprints randomized per session</li>
+                  <li>Screen dimensions matched to reported viewport</li>
+                  <li>Exit country verified via IP geolocation after each connect</li>
+                </ul>
+              </details>
             </div>
           </>
         )}

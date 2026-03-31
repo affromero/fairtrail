@@ -90,20 +90,20 @@ try {
       bad('Settings page heading', 'got: ' + headingText);
     }
 
-    // Currency input should be present
-    const currencyInput = page.locator('input[maxlength="3"]');
-    if (await currencyInput.isVisible({ timeout: 5000 }).catch(() => false)) {
-      ok('Currency input (maxLength=3) is visible on settings page');
+    // Currency dropdown should be present (changed from text input to select)
+    const currencySelect = page.locator('select').nth(1);
+    if (await currencySelect.isVisible({ timeout: 5000 }).catch(() => false)) {
+      ok('Currency dropdown is visible on settings page');
     } else {
-      bad('Currency input', 'not visible on settings page');
+      bad('Currency dropdown', 'not visible on settings page');
     }
 
-    // Country input should be present
-    const countryInput = page.locator('input[maxlength="2"]');
-    if (await countryInput.isVisible({ timeout: 5000 }).catch(() => false)) {
-      ok('Country input (maxLength=2) is visible on settings page');
+    // VPN section should be present
+    const vpnSection = page.locator('text=VPN Price Comparison');
+    if (await vpnSection.isVisible({ timeout: 5000 }).catch(() => false)) {
+      ok('VPN Price Comparison section is visible on settings page');
     } else {
-      bad('Country input', 'not visible on settings page');
+      bad('VPN section', 'not visible on settings page');
     }
 
     // Provider dropdown should be present

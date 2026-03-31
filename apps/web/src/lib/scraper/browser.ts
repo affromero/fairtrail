@@ -24,29 +24,49 @@ function randomPick<T>(arr: T[]): T {
   return arr[Math.floor(Math.random() * arr.length)]!;
 }
 
-export async function launchBrowser(): Promise<Browser> {
+export interface LaunchBrowserOptions {
+  proxyUrl?: string; // When set, DNS is forced through the SOCKS5 proxy
+}
+
+export async function launchBrowser(options: LaunchBrowserOptions = {}): Promise<Browser> {
   const { chromium } = await import('playwright');
+
+  const args = [
+    '--no-sandbox',
+    '--disable-setuid-sandbox',
+    '--disable-dev-shm-usage',
+    '--disable-gpu',
+    '--disable-software-rasterizer',
+    '--disable-blink-features=AutomationControlled',
+    '--disable-infobars',
+    '--window-size=1440,900',
+    // Docker Desktop (macOS/Windows) runs in a VM where Chromium's GPU
+    // crashes. These extra flags are safe everywhere but only needed in VMs.
+    // Always include them -- the perf cost is negligible for headless scraping.
+    '--single-process',
+    '--use-gl=angle',
+    '--use-angle=swiftshader',
+    '--in-process-gpu',
+    // WebRTC leak prevention -- block ICE candidates from exposing real IP
+    '--force-webrtc-ip-handling-policy=disable_non_proxied_udp',
+    '--enforce-webrtc-ip-permission-check',
+  ];
+
+  // When proxying via SOCKS5, force DNS resolution through the proxy to prevent leaks.
+  // Extract the proxy hostname to exclude it from the rule (it must resolve normally).
+  if (options.proxyUrl) {
+    try {
+      const proxyHost = new URL(options.proxyUrl.replace('socks5://', 'http://')).hostname;
+      args.push(`--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE ${proxyHost}`);
+    } catch {
+      args.push('--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE localhost');
+    }
+  }
 
   return chromium.launch({
     headless: true,
     executablePath: process.env.CHROME_PATH || undefined,
-    args: [
-      '--no-sandbox',
-      '--disable-setuid-sandbox',
-      '--disable-dev-shm-usage',
-      '--disable-gpu',
-      '--disable-software-rasterizer',
-      '--disable-blink-features=AutomationControlled',
-      '--disable-infobars',
-      '--window-size=1440,900',
-      // Docker Desktop (macOS/Windows) runs in a VM where Chromium's GPU
-      // crashes. These extra flags are safe everywhere but only needed in VMs.
-      // Always include them -- the perf cost is negligible for headless scraping.
-      '--single-process',
-      '--use-gl=angle',
-      '--use-angle=swiftshader',
-      '--in-process-gpu',
-    ],
+    args,
   });
 }
 
@@ -137,7 +157,98 @@ export async function createStealthContext(browser: Browser, options: StealthCon
     Object.defineProperty(navigator, 'deviceMemory', {
       get: () => 8,
     });
+
+    // WebRTC leak prevention -- stub RTCPeerConnection to prevent real IP exposure
+    // Chrome flags handle the network layer; this catches any JS-level WebRTC enumeration
+    const OriginalRTC = window.RTCPeerConnection;
+    if (OriginalRTC) {
+      (window as unknown as Record<string, unknown>).RTCPeerConnection = class extends OriginalRTC {
+        constructor(config?: RTCConfiguration) {
+          // Strip STUN/TURN servers that could reveal the real IP
+          const sanitized = { ...config, iceServers: [] };
+          super(sanitized);
+        }
+      };
+    }
   }, profileLocale);
+
+  // Fingerprint noise: canvas, WebGL, AudioContext -- makes each context unique
+  await context.addInitScript(() => {
+    // Canvas fingerprint noise -- shift a few random pixels per toDataURL call
+    const originalToDataURL = HTMLCanvasElement.prototype.toDataURL;
+    HTMLCanvasElement.prototype.toDataURL = function (type?: string, quality?: number) {
+      try {
+        const ctx = this.getContext('2d');
+        if (ctx && this.width > 0 && this.height > 0) {
+          const x = Math.floor(Math.random() * this.width);
+          const y = Math.floor(Math.random() * this.height);
+          const pixel = ctx.getImageData(x, y, 1, 1);
+          pixel.data[0] = (pixel.data[0]! + Math.floor(Math.random() * 3) - 1) & 0xff;
+          pixel.data[1] = (pixel.data[1]! + Math.floor(Math.random() * 3) - 1) & 0xff;
+          ctx.putImageData(pixel, x, y);
+        }
+      } catch {
+        // Cross-origin canvas -- skip noise
+      }
+      return originalToDataURL.call(this, type, quality);
+    };
+
+    // WebGL fingerprint -- spoof unmasked renderer/vendor strings
+    const originalGetParameter = WebGLRenderingContext.prototype.getParameter;
+    const rendererSuffixes = ['Direct3D11', 'Direct3D9', 'OpenGL', 'Metal', 'Vulkan'];
+    const suffix = rendererSuffixes[Math.floor(Math.random() * rendererSuffixes.length)];
+    const spoofedRenderer = `ANGLE (Intel, Mesa Intel(R) UHD Graphics 630, ${suffix})`;
+    const spoofedVendor = 'Google Inc. (Intel)';
+
+    function spoofGetParameter(this: WebGLRenderingContext, pname: GLenum): unknown {
+      // UNMASKED_VENDOR_WEBGL = 0x9245, UNMASKED_RENDERER_WEBGL = 0x9246
+      const ext = this.getExtension('WEBGL_debug_renderer_info');
+      if (ext) {
+        if (pname === ext.UNMASKED_RENDERER_WEBGL) return spoofedRenderer;
+        if (pname === ext.UNMASKED_VENDOR_WEBGL) return spoofedVendor;
+      }
+      return originalGetParameter.call(this, pname);
+    }
+    WebGLRenderingContext.prototype.getParameter = spoofGetParameter as typeof originalGetParameter;
+
+    // Also handle WebGL2 if available
+    if (typeof WebGL2RenderingContext !== 'undefined') {
+      const originalGetParameter2 = WebGL2RenderingContext.prototype.getParameter;
+      function spoofGetParameter2(this: WebGL2RenderingContext, pname: GLenum): unknown {
+        const ext = this.getExtension('WEBGL_debug_renderer_info');
+        if (ext) {
+          if (pname === ext.UNMASKED_RENDERER_WEBGL) return spoofedRenderer;
+          if (pname === ext.UNMASKED_VENDOR_WEBGL) return spoofedVendor;
+        }
+        return originalGetParameter2.call(this, pname);
+      }
+      WebGL2RenderingContext.prototype.getParameter = spoofGetParameter2 as typeof originalGetParameter2;
+    }
+
+    // AudioContext fingerprint -- add micro-noise to frequency/time domain data
+    const OriginalAnalyser = window.AnalyserNode;
+    if (OriginalAnalyser) {
+      const origGetFloat = OriginalAnalyser.prototype.getFloatFrequencyData;
+      OriginalAnalyser.prototype.getFloatFrequencyData = function (array: Float32Array<ArrayBuffer>) {
+        origGetFloat.call(this, array);
+        for (let i = 0; i < array.length; i++) {
+          array[i] = array[i]! + (Math.random() * 0.001 - 0.0005);
+        }
+      };
+    }
+  });
+
+  // Screen property alignment -- match screen dimensions to viewport
+  await context.addInitScript((vp: { width: number; height: number }) => {
+    Object.defineProperty(window.screen, 'width', { get: () => vp.width });
+    Object.defineProperty(window.screen, 'height', { get: () => vp.height });
+    Object.defineProperty(window.screen, 'availWidth', { get: () => vp.width });
+    Object.defineProperty(window.screen, 'availHeight', { get: () => vp.height - 40 }); // taskbar offset
+    Object.defineProperty(window.screen, 'colorDepth', { get: () => 24 });
+    Object.defineProperty(window, 'outerWidth', { get: () => vp.width });
+    Object.defineProperty(window, 'outerHeight', { get: () => vp.height + 85 }); // chrome UI offset
+    Object.defineProperty(window, 'devicePixelRatio', { get: () => 1 });
+  }, viewport);
 
   return context;
 }

@@ -553,6 +553,27 @@ export default function SettingsPage() {
               {vpnCodeMessage && <span className={styles.message}>{vpnCodeMessage}</span>}
             </div>
           </div>
+
+          <div className={styles.vpnStealthInfo}>
+            <h3 className={styles.vpnStealthTitle}>What happens when Fairtrail switches country</h3>
+            <p className={styles.toggleHint}>
+              Changing your IP is not enough. Websites detect mismatches between your IP and browser signals.
+              Fairtrail aligns everything to match the target country:
+            </p>
+            <ul className={styles.vpnStealthList}>
+              <li>IP address routed through VPN exit node</li>
+              <li>Browser timezone set to match the country</li>
+              <li>Accept-Language header and navigator.languages aligned</li>
+              <li>Geolocation API returns the capital city coordinates</li>
+              <li>Google Flights <code>gl=</code> country hint parameter set</li>
+              <li>WebRTC leak prevention (real IP never exposed)</li>
+              <li>DNS leak prevention (queries routed through VPN tunnel)</li>
+              <li>Canvas and WebGL fingerprint noise (unique per session)</li>
+              <li>AudioContext fingerprint randomization</li>
+              <li>Screen dimensions matched to viewport</li>
+              <li>Exit country verified via IP geolocation after connect</li>
+            </ul>
+          </div>
         </div>
 
         <div className={styles.section}>

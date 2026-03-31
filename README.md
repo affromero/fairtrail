@@ -86,9 +86,28 @@ Test the myth that VPN location affects flight prices. Fairtrail can scrape the 
 
 1. An [ExpressVPN](https://www.expressvpn.com) sidecar container runs alongside Fairtrail
 2. For each scrape run, Fairtrail routes Playwright through the VPN's SOCKS5 proxy
-3. All browser signals align to the target country (IP, locale, timezone, Accept-Language, geolocation)
+3. All browser signals align to the target country (see full list below)
 4. Your local (no VPN) price is always captured as a baseline
 5. The chart shows a per-country comparison view
+
+### Anti-detection: what Fairtrail does beyond switching your IP
+
+Changing your IP is not enough. Websites detect mismatches between your IP and browser signals. Fairtrail aligns everything to match the target country:
+
+| Signal | What Fairtrail does |
+|--------|-------------------|
+| **IP address** | Routed through VPN exit node via SOCKS5 proxy |
+| **Timezone** | `timezoneId` set to match the country (e.g. `Europe/Berlin` for DE) |
+| **Language** | `Accept-Language` header and `navigator.languages` aligned to locale |
+| **Geolocation** | Geolocation API returns capital city coordinates |
+| **Google hint** | `gl=` country parameter set on Google Flights URL |
+| **WebRTC** | ICE candidates blocked -- real IP never exposed via `RTCPeerConnection` |
+| **DNS** | Queries forced through the SOCKS5 proxy (`--host-resolver-rules`) |
+| **Canvas fingerprint** | Subtle pixel noise injected per session to randomize `toDataURL` hash |
+| **WebGL fingerprint** | Unmasked renderer/vendor strings spoofed via `WEBGL_debug_renderer_info` |
+| **AudioContext** | Micro-noise added to `getFloatFrequencyData` output |
+| **Screen dimensions** | `screen.width/height`, `outerWidth/Height`, `availWidth/Height` matched to viewport |
+| **Exit verification** | After connecting, exit IP is geolocated to verify the country matches |
 
 ### Setup
 

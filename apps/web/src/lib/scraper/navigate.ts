@@ -73,7 +73,7 @@ export async function navigateGoogleFlights(
   const maxAttempts = 3;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    const browser = await launchBrowser();
+    const browser = await launchBrowser({ proxyUrl });
     const attemptStart = Date.now();
 
     try {
@@ -166,13 +166,15 @@ export interface FlightDetailResult {
 
 export async function navigateFlightDetail(
   params: FlightSearchParams,
-  flightIndex: number
+  flightIndex: number,
+  countryProfile?: CountryProfile,
+  proxyUrl?: string
 ): Promise<FlightDetailResult> {
-  const browser = await launchBrowser();
+  const browser = await launchBrowser({ proxyUrl });
   const start = Date.now();
 
   try {
-    const context = await createStealthContext(browser);
+    const context = await createStealthContext(browser, { countryProfile, proxyUrl });
     const page = await context.newPage();
 
     // Must use one-way search so clicking goes directly to booking options
@@ -275,7 +277,7 @@ export async function navigateAirlineDirect(
     throw new Error(`No URL pattern for airline: ${airlineName}`);
   }
 
-  const browser = await launchBrowser();
+  const browser = await launchBrowser({ proxyUrl });
   const start = Date.now();
 
   try {

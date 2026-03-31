@@ -101,14 +101,26 @@ export class ExpressVpnProvider implements VpnProvider {
       await sleep(POLL_INTERVAL_MS);
       const status = await this.getStatus();
       if (status.connected) {
-        // Verify the exit IP changed by fetching public IP through the sidecar
+        // Verify the exit IP and country match what was requested
         let exitIp: string | null = null;
+        let exitCountry: string | null = null;
         try {
           exitIp = (await sidecarApi('/v1/publicip/ip')).trim();
+          if (exitIp) {
+            // eslint-disable-next-line @typescript-eslint/no-require-imports
+            const geoip = require(/* webpackIgnore: true */ 'geoip-lite');
+            exitCountry = geoip.lookup(exitIp)?.country ?? null;
+          }
         } catch {
-          // IP check is best-effort
+          // IP/geo check is best-effort
         }
-        console.log(`[expressvpn] connected to ${status.currentLocation} (exit IP: ${exitIp ?? 'unknown'}) in ${Date.now() - start}ms`);
+
+        const requestedCountry = countryCode.toUpperCase();
+        if (exitCountry && exitCountry !== requestedCountry) {
+          console.warn(`[expressvpn] country mismatch: requested ${requestedCountry} but exit IP ${exitIp} resolves to ${exitCountry}`);
+        }
+
+        console.log(`[expressvpn] connected to ${status.currentLocation} (exit IP: ${exitIp ?? 'unknown'}, country: ${exitCountry ?? 'unknown'}) in ${Date.now() - start}ms`);
         return true;
       }
     }

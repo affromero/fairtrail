@@ -162,6 +162,50 @@
   margin-top: 0.5rem;
 }
 
+.stealthDetails {
+  margin-top: 0.75rem;
+}
+
+.stealthSummary {
+  font-size: 0.75rem;
+  color: var(--accent);
+  cursor: pointer;
+  font-family: var(--font-mono);
+}
+
+.stealthSummary:hover {
+  text-decoration: underline;
+}
+
+.stealthList {
+  list-style: none;
+  padding: 0;
+  margin: 0.5rem 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.stealthList li {
+  font-size: 0.6875rem;
+  color: var(--muted);
+  padding-left: 1rem;
+  position: relative;
+  line-height: 1.5;
+}
+
+.stealthList li::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0.5em;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--accent);
+  opacity: 0.5;
+}
+
 @media (max-width: 480px) {
   .providerGrid {
     grid-template-columns: repeat(2, 1fr);
