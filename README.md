@@ -11,6 +11,10 @@ Track flight prices over time. Self-hosted. Open source. Bring your own LLM.
 [![Docker Image Size](https://ghcr-badge.egpl.dev/affromero/fairtrail/size)](https://github.com/affromero/fairtrail/pkgs/container/fairtrail)
 [![License: MIT](https://img.shields.io/github/license/affromero/fairtrail)](https://github.com/affromero/fairtrail/blob/main/LICENSE)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-blue)](https://www.typescriptlang.org/)
+[![Next.js](https://img.shields.io/badge/Next.js-15-black?logo=next.js)](https://nextjs.org)
+[![Prisma](https://img.shields.io/badge/Prisma-6-2D3748?logo=prisma)](https://prisma.io)
+[![Socket](https://img.shields.io/badge/Socket-protected-blueviolet?logo=socket.dev)](https://socket.dev)
+[![min-release-age](https://img.shields.io/badge/min--release--age-7%20days-brightgreen)](https://docs.npmjs.com/cli/v10/using-npm/config#min-release-age)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/affromero/fairtrail/pulls)
 
 <br>
