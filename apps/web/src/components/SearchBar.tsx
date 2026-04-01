@@ -14,6 +14,7 @@ import { LinkBanner, type CreatedTracker } from './LinkBanner';
 import { ManualEntryForm } from './ManualEntryForm';
 
 const PREVIEW_STORAGE_KEY = 'ft-preview-run';
+const PREVIEW_POLL_TIMEOUT_MS = 5 * 60 * 1000;
 
 interface SavedPreviewState {
   previewRunId: string;
@@ -21,6 +22,7 @@ interface SavedPreviewState {
   query: string;
   manualRawInput: string;
   vpnCountries: string[];
+  startedAt: number;
 }
 
 interface ConversationMessage {
@@ -50,7 +52,7 @@ function readSavedPreview(): SavedPreviewState | null {
   if (typeof window === 'undefined') return null;
 
   try {
-    const raw = window.localStorage.getItem(PREVIEW_STORAGE_KEY);
+    const raw = window.sessionStorage.getItem(PREVIEW_STORAGE_KEY);
     if (!raw) return null;
     return JSON.parse(raw) as SavedPreviewState;
   } catch {
@@ -62,7 +64,7 @@ function writeSavedPreview(state: SavedPreviewState) {
   if (typeof window === 'undefined') return;
 
   try {
-    window.localStorage.setItem(PREVIEW_STORAGE_KEY, JSON.stringify(state));
+    window.sessionStorage.setItem(PREVIEW_STORAGE_KEY, JSON.stringify(state));
   } catch {
     // Ignore localStorage errors
   }
@@ -72,7 +74,7 @@ function clearSavedPreview() {
   if (typeof window === 'undefined') return;
 
   try {
-    window.localStorage.removeItem(PREVIEW_STORAGE_KEY);
+    window.sessionStorage.removeItem(PREVIEW_STORAGE_KEY);
   } catch {
     // Ignore localStorage errors
   }
@@ -197,6 +199,15 @@ export function SearchBar({ initialQuery }: { initialQuery?: string } = {}) {
         }
 
         const preview = data.data as PreviewRunStatusPayload;
+        const saved = readSavedPreview();
+
+        if (saved && Date.now() - saved.startedAt > PREVIEW_POLL_TIMEOUT_MS) {
+          setError('Flight search took too long. Please try again.');
+          setPreviewLoading(false);
+          setPreviewRunId(null);
+          clearSavedPreview();
+          return;
+        }
 
         if (preview.status === 'completed' && preview.result) {
           playNotificationSound();
@@ -298,6 +309,7 @@ export function SearchBar({ initialQuery }: { initialQuery?: string } = {}) {
         query,
         manualRawInput,
         vpnCountries,
+        startedAt: Date.now(),
       });
     } catch {
       setError('Network error - please try again');

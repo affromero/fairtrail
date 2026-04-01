@@ -129,6 +129,7 @@ model ApiUsageLog {
 
 model PreviewRun {
   id             String   @id @default(cuid())
+  requestHash    String
   status         String   @default("pending") // 'pending' | 'running' | 'completed' | 'failed'
   requestPayload Json
   resultPayload  Json?
@@ -139,6 +140,7 @@ model PreviewRun {
 
   @@index([status, createdAt])
   @@index([expiresAt])
+  @@index([requestHash, status, expiresAt])
 }
 
 model CommunityApiKey {

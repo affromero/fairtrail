@@ -2,7 +2,7 @@ import { mkdir, writeFile } from 'fs/promises';
 import { createHash } from 'crypto';
 import type { Prisma } from '@prisma/client';
 import { NextRequest } from 'next/server';
-import { apiSuccess, apiError } from '@/lib/api-response';
+import { apiError, apiSuccess } from '@/lib/api-response';
 import { prisma } from '@/lib/prisma';
 import { cached } from '@/lib/redis';
 import type { PreviewRequestPayload, PreviewResultPayload, RouteResultPayload } from '@/lib/preview-run';
@@ -17,8 +17,55 @@ const MAX_ATTEMPTS = 2;
 const DEBUG_DIR = '/tmp/fairtrail-debug';
 const PREVIEW_MAX_RESULTS = 20;
 const PREVIEW_RUN_TTL_MS = 24 * 60 * 60 * 1000;
+const PREVIEW_ACTIVE_TIMEOUT_MS = 10 * 60 * 1000;
+const ACTIVE_PREVIEW_STATUSES = ['pending', 'running'] as const;
+const TERMINAL_PREVIEW_STATUSES = ['completed', 'failed'] as const;
+const PREVIEW_TIMEOUT_ERROR = 'Preview run timed out before completing';
+
+interface PreviewRunRow {
+  id: string;
+  requestHash: string;
+  status: string;
+  requestPayload: Prisma.JsonValue;
+  resultPayload: Prisma.JsonValue | null;
+  error: string | null;
+  expiresAt: Date;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+interface PreviewRunStore {
+  deleteMany(args: { where: Record<string, unknown> }): Promise<{ count: number }>;
+  updateMany(args: { where: Record<string, unknown>; data: Record<string, unknown> }): Promise<{ count: number }>;
+  update(args: { where: { id: string }; data: Record<string, unknown> }): Promise<PreviewRunRow>;
+  findFirst(args: { where: Record<string, unknown>; orderBy: { createdAt: 'desc' } }): Promise<PreviewRunRow | null>;
+  create(args: { data: Record<string, unknown> }): Promise<PreviewRunRow>;
+}
+
+const previewRunStore = (prisma as unknown as { previewRun: PreviewRunStore }).previewRun;
 
 export type RouteResult = RouteResultPayload;
+
+interface ScrapeRouteParams {
+  origin: string;
+  destination: string;
+  dateFrom: Date;
+  dateTo: Date;
+  dateFromStr: string;
+  cabinClass: string;
+  tripType: string;
+  maxPrice: number | null;
+  maxStops: number | null;
+  preferredAirlines: string[];
+  timePreference: string;
+  currency: string | null;
+}
+
+interface PreviewValidationResult {
+  origins: Airport[];
+  destinations: Airport[];
+  isOneWay: boolean;
+}
 
 function buildCacheKey(
   origin: string,
@@ -36,19 +83,10 @@ function buildCacheKey(
   return `preview:${hash}`;
 }
 
-interface ScrapeRouteParams {
-  origin: string;
-  destination: string;
-  dateFrom: Date;
-  dateTo: Date;
-  dateFromStr: string;
-  cabinClass: string;
-  tripType: string;
-  maxPrice: number | null;
-  maxStops: number | null;
-  preferredAirlines: string[];
-  timePreference: string;
-  currency: string | null;
+function buildPreviewRequestHash(payload: PreviewRequestPayload): string {
+  return createHash('sha256')
+    .update(JSON.stringify(payload))
+    .digest('hex');
 }
 
 function toPreviewRequestPayload(body: Record<string, unknown>): PreviewRequestPayload {
@@ -71,13 +109,76 @@ function toPreviewRequestPayload(body: Record<string, unknown>): PreviewRequestP
     currency: typeof body.currency === 'string' && body.currency ? body.currency : null,
     outboundDates: Array.isArray(body.outboundDates) ? body.outboundDates.map(String) : undefined,
     returnDates: Array.isArray(body.returnDates) ? body.returnDates.map(String) : undefined,
-    origins: origins.map((a) => ({ code: a.code, name: a.name })),
-    destinations: destinations.map((a) => ({ code: a.code, name: a.name })),
+    origins: origins.map((airport) => ({ code: airport.code, name: airport.name })),
+    destinations: destinations.map((airport) => ({ code: airport.code, name: airport.name })),
     origin: typeof body.origin === 'string' ? body.origin : undefined,
     originName: typeof body.originName === 'string' ? body.originName : undefined,
     destination: typeof body.destination === 'string' ? body.destination : undefined,
     destinationName: typeof body.destinationName === 'string' ? body.destinationName : undefined,
   };
+}
+
+function validatePreviewPayload(payload: PreviewRequestPayload): PreviewValidationResult {
+  const { dateFrom, dateTo, outboundDates, returnDates, origins, destinations, tripType } = payload;
+
+  if (origins.length === 0 || destinations.length === 0 || !dateFrom || !dateTo) {
+    throw new Error('Missing required fields: origins, destinations, dateFrom, dateTo');
+  }
+
+  for (const airport of [...origins, ...destinations]) {
+    if (!/^[A-Z]{3}$/.test(airport.code)) {
+      throw new Error(`Invalid airport code "${airport.code}" - must be 3 uppercase letters`);
+    }
+  }
+
+  const from = new Date(dateFrom + 'T00:00:00Z');
+  const to = new Date(dateTo + 'T00:00:00Z');
+  if (isNaN(from.getTime()) || isNaN(to.getTime())) {
+    throw new Error('Invalid date format');
+  }
+
+  const isOneWay = tripType === 'one_way';
+  if (!isOneWay && from >= to) {
+    throw new Error('dateFrom must be before dateTo');
+  }
+
+  const combos = origins.length * destinations.length;
+  const datesToScrape = outboundDates ?? [dateFrom];
+  const totalTasks = combos * datesToScrape.length;
+
+  if (totalTasks > 24) {
+    throw new Error(`Too many date/route combinations (${totalTasks}). Max 6 dates x 4 routes = 24.`);
+  }
+
+  if (returnDates && outboundDates && !isOneWay && returnDates.length !== outboundDates.length) {
+    throw new Error('Return dates must match outbound dates');
+  }
+
+  return { origins, destinations, isOneWay };
+}
+
+async function cleanupExpiredPreviewRuns(now = new Date()) {
+  await previewRunStore.deleteMany({
+    where: {
+      status: { in: [...TERMINAL_PREVIEW_STATUSES] },
+      expiresAt: { lt: now },
+    },
+  });
+}
+
+async function markStalePreviewRunsFailed(requestHash?: string, now = new Date()) {
+  const staleBefore = new Date(now.getTime() - PREVIEW_ACTIVE_TIMEOUT_MS);
+  await previewRunStore.updateMany({
+    where: {
+      status: { in: [...ACTIVE_PREVIEW_STATUSES] },
+      updatedAt: { lt: staleBefore },
+      ...(requestHash ? { requestHash } : {}),
+    },
+    data: {
+      status: 'failed',
+      error: PREVIEW_TIMEOUT_ERROR,
+    },
+  });
 }
 
 async function scrapeRoute(params: ScrapeRouteParams): Promise<PriceData[]> {
@@ -202,34 +303,12 @@ async function scrapeRoute(params: ScrapeRouteParams): Promise<PriceData[]> {
 }
 
 async function runPreview(payload: PreviewRequestPayload): Promise<PreviewResultPayload> {
+  const { origins, destinations, isOneWay } = validatePreviewPayload(payload);
   const { dateFrom, dateTo, maxPrice, maxStops, preferredAirlines, timePreference, cabinClass, tripType, currency: bodyCurrency } = payload;
   const config = await prisma.extractionConfig.findFirst({ where: { id: 'singleton' } });
   const currency: string | null = config?.defaultCurrency ?? bodyCurrency;
   const outboundDates = payload.outboundDates;
   const returnDates = payload.returnDates;
-  const origins = payload.origins;
-  const destinations = payload.destinations;
-
-  if (origins.length === 0 || destinations.length === 0 || !dateFrom || !dateTo) {
-    throw new Error('Missing required fields: origins, destinations, dateFrom, dateTo');
-  }
-
-  for (const airport of [...origins, ...destinations]) {
-    if (!/^[A-Z]{3}$/.test(airport.code)) {
-      throw new Error(`Invalid airport code "${airport.code}" - must be 3 uppercase letters`);
-    }
-  }
-
-  const from = new Date(dateFrom + 'T00:00:00Z');
-  const to = new Date(dateTo + 'T00:00:00Z');
-  if (isNaN(from.getTime()) || isNaN(to.getTime())) {
-    throw new Error('Invalid date format');
-  }
-
-  const isOneWay = tripType === 'one_way';
-  if (!isOneWay && from >= to) {
-    throw new Error('dateFrom must be before dateTo');
-  }
 
   const combos: Array<{ origin: Airport; destination: Airport }> = [];
   for (const origin of origins) {
@@ -251,10 +330,6 @@ async function runPreview(payload: PreviewRequestPayload): Promise<PreviewResult
         returnDate: resolvedReturnDate,
       });
     }
-  }
-
-  if (tasks.length > 24) {
-    throw new Error(`Too many date/route combinations (${tasks.length}). Max 6 dates x 4 routes = 24.`);
   }
 
   const routes: RouteResult[] = [];
@@ -326,9 +401,9 @@ async function runPreview(payload: PreviewRequestPayload): Promise<PreviewResult
   return { routes };
 }
 
-async function updatePreviewRun(id: string, data: Prisma.PreviewRunUpdateInput) {
+async function updatePreviewRun(id: string, data: Record<string, unknown>) {
   try {
-    await prisma.previewRun.update({
+    await previewRunStore.update({
       where: { id },
       data,
     });
@@ -346,11 +421,13 @@ async function runPreviewInBackground(id: string, payload: PreviewRequestPayload
       status: 'completed',
       resultPayload: result as unknown as Prisma.InputJsonValue,
       error: null,
+      expiresAt: new Date(Date.now() + PREVIEW_RUN_TTL_MS),
     });
   } catch (error) {
     await updatePreviewRun(id, {
       status: 'failed',
       error: error instanceof Error ? error.message : 'Failed to preview flights',
+      expiresAt: new Date(Date.now() + PREVIEW_RUN_TTL_MS),
     });
   }
 }
@@ -360,15 +437,41 @@ export async function POST(request: NextRequest) {
   if (!body) return apiError('Invalid JSON body', 400);
 
   const payload = toPreviewRequestPayload(body as Record<string, unknown>);
-  if (payload.origins.length === 0 || payload.destinations.length === 0 || !payload.dateFrom || !payload.dateTo) {
-    return apiError('Missing required fields: origins, destinations, dateFrom, dateTo', 400);
+
+  try {
+    validatePreviewPayload(payload);
+  } catch (error) {
+    return apiError(error instanceof Error ? error.message : 'Invalid preview request', 400);
   }
 
-  const previewRun = await prisma.previewRun.create({
+  const requestHash = buildPreviewRequestHash(payload);
+  const now = new Date();
+
+  await cleanupExpiredPreviewRuns(now);
+  await markStalePreviewRunsFailed(requestHash, now);
+
+  const existingRun = await previewRunStore.findFirst({
+    where: {
+      requestHash,
+      status: { in: [...ACTIVE_PREVIEW_STATUSES] },
+    },
+    orderBy: { createdAt: 'desc' },
+  });
+
+  if (existingRun) {
+    return apiSuccess({
+      previewRunId: existingRun.id,
+      status: existingRun.status,
+      expiresAt: existingRun.expiresAt.toISOString(),
+    }, 202);
+  }
+
+  const previewRun = await previewRunStore.create({
     data: {
+      requestHash,
       status: 'pending',
       requestPayload: payload as unknown as Prisma.InputJsonValue,
-      expiresAt: new Date(Date.now() + PREVIEW_RUN_TTL_MS),
+      expiresAt: new Date(now.getTime() + PREVIEW_RUN_TTL_MS),
     },
   });
 

@@ -10,6 +10,7 @@ interface ManualEntryFormProps {
   onSubmit: (query: ParsedQuery, rawInput: string) => void;
   onCancel: () => void;
   adminCurrency: string | null;
+  cancelLabel?: string;
 }
 
 interface SelectedAirport {
@@ -37,7 +38,7 @@ function synthesizeRawInput(
   return parts.join(' ');
 }
 
-export function ManualEntryForm({ onSubmit, onCancel, adminCurrency }: ManualEntryFormProps) {
+export function ManualEntryForm({ onSubmit, onCancel, adminCurrency, cancelLabel = 'Cancel' }: ManualEntryFormProps) {
   const [origin, setOrigin] = useState<SelectedAirport | null>(null);
   const [destination, setDestination] = useState<SelectedAirport | null>(null);
   const [dateFrom, setDateFrom] = useState('');
@@ -335,7 +336,7 @@ export function ManualEntryForm({ onSubmit, onCancel, adminCurrency }: ManualEnt
           Show available flights
         </button>
         <button type="button" className={styles.cancelButton} onClick={onCancel}>
-          Cancel
+          {cancelLabel}
         </button>
       </div>
     </form>
