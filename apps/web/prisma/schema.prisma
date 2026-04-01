@@ -127,6 +127,20 @@ model ApiUsageLog {
   @@index([provider])
 }
 
+model PreviewRun {
+  id             String   @id @default(cuid())
+  status         String   @default("pending") // 'pending' | 'running' | 'completed' | 'failed'
+  requestPayload Json
+  resultPayload  Json?
+  error          String?
+  expiresAt      DateTime
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([status, createdAt])
+  @@index([expiresAt])
+}
+
 model CommunityApiKey {
   id            String    @id @default(cuid())
   apiKey        String    @unique

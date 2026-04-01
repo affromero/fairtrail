@@ -2,15 +2,31 @@
 
 import { useState, useCallback, useRef, useEffect } from 'react';
 import type { ParseAmbiguity, ParsedFlightQuery } from '@/lib/scraper/parse-query';
+import type { PreviewRunStatusPayload } from '@/lib/preview-run';
+import type { PriceData } from '@/lib/scraper/extract-prices';
+import { detectLocaleCurrency } from '@/lib/currency';
 import { addSavedTracker } from '@/lib/tracker-storage';
 import styles from './SearchBar.module.css';
-import { ConfirmationCard, type ParsedQuery } from './ConfirmationCard';
 import { ClarificationCard } from './ClarificationCard';
+import { ConfirmationCard, type ParsedQuery } from './ConfirmationCard';
 import { FlightPicker, type RouteFlights } from './FlightPicker';
 import { LinkBanner, type CreatedTracker } from './LinkBanner';
 import { ManualEntryForm } from './ManualEntryForm';
-import type { PriceData } from '@/lib/scraper/extract-prices';
-import { detectLocaleCurrency } from '@/lib/currency';
+
+const PREVIEW_STORAGE_KEY = 'ft-preview-run';
+
+interface SavedPreviewState {
+  previewRunId: string;
+  parsed: ParsedQuery;
+  query: string;
+  manualRawInput: string;
+  vpnCountries: string[];
+}
+
+interface ConversationMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}
 
 function playNotificationSound() {
   try {
@@ -30,9 +46,36 @@ function playNotificationSound() {
   }
 }
 
-interface ConversationMessage {
-  role: 'user' | 'assistant';
-  content: string;
+function readSavedPreview(): SavedPreviewState | null {
+  if (typeof window === 'undefined') return null;
+
+  try {
+    const raw = window.localStorage.getItem(PREVIEW_STORAGE_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw) as SavedPreviewState;
+  } catch {
+    return null;
+  }
+}
+
+function writeSavedPreview(state: SavedPreviewState) {
+  if (typeof window === 'undefined') return;
+
+  try {
+    window.localStorage.setItem(PREVIEW_STORAGE_KEY, JSON.stringify(state));
+  } catch {
+    // Ignore localStorage errors
+  }
+}
+
+function clearSavedPreview() {
+  if (typeof window === 'undefined') return;
+
+  try {
+    window.localStorage.removeItem(PREVIEW_STORAGE_KEY);
+  } catch {
+    // Ignore localStorage errors
+  }
 }
 
 export function SearchBar({ initialQuery }: { initialQuery?: string } = {}) {
@@ -42,34 +85,47 @@ export function SearchBar({ initialQuery }: { initialQuery?: string } = {}) {
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    fetch('/api/admin/config')
-      .then((r) => r.json())
-      .then((d) => { if (d.ok && d.data.defaultCurrency) setAdminCurrency(d.data.defaultCurrency); })
-      .catch(() => {});
-  }, []);
-
-
-
-  // Narrowing state
   const [conversation, setConversation] = useState<ConversationMessage[]>([]);
   const [ambiguities, setAmbiguities] = useState<ParseAmbiguity[]>([]);
   const [partialParsed, setPartialParsed] = useState<ParsedFlightQuery | null>(null);
 
-  // Preview state — routes instead of flat flights
   const [previewRoutes, setPreviewRoutes] = useState<RouteFlights[] | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewRunId, setPreviewRunId] = useState<string | null>(null);
 
-  // VPN country comparison
   const [vpnCountries, setVpnCountries] = useState<string[]>([]);
   const [adminCurrency, setAdminCurrency] = useState<string | null>(null);
 
-  // Link banner state — multiple trackers
   const [createdTrackers, setCreatedTrackers] = useState<CreatedTracker[] | null>(null);
 
-  // Manual entry mode
+  const [defaultSearchMethod, setDefaultSearchMethod] = useState<'ai' | 'manual'>('ai');
   const [manualMode, setManualMode] = useState(false);
   const [manualRawInput, setManualRawInput] = useState('');
+
+  useEffect(() => {
+    fetch('/api/admin/config')
+      .then((r) => r.json())
+      .then((d) => {
+        if (!d.ok) return;
+        if (d.data.defaultCurrency) setAdminCurrency(d.data.defaultCurrency);
+        const searchMethod = d.data.defaultSearchMethod === 'manual' ? 'manual' : 'ai';
+        setDefaultSearchMethod(searchMethod);
+        setManualMode(searchMethod === 'manual');
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    const saved = readSavedPreview();
+    if (!saved) return;
+
+    setParsed(saved.parsed);
+    setQuery(saved.query);
+    setManualRawInput(saved.manualRawInput);
+    setVpnCountries(saved.vpnCountries);
+    setPreviewRunId(saved.previewRunId);
+    setPreviewLoading(true);
+  }, []);
 
   const doParse = useCallback(async (input: string, history: ConversationMessage[]) => {
     setLoading(true);
@@ -92,32 +148,90 @@ export function SearchBar({ initialQuery }: { initialQuery?: string } = {}) {
         return;
       }
 
-      const { parsed: p, confidence, ambiguities: ambs } = data.data;
+      const { parsed: nextParsed, confidence, ambiguities: nextAmbiguities } = data.data;
 
-      // If the LLM didn't detect a currency (null = user didn't mention one),
-      // use admin default currency, then browser locale as last resort
-      if (p && !p.currency) {
-        p.currency = adminCurrency || detectLocaleCurrency();
+      if (nextParsed && !nextParsed.currency) {
+        nextParsed.currency = adminCurrency || detectLocaleCurrency();
       }
 
-      if (confidence === 'high' && p) {
-        setParsed(p);
+      if (confidence === 'high' && nextParsed) {
+        setParsed(nextParsed);
         setAmbiguities([]);
         setPartialParsed(null);
       } else {
         setParsed(null);
-        setAmbiguities(ambs || []);
-        setPartialParsed(p);
+        setAmbiguities(nextAmbiguities || []);
+        setPartialParsed(nextParsed);
 
-        const assistantMsg = ambs?.map((a: ParseAmbiguity) => a.question).join(' ') || 'Can you be more specific?';
+        const assistantMsg =
+          nextAmbiguities?.map((ambiguity: ParseAmbiguity) => ambiguity.question).join(' ') ||
+          'Can you be more specific?';
         setConversation((prev) => [...prev, { role: 'assistant', content: assistantMsg }]);
       }
     } catch {
-      setError('Network error — please try again');
+      setError('Network error - please try again');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [adminCurrency]);
+
+  useEffect(() => {
+    if (!previewRunId || !parsed) return;
+
+    let cancelled = false;
+    let timer: number | null = null;
+
+    const poll = async () => {
+      try {
+        const res = await fetch(`/api/preview/${previewRunId}`, { cache: 'no-store' });
+        const data = await res.json();
+
+        if (cancelled) return;
+
+        if (!data.ok) {
+          setError(data.error || 'Failed to search flights');
+          setPreviewLoading(false);
+          setPreviewRunId(null);
+          clearSavedPreview();
+          return;
+        }
+
+        const preview = data.data as PreviewRunStatusPayload;
+
+        if (preview.status === 'completed' && preview.result) {
+          playNotificationSound();
+          setPreviewRoutes(preview.result.routes);
+          setPreviewLoading(false);
+          setPreviewRunId(null);
+          clearSavedPreview();
+          return;
+        }
+
+        if (preview.status === 'failed') {
+          setError(preview.error || 'Failed to search flights');
+          setPreviewLoading(false);
+          setPreviewRunId(null);
+          clearSavedPreview();
+          return;
+        }
+
+        timer = window.setTimeout(poll, 2000);
+      } catch {
+        if (cancelled) return;
+        timer = window.setTimeout(poll, 3000);
+      }
+    };
+
+    setPreviewLoading(true);
+    void poll();
+
+    return () => {
+      cancelled = true;
+      if (timer !== null) {
+        window.clearTimeout(timer);
+      }
+    };
+  }, [previewRunId, parsed]);
 
   const handleParse = useCallback(async () => {
     const trimmed = query.trim();
@@ -129,6 +243,9 @@ export function SearchBar({ initialQuery }: { initialQuery?: string } = {}) {
     setPartialParsed(null);
     setParsed(null);
     setPreviewRoutes(null);
+    setPreviewRunId(null);
+    setCreatedTrackers(null);
+    clearSavedPreview();
 
     await doParse(trimmed, []);
   }, [query, doParse]);
@@ -150,6 +267,7 @@ export function SearchBar({ initialQuery }: { initialQuery?: string } = {}) {
 
     setPreviewLoading(true);
     setError(null);
+    setPreviewRoutes(null);
 
     try {
       const res = await fetch('/api/preview', {
@@ -162,26 +280,27 @@ export function SearchBar({ initialQuery }: { initialQuery?: string } = {}) {
 
       if (!data.ok) {
         setError(data.error || 'Failed to search flights');
+        setPreviewLoading(false);
         return;
       }
 
-      // Handle both new (routes array) and legacy (flat flights) responses
-      playNotificationSound();
-      if (data.data.routes) {
-        setPreviewRoutes(data.data.routes);
-      } else if (data.data.flights) {
-        // Legacy single-route: wrap in a route object
-        setPreviewRoutes([{
-          origin: parsed.origin,
-          originName: parsed.originName,
-          destination: parsed.destination,
-          destinationName: parsed.destinationName,
-          flights: data.data.flights,
-        }]);
+      const nextPreviewRunId = data.data.previewRunId as string | undefined;
+      if (!nextPreviewRunId) {
+        setError('Failed to start flight search');
+        setPreviewLoading(false);
+        return;
       }
+
+      setPreviewRunId(nextPreviewRunId);
+      writeSavedPreview({
+        previewRunId: nextPreviewRunId,
+        parsed,
+        query,
+        manualRawInput,
+        vpnCountries,
+      });
     } catch {
-      setError('Network error — please try again');
-    } finally {
+      setError('Network error - please try again');
       setPreviewLoading(false);
     }
   };
@@ -209,14 +328,14 @@ export function SearchBar({ initialQuery }: { initialQuery?: string } = {}) {
           cabinClass: parsed.cabinClass,
           tripType: parsed.tripType,
           vpnCountries,
-          routes: routeSelections.map((rs) => ({
-            origin: rs.route.origin,
-            originName: rs.route.originName,
-            destination: rs.route.destination,
-            destinationName: rs.route.destinationName,
-            date: rs.route.date,
-            returnDate: rs.route.returnDate,
-            selectedFlights: rs.flights,
+          routes: routeSelections.map((selection) => ({
+            origin: selection.route.origin,
+            originName: selection.route.originName,
+            destination: selection.route.destination,
+            destinationName: selection.route.destinationName,
+            date: selection.route.date,
+            returnDate: selection.route.returnDate,
+            selectedFlights: selection.flights,
           })),
         }),
       });
@@ -228,32 +347,44 @@ export function SearchBar({ initialQuery }: { initialQuery?: string } = {}) {
         return;
       }
 
-      const queries: Array<{ id: string; origin: string; originName: string; destination: string; destinationName: string; date?: string; returnDate?: string; deleteToken: string }> = data.data.queries;
+      const queries: Array<{
+        id: string;
+        origin: string;
+        originName: string;
+        destination: string;
+        destinationName: string;
+        date?: string;
+        returnDate?: string;
+        deleteToken: string;
+      }> = data.data.queries;
 
-      for (const q of queries) {
+      for (const trackedQuery of queries) {
         addSavedTracker({
-          id: q.id,
-          origin: q.origin,
-          destination: q.destination,
-          originName: q.originName,
-          destinationName: q.destinationName,
-          dateFrom: q.date || parsed.dateFrom,
-          dateTo: q.returnDate || parsed.dateTo,
+          id: trackedQuery.id,
+          origin: trackedQuery.origin,
+          destination: trackedQuery.destination,
+          originName: trackedQuery.originName,
+          destinationName: trackedQuery.destinationName,
+          dateFrom: trackedQuery.date || parsed.dateFrom,
+          dateTo: trackedQuery.returnDate || parsed.dateTo,
           createdAt: new Date().toISOString(),
-          deleteToken: q.deleteToken,
+          deleteToken: trackedQuery.deleteToken,
         });
       }
 
-      setCreatedTrackers(queries.map((q) => ({
-        id: q.id,
-        origin: q.origin,
-        originName: q.originName,
-        destination: q.destination,
-        destinationName: q.destinationName,
-        date: q.date,
+      setCreatedTrackers(queries.map((trackedQuery) => ({
+        id: trackedQuery.id,
+        origin: trackedQuery.origin,
+        originName: trackedQuery.originName,
+        destination: trackedQuery.destination,
+        destinationName: trackedQuery.destinationName,
+        date: trackedQuery.date,
       })));
+
+      setPreviewRunId(null);
+      clearSavedPreview();
     } catch {
-      setError('Network error — please try again');
+      setError('Network error - please try again');
     } finally {
       setLoading(false);
     }
@@ -261,6 +392,8 @@ export function SearchBar({ initialQuery }: { initialQuery?: string } = {}) {
 
   const handleBackFromPicker = () => {
     setPreviewRoutes(null);
+    setPreviewRunId(null);
+    clearSavedPreview();
   };
 
   const handleReset = () => {
@@ -271,10 +404,12 @@ export function SearchBar({ initialQuery }: { initialQuery?: string } = {}) {
     setPartialParsed(null);
     setPreviewRoutes(null);
     setPreviewLoading(false);
+    setPreviewRunId(null);
     setCreatedTrackers(null);
-    setManualMode(false);
+    setManualMode(defaultSearchMethod === 'manual');
     setManualRawInput('');
     setVpnCountries([]);
+    clearSavedPreview();
     inputRef.current?.focus();
   };
 
@@ -287,13 +422,14 @@ export function SearchBar({ initialQuery }: { initialQuery?: string } = {}) {
     <div className={styles.root}>
       {manualMode ? (
         <ManualEntryForm
-          onSubmit={(q, rawInput) => {
-            setParsed(q);
+          onSubmit={(nextParsed, rawInput) => {
+            setParsed(nextParsed);
             setManualRawInput(rawInput);
             setManualMode(false);
           }}
           onCancel={() => setManualMode(false)}
           adminCurrency={adminCurrency}
+          cancelLabel="Use AI search"
         />
       ) : (
         <>
@@ -302,7 +438,7 @@ export function SearchBar({ initialQuery }: { initialQuery?: string } = {}) {
               ref={inputRef}
               type="text"
               className={styles.input}
-              placeholder='NYC to Paris around June 15 ± 3 days'
+              placeholder="NYC to Paris around June 15 +/- 3 days"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               onKeyDown={handleKeyDown}
@@ -325,13 +461,16 @@ export function SearchBar({ initialQuery }: { initialQuery?: string } = {}) {
           </div>
 
           <div className={styles.hints}>
-            {['JFK to CDG June 15-20', 'London to Tokyo next month flexible', 'SFO to LAX March 20 ± 2 days'].map((example, i) => (
+            {['JFK to CDG June 15-20', 'London to Tokyo next month flexible', 'SFO to LAX March 20 +/- 2 days'].map((example, i) => (
               <span key={i}>
                 {i > 0 && <span className={styles.hintSep}>&middot; </span>}
                 <button
                   type="button"
                   className={styles.hintBtn}
-                  onClick={() => { setQuery(example); inputRef.current?.focus(); }}
+                  onClick={() => {
+                    setQuery(example);
+                    inputRef.current?.focus();
+                  }}
                 >
                   {example}
                 </button>
@@ -366,7 +505,7 @@ export function SearchBar({ initialQuery }: { initialQuery?: string } = {}) {
                   ];
                   const pick = routes[Math.floor(Math.random() * routes.length)]!;
                   setQuery(pick);
-                  doParse(pick, []);
+                  void doParse(pick, []);
                 }}
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
@@ -397,11 +536,7 @@ export function SearchBar({ initialQuery }: { initialQuery?: string } = {}) {
         </>
       )}
 
-      {error && (
-        <div className={styles.error}>
-          {error}
-        </div>
-      )}
+      {error && <div className={styles.error}>{error}</div>}
 
       {showClarification && (
         <ClarificationCard
@@ -427,9 +562,9 @@ export function SearchBar({ initialQuery }: { initialQuery?: string } = {}) {
       {showPreviewLoading && parsed && (
         <div className={styles.previewLoading}>
           <span className={styles.previewRoute}>
-            {parsed.origins.map((a) => a.code).join(', ')} → {parsed.destinations.map((a) => a.code).join(', ')}
+            {parsed.origins.map((airport) => airport.code).join(', ')} -> {parsed.destinations.map((airport) => airport.code).join(', ')}
           </span>
-          <span className={styles.previewStatus}>Searching Google Flights&hellip;</span>
+          <span className={styles.previewStatus}>Searching Google Flights...</span>
         </div>
       )}
 
