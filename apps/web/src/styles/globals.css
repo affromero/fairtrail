@@ -1,7 +1,7 @@
 @import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=Outfit:wght@300..700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
 
 /* ============================================
-   Fairtrail Design System — "Altitude"
+   Fairtrail Design System - "Altitude"
    Aviation departure board aesthetic
    ============================================ */
 
@@ -40,9 +40,8 @@
   --warning: #f59e0b;
 }
 
-/* ---- Dark theme (default) ---- */
 :root,
-[data-theme='dark'] {
+[data-theme='default'] {
   color-scheme: dark;
 
   --bg: #080f1a;
@@ -58,9 +57,17 @@
   --text: #e8edf5;
   --text-secondary: #8b9ec2;
   --muted: #5a6f96;
+
+  --page-gradient: radial-gradient(circle at top, rgba(6, 182, 212, 0.12), transparent 38%);
+  --page-overlay: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0, 0, 0, 0.03) 2px,
+    rgba(0, 0, 0, 0.03) 4px
+  );
 }
 
-/* ---- Light theme — system preference fallback (before JS sets data-theme) ---- */
 @media (prefers-color-scheme: light) {
   :root:not([data-theme]) {
     color-scheme: light;
@@ -81,11 +88,12 @@
 
     --price-up: #dc2626;
     --price-down: #059669;
+    --page-gradient: linear-gradient(180deg, rgba(8, 145, 178, 0.08), transparent 32%);
+    --page-overlay: none;
   }
 }
 
-/* ---- Light theme — explicit (set by JS toggle) ---- */
-[data-theme='light'] {
+[data-theme='basic-light'] {
   color-scheme: light;
 
   --bg: #f5f2ec;
@@ -104,6 +112,127 @@
 
   --price-up: #dc2626;
   --price-down: #059669;
+  --page-gradient: linear-gradient(180deg, rgba(8, 145, 178, 0.08), transparent 32%);
+  --page-overlay: none;
+}
+
+[data-theme='basic-dark'] {
+  color-scheme: dark;
+
+  --bg: #0e1117;
+  --surface: #171b23;
+  --elevated: #1f2630;
+  --border: #303846;
+
+  --accent: #60a5fa;
+  --accent-dim: #1d4ed8;
+  --accent-glow: rgba(96, 165, 250, 0.12);
+  --accent-hover: #93c5fd;
+
+  --text: #e5ebf5;
+  --text-secondary: #a5b0c2;
+  --muted: #718096;
+
+  --page-gradient: radial-gradient(circle at top, rgba(96, 165, 250, 0.08), transparent 36%);
+  --page-overlay: none;
+}
+
+[data-theme='cyberpunk'] {
+  color-scheme: dark;
+
+  --bg: #0d0212;
+  --surface: #17041d;
+  --elevated: #250830;
+  --border: #4f145d;
+
+  --accent: #ff4fd8;
+  --accent-dim: #6d28d9;
+  --accent-glow: rgba(255, 79, 216, 0.16);
+  --accent-hover: #ff83e8;
+
+  --text: #ffe8fb;
+  --text-secondary: #cf9ad1;
+  --muted: #9d6ca0;
+
+  --price-up: #ff7070;
+  --price-down: #5dffb2;
+  --page-gradient:
+    radial-gradient(circle at top left, rgba(255, 79, 216, 0.2), transparent 30%),
+    radial-gradient(circle at top right, rgba(0, 217, 255, 0.12), transparent 24%);
+  --page-overlay: linear-gradient(135deg, rgba(255, 79, 216, 0.03), transparent 45%);
+}
+
+[data-theme='tron'] {
+  color-scheme: dark;
+
+  --bg: #03131d;
+  --surface: #071f2b;
+  --elevated: #0c2b39;
+  --border: #11485e;
+
+  --accent: #00d9ff;
+  --accent-dim: #0f5b78;
+  --accent-glow: rgba(0, 217, 255, 0.14);
+  --accent-hover: #7dedff;
+
+  --text: #dcf8ff;
+  --text-secondary: #92c7d4;
+  --muted: #5c9fb2;
+
+  --page-gradient:
+    radial-gradient(circle at top, rgba(0, 217, 255, 0.12), transparent 34%),
+    linear-gradient(180deg, rgba(0, 110, 145, 0.08), transparent 45%);
+  --page-overlay:
+    linear-gradient(rgba(0, 217, 255, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 217, 255, 0.03) 1px, transparent 1px);
+}
+
+[data-theme='autumn'] {
+  color-scheme: light;
+
+  --bg: #f7efe3;
+  --surface: #fff8ef;
+  --elevated: #f1ddc6;
+  --border: #d9b996;
+
+  --accent: #c7681c;
+  --accent-dim: #f0c28d;
+  --accent-glow: rgba(199, 104, 28, 0.12);
+  --accent-hover: #9c4f12;
+
+  --text: #2e1e11;
+  --text-secondary: #70533a;
+  --muted: #9d7a5b;
+
+  --price-up: #c2410c;
+  --price-down: #2f855a;
+  --page-gradient:
+    radial-gradient(circle at top left, rgba(199, 104, 28, 0.14), transparent 32%),
+    linear-gradient(180deg, rgba(255, 214, 153, 0.2), transparent 40%);
+  --page-overlay: none;
+}
+
+[data-theme='solar-red'] {
+  color-scheme: dark;
+
+  --bg: #18070a;
+  --surface: #250d11;
+  --elevated: #351116;
+  --border: #5a2026;
+
+  --accent: #ff6b57;
+  --accent-dim: #7f1d1d;
+  --accent-glow: rgba(255, 107, 87, 0.14);
+  --accent-hover: #ff9b8f;
+
+  --text: #ffe9e5;
+  --text-secondary: #d7aaa3;
+  --muted: #9f6d67;
+
+  --page-gradient:
+    radial-gradient(circle at top, rgba(255, 107, 87, 0.16), transparent 34%),
+    linear-gradient(180deg, rgba(255, 189, 89, 0.08), transparent 42%);
+  --page-overlay: linear-gradient(135deg, rgba(255, 107, 87, 0.04), transparent 50%);
 }
 
 *,
@@ -116,12 +245,15 @@
 
 body {
   font-family: var(--font-body);
-  background: var(--bg);
+  background-color: var(--bg);
+  background-image: var(--page-gradient);
+  background-attachment: fixed;
   color: var(--text);
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   transition: background-color 0.3s ease, color 0.3s ease;
+  position: relative;
 }
 
 a {
@@ -144,19 +276,17 @@ kbd {
   color: var(--text);
 }
 
-/* Subtle scan-line texture for dark mode depth */
-[data-theme='dark'] body::before {
+body::before {
   content: '';
   position: fixed;
   inset: 0;
   pointer-events: none;
   z-index: 9999;
-  background: repeating-linear-gradient(
-    0deg,
-    transparent,
-    transparent 2px,
-    rgba(0, 0, 0, 0.03) 2px,
-    rgba(0, 0, 0, 0.03) 4px
-  );
+  background: var(--page-overlay);
+  background-size: auto, 28px 28px, 28px 28px;
   mix-blend-mode: multiply;
+}
+
+[data-theme-mode='light'] body::before {
+  mix-blend-mode: normal;
 }

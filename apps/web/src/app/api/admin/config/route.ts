@@ -5,6 +5,7 @@ import { EXTRACTION_PROVIDERS } from '@/lib/scraper/ai-registry';
 import { hashPassword } from '@/lib/password';
 import { registerForCommunity } from '@/lib/community-sync';
 import { encryptVpnCode } from '@/lib/vpn-crypto';
+import { isThemeId } from '@/lib/theme';
 
 function stripHashes(config: Record<string, unknown>) {
   const { adminPasswordHash, vpnActivationCode, ...rest } = config;
@@ -48,6 +49,12 @@ export async function PATCH(request: NextRequest) {
   const data: Record<string, unknown> = {};
   if (provider) data.provider = provider;
   if (model) data.model = model;
+  if (body.theme !== undefined) {
+    if (typeof body.theme !== 'string' || !isThemeId(body.theme)) {
+      return apiError('theme must be a valid theme id', 400);
+    }
+    data.theme = body.theme;
+  }
   if (typeof body.enabled === 'boolean') data.enabled = body.enabled;
   if (typeof body.scrapeIntervalHours === 'number') {
     data.scrapeInterval = Math.max(1, Math.min(24, Math.round(body.scrapeIntervalHours)));

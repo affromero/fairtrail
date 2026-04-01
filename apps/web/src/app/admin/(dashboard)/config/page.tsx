@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { EXTRACTION_PROVIDERS, LOCAL_PROVIDERS } from '@/lib/scraper/ai-registry';
+import { THEME_OPTIONS, applyTheme, type ThemeId } from '@/lib/theme';
 import styles from './page.module.css';
 
 interface Config {
@@ -12,6 +13,7 @@ interface Config {
   hasAdminPassword: boolean;
   communitySharing: boolean;
   communityApiKey: string | null;
+  theme: ThemeId;
   defaultCurrency: string | null;
   defaultCountry: string | null;
   customBaseUrl: string | null;
@@ -28,6 +30,7 @@ export default function ConfigPage() {
   const [model, setModel] = useState('claude-haiku-4-5-20251001');
   const [customModel, setCustomModel] = useState('');
   const [scrapeInterval, setScrapeInterval] = useState(3);
+  const [theme, setTheme] = useState<ThemeId>('default');
   const [defaultCurrency, setDefaultCurrency] = useState('');
   const [defaultCountry, setDefaultCountry] = useState('');
   const [customBaseUrl, setCustomBaseUrl] = useState('');
@@ -78,6 +81,8 @@ export default function ConfigPage() {
           setConfig(d.data);
           setProvider(d.data.provider);
           setScrapeInterval(d.data.scrapeInterval);
+          setTheme(d.data.theme || 'default');
+          applyTheme(d.data.theme || 'default');
           setDefaultCurrency(d.data.defaultCurrency || '');
           setDefaultCountry(d.data.defaultCountry || '');
           setCustomBaseUrl(d.data.customBaseUrl || '');
@@ -131,6 +136,7 @@ export default function ConfigPage() {
         provider,
         model: effectiveModel,
         scrapeIntervalHours: scrapeInterval,
+        theme,
         defaultCurrency: defaultCurrency.trim().toUpperCase() || null,
         defaultCountry: defaultCountry.trim().toUpperCase() || null,
         customBaseUrl: newBaseUrl,
@@ -271,6 +277,23 @@ export default function ConfigPage() {
           >
             {[1, 2, 3, 4, 6, 8, 12, 24].map((h) => (
               <option key={h} value={h}>Every {h}h</option>
+            ))}
+          </select>
+        </div>
+
+        <div className={styles.field}>
+          <label className={styles.label}>Theme</label>
+          <select
+            className={styles.select}
+            value={theme}
+            onChange={(e) => {
+              const nextTheme = e.target.value as ThemeId;
+              setTheme(nextTheme);
+              applyTheme(nextTheme);
+            }}
+          >
+            {THEME_OPTIONS.map((option) => (
+              <option key={option.id} value={option.id}>{option.label}</option>
             ))}
           </select>
         </div>
