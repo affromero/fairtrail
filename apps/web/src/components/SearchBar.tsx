@@ -562,7 +562,9 @@ export function SearchBar({ initialQuery }: { initialQuery?: string } = {}) {
       {showPreviewLoading && parsed && (
         <div className={styles.previewLoading}>
           <span className={styles.previewRoute}>
-            {parsed.origins.map((airport) => airport.code).join(', ')} -> {parsed.destinations.map((airport) => airport.code).join(', ')}
+            {parsed.origins.map((airport) => airport.code).join(', ')}
+            {' -> '}
+            {parsed.destinations.map((airport) => airport.code).join(', ')}
           </span>
           <span className={styles.previewStatus}>Searching Google Flights...</span>
         </div>

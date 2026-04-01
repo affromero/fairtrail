@@ -18,7 +18,7 @@ const DEBUG_DIR = '/tmp/fairtrail-debug';
 const PREVIEW_MAX_RESULTS = 20;
 const PREVIEW_RUN_TTL_MS = 24 * 60 * 60 * 1000;
 
-export interface RouteResult extends RouteResultPayload {}
+export type RouteResult = RouteResultPayload;
 
 function buildCacheKey(
   origin: string,
@@ -344,7 +344,7 @@ async function runPreviewInBackground(id: string, payload: PreviewRequestPayload
     const result = await runPreview(payload);
     await updatePreviewRun(id, {
       status: 'completed',
-      resultPayload: result as Prisma.InputJsonValue,
+      resultPayload: result as unknown as Prisma.InputJsonValue,
       error: null,
     });
   } catch (error) {
@@ -367,7 +367,7 @@ export async function POST(request: NextRequest) {
   const previewRun = await prisma.previewRun.create({
     data: {
       status: 'pending',
-      requestPayload: payload as Prisma.InputJsonValue,
+      requestPayload: payload as unknown as Prisma.InputJsonValue,
       expiresAt: new Date(Date.now() + PREVIEW_RUN_TTL_MS),
     },
   });
