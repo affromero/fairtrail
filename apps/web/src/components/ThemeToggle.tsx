@@ -2,35 +2,53 @@
 
 import { useEffect, useState } from 'react';
 import styles from './ThemeToggle.module.css';
-
-type Theme = 'dark' | 'light';
-
-function getResolvedTheme(): Theme {
-  if (typeof window === 'undefined') return 'dark';
-  const stored = localStorage.getItem('ft-theme') as Theme | null;
-  if (stored) return stored;
-  return window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
-}
+import { applyTheme, getNextToggleTheme, getThemeFromDom, getThemeMode, isLightTheme, type ThemeId } from '@/lib/theme';
 
 export function ThemeToggle() {
-  const [theme, setTheme] = useState<Theme>('dark');
+  const [theme, setTheme] = useState<ThemeId>('default');
+  const [lastDarkTheme, setLastDarkTheme] = useState<ThemeId>('default');
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    const resolved = getResolvedTheme();
+    const resolved = getThemeFromDom();
     setTheme(resolved);
-    document.documentElement.setAttribute('data-theme', resolved);
+    setLastDarkTheme(isLightTheme(resolved) ? 'default' : resolved);
+    applyTheme(resolved);
   }, []);
 
-  const toggle = () => {
-    const next: Theme = theme === 'dark' ? 'light' : 'dark';
+  const toggle = async () => {
+    if (saving) return;
+    const next: ThemeId = getNextToggleTheme(theme, lastDarkTheme);
+    const nextDarkTheme = isLightTheme(theme) ? next : theme;
     setTheme(next);
-    localStorage.setItem('ft-theme', next);
-    document.documentElement.setAttribute('data-theme', next);
+    setLastDarkTheme(nextDarkTheme);
+    applyTheme(next);
+    setSaving(true);
+
+    try {
+      const res = await fetch('/api/admin/config', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ theme: next }),
+      });
+      const data = await res.json();
+      if (!data.ok) {
+        setTheme(theme);
+        setLastDarkTheme(lastDarkTheme);
+        applyTheme(theme);
+      }
+    } catch {
+      setTheme(theme);
+      setLastDarkTheme(lastDarkTheme);
+      applyTheme(theme);
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
-    <button className={styles.toggle} onClick={toggle} aria-label="Toggle theme">
-      {theme === 'dark' ? (
+    <button className={styles.toggle} onClick={toggle} aria-label="Toggle theme" disabled={saving}>
+      {getThemeMode(theme) === 'dark' ? (
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <circle cx="12" cy="12" r="5" />
           <line x1="12" y1="1" x2="12" y2="3" />

@@ -1,8 +1,10 @@
 'use client';
 
+import type { CSSProperties } from 'react';
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { EXTRACTION_PROVIDERS, LOCAL_PROVIDERS, CLI_PROVIDERS } from '@/lib/scraper/ai-registry';
+import { THEME_OPTIONS, applyTheme, type ThemeId } from '@/lib/theme';
 import styles from './page.module.css';
 
 interface Config {
@@ -13,6 +15,7 @@ interface Config {
   communitySharing: boolean;
   communityApiKey: string | null;
   customBaseUrl: string | null;
+  theme: ThemeId;
   defaultCurrency: string | null;
   defaultCountry: string | null;
   defaultSearchMethod: 'ai' | 'manual';
@@ -44,6 +47,8 @@ export default function SettingsPage() {
   const [providerKeySaving, setProviderKeySaving] = useState(false);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
+  const [theme, setTheme] = useState<ThemeId>('default');
+  const [themeMessage, setThemeMessage] = useState('');
 
   const [localModels, setLocalModels] = useState<{ id: string; name: string; size: string }[]>([]);
   const [localModelsLoading, setLocalModelsLoading] = useState(false);
@@ -94,6 +99,8 @@ export default function SettingsPage() {
           setProvider(d.data.provider);
           setScrapeInterval(d.data.scrapeInterval);
           setCustomBaseUrl(d.data.customBaseUrl || '');
+          setTheme(d.data.theme || 'default');
+          applyTheme(d.data.theme || 'default');
           setDefaultCurrency(d.data.defaultCurrency || '');
           setDefaultCountry(d.data.defaultCountry || '');
           setDefaultSearchMethod(d.data.defaultSearchMethod === 'manual' ? 'manual' : 'ai');
@@ -148,6 +155,7 @@ export default function SettingsPage() {
         model: effectiveModel,
         scrapeIntervalHours: scrapeInterval,
         customBaseUrl: customBaseUrl.trim() || null,
+        theme,
         defaultCurrency: defaultCurrency.trim().toUpperCase() || null,
         defaultCountry: defaultCountry.trim().toUpperCase() || null,
         defaultSearchMethod,
@@ -181,6 +189,39 @@ export default function SettingsPage() {
             </svg>
           </Link>
           <h1 className={styles.title}>Settings</h1>
+        </div>
+
+        <div className={styles.section}>
+          <h2 className={styles.sectionTitle}>Appearance</h2>
+          <p className={styles.toggleHint}>
+            Pick the interface theme Fairtrail should use across this instance for all users and browsers.
+          </p>
+
+          <div className={styles.themeGrid}>
+            {THEME_OPTIONS.map((option) => (
+              <button
+                key={option.id}
+                type="button"
+                className={`${styles.themeCard} ${theme === option.id ? styles.themeCardSelected : ''}`}
+                onClick={() => {
+                  setTheme(option.id);
+                  applyTheme(option.id);
+                  setThemeMessage(`Theme will be saved as ${option.label}`);
+                }}
+              >
+                <span
+                  className={styles.themeSwatch}
+                  style={{ '--theme-swatch-accent': option.accent } as CSSProperties}
+                  aria-hidden="true"
+                />
+                <span className={styles.themeCardName}>{option.label}</span>
+                <span className={styles.themeCardMeta}>{option.mode === 'light' ? 'Light' : 'Dark'}</span>
+                <span className={styles.themeCardDesc}>{option.description}</span>
+              </button>
+            ))}
+          </div>
+
+          {themeMessage && <span className={styles.message}>{themeMessage}</span>}
         </div>
 
         <div className={styles.section}>

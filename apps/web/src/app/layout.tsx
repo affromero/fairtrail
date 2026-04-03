@@ -1,6 +1,8 @@
 import type { Metadata, Viewport } from 'next';
 import '@/styles/globals.css';
 import { ClientBeacon } from '@/components/analytics/ClientBeacon';
+import { prisma } from '@/lib/prisma';
+import { getThemeMode, isThemeId } from '@/lib/theme';
 
 const isSelfHosted = process.env.SELF_HOSTED === 'true';
 
@@ -38,31 +40,26 @@ export const viewport: Viewport = {
   ],
 };
 
-const themeScript = `
-  (function() {
-    var t = localStorage.getItem('ft-theme');
-    if (!t) {
-      t = window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
-    }
-    document.documentElement.setAttribute('data-theme', t);
-  })();
-`;
-
 const swScript = `
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('/sw.js').catch(function() {});
   }
 `;
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const config = await prisma.extractionConfig.findFirst({
+    where: { id: 'singleton' },
+    select: { theme: true },
+  }).catch(() => null);
+  const theme = isThemeId(config?.theme) ? config.theme : 'default';
+
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en" suppressHydrationWarning data-theme={theme} data-theme-mode={getThemeMode(theme)}>
       <head>
-        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
         <script dangerouslySetInnerHTML={{ __html: swScript }} />
       </head>
       <body>

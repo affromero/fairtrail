@@ -68,6 +68,67 @@
   gap: 0.375rem;
 }
 
+.themeGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+}
+
+.themeCard {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding: 0.875rem;
+  background: var(--surface);
+  border: 2px solid var(--border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.2s, transform 0.2s, background 0.2s;
+}
+
+.themeCard:hover {
+  border-color: var(--accent);
+  transform: translateY(-1px);
+}
+
+.themeCardSelected {
+  border-color: var(--accent);
+  background: var(--elevated);
+}
+
+.themeSwatch {
+  width: 100%;
+  height: 0.625rem;
+  border-radius: 999px;
+  background:
+    linear-gradient(90deg, var(--theme-swatch-accent), color-mix(in srgb, var(--theme-swatch-accent) 45%, #ffffff)),
+    var(--theme-swatch-accent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--theme-swatch-accent) 30%, transparent);
+  margin-bottom: 0.25rem;
+}
+
+.themeCardName {
+  font-family: var(--font-display);
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.themeCardMeta {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  color: var(--accent);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.themeCardDesc {
+  font-size: 0.75rem;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
 .label {
   font-family: var(--font-display);
   font-size: 0.6875rem;
@@ -608,4 +669,23 @@
 .modelHintError {
   composes: modelHint;
   color: var(--price-up);
+}
+
+@media (max-width: 640px) {
+  .themeGrid,
+  .providerGrid,
+  .vpnProviderGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .actions,
+  .providerConfigRow,
+  .vpnCodeRow {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .vpnGetCode {
+    text-align: center;
+  }
 }

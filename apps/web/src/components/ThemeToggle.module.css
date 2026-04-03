@@ -16,3 +16,8 @@
   color: var(--accent);
   border-color: var(--accent);
 }
+
+.toggle:disabled {
+  opacity: 0.7;
+  cursor: wait;
+}
