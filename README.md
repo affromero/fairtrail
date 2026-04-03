@@ -402,6 +402,7 @@ Both approaches share the same risk: Google can break either one at any time. We
 | Project | Description |
 |---------|-------------|
 | [**fli**](https://github.com/punitarani/fli) | Google Flights API reverse-engineering (Python) |
+| [**jetlog**](https://github.com/pbogre/jetlog) | Self-hosted personal flight journal with world map and stats |
 | [**PriceToken**](https://github.com/affromero/pricetoken) | Real-time LLM pricing API, npm/PyPI packages, and live dashboard |
 | [**gitpane**](https://github.com/affromero/gitpane) | Multi-repo Git workspace dashboard for the terminal |
 | [**kin3o**](https://github.com/affromero/kin3o) | AI-powered Lottie animation generator CLI |
