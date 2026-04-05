@@ -11,6 +11,7 @@ interface ManualEntryFormProps {
   onCancel: () => void;
   adminCurrency: string | null;
   cancelLabel?: string;
+  initialValues?: ParsedQuery;
 }
 
 interface SelectedAirport {
@@ -43,22 +44,43 @@ export function ManualEntryForm({
   onCancel,
   adminCurrency,
   cancelLabel = 'Cancel',
+  initialValues,
 }: ManualEntryFormProps) {
-  const [origin, setOrigin] = useState<SelectedAirport | null>(null);
-  const [destination, setDestination] = useState<SelectedAirport | null>(null);
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
-  const [tripType, setTripType] = useState<'one_way' | 'round_trip'>('round_trip');
+  const iv = initialValues;
+  const [origin, setOrigin] = useState<SelectedAirport | null>(
+    iv ? { code: iv.origin, name: iv.originName } : null,
+  );
+  const [destination, setDestination] = useState<SelectedAirport | null>(
+    iv ? { code: iv.destination, name: iv.destinationName } : null,
+  );
+  const [dateFrom, setDateFrom] = useState(iv?.dateFrom ?? '');
+  const [dateTo, setDateTo] = useState(iv?.dateTo ?? '');
+  const [tripType, setTripType] = useState<'one_way' | 'round_trip'>(
+    (iv?.tripType as 'one_way' | 'round_trip') ?? 'round_trip',
+  );
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
-  const [showAdvanced, setShowAdvanced] = useState(false);
-  const [flexibility, setFlexibility] = useState(0);
-  const [maxPrice, setMaxPrice] = useState('');
-  const [maxStops, setMaxStops] = useState('');
-  const [airlines, setAirlines] = useState('');
-  const [timePreference, setTimePreference] = useState<'any' | 'morning' | 'afternoon' | 'evening' | 'redeye'>('any');
-  const [cabinClass, setCabinClass] = useState<'economy' | 'premium_economy' | 'business' | 'first'>('economy');
-  const [currency, setCurrency] = useState('');
+  const hasAdvancedInitial = iv ? !!(
+    iv.flexibility > 0 ||
+    iv.maxPrice ||
+    (iv.maxStops !== null && iv.maxStops !== undefined) ||
+    iv.preferredAirlines.length > 0 ||
+    iv.timePreference !== 'any' ||
+    iv.cabinClass !== 'economy' ||
+    iv.currency
+  ) : false;
+  const [showAdvanced, setShowAdvanced] = useState(hasAdvancedInitial);
+  const [flexibility, setFlexibility] = useState(iv?.flexibility ?? 0);
+  const [maxPrice, setMaxPrice] = useState(iv?.maxPrice ? String(iv.maxPrice) : '');
+  const [maxStops, setMaxStops] = useState(iv?.maxStops !== null && iv?.maxStops !== undefined ? String(iv.maxStops) : '');
+  const [airlines, setAirlines] = useState(iv?.preferredAirlines?.join(', ') ?? '');
+  const [timePreference, setTimePreference] = useState<'any' | 'morning' | 'afternoon' | 'evening' | 'redeye'>(
+    (iv?.timePreference as 'any' | 'morning' | 'afternoon' | 'evening' | 'redeye') ?? 'any',
+  );
+  const [cabinClass, setCabinClass] = useState<'economy' | 'premium_economy' | 'business' | 'first'>(
+    (iv?.cabinClass as 'economy' | 'premium_economy' | 'business' | 'first') ?? 'economy',
+  );
+  const [currency, setCurrency] = useState(iv?.currency ?? '');
 
   const clearError = (field: string) => {
     setFieldErrors((prev) => {

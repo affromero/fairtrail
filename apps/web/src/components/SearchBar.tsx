@@ -408,6 +408,8 @@ export function SearchBar({ initialQuery }: { initialQuery?: string } = {}) {
     clearSavedPreview();
   };
 
+  const [editingValues, setEditingValues] = useState<ParsedQuery | null>(null);
+
   const handleReset = () => {
     setParsed(null);
     setError(null);
@@ -421,8 +423,34 @@ export function SearchBar({ initialQuery }: { initialQuery?: string } = {}) {
     setManualMode(activeSearchMethod === 'manual');
     setManualRawInput('');
     setVpnCountries([]);
+    setEditingValues(null);
     clearSavedPreview();
     inputRef.current?.focus();
+  };
+
+  const handleEdit = () => {
+    const wasManual = !!manualRawInput;
+    const currentParsed = parsed;
+
+    setError(null);
+    setConversation([]);
+    setAmbiguities([]);
+    setPartialParsed(null);
+    setPreviewRoutes(null);
+    setPreviewLoading(false);
+    setPreviewRunId(null);
+    setCreatedTrackers(null);
+    clearSavedPreview();
+
+    if (wasManual && currentParsed) {
+      setEditingValues(currentParsed);
+      setParsed(null);
+      setManualMode(true);
+    } else {
+      setParsed(null);
+      setEditingValues(null);
+      inputRef.current?.focus();
+    }
   };
 
   const showClarification = ambiguities.length > 0 && !parsed;
@@ -438,13 +466,16 @@ export function SearchBar({ initialQuery }: { initialQuery?: string } = {}) {
             setParsed(nextParsed);
             setManualRawInput(rawInput);
             setManualMode(false);
+            setEditingValues(null);
           }}
           onCancel={() => {
             setActiveSearchMethod('ai');
             setManualMode(false);
+            setEditingValues(null);
           }}
           adminCurrency={adminCurrency}
           cancelLabel="Use AI search"
+          initialValues={editingValues ?? undefined}
         />
       ) : (
         <>
@@ -568,7 +599,7 @@ export function SearchBar({ initialQuery }: { initialQuery?: string } = {}) {
         <ConfirmationCard
           parsed={parsed}
           onTrack={handlePreview}
-          onEdit={handleReset}
+          onEdit={handleEdit}
           loading={loading}
           vpnCountries={vpnCountries}
           onVpnCountriesChange={setVpnCountries}
@@ -591,7 +622,7 @@ export function SearchBar({ initialQuery }: { initialQuery?: string } = {}) {
           routes={previewRoutes}
           onTrack={handleTrackSelected}
           onBack={handleBackFromPicker}
-          onEdit={handleReset}
+          onEdit={handleEdit}
           loading={loading}
         />
       )}
