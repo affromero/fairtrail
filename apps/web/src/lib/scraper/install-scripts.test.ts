@@ -69,6 +69,27 @@ describe('install.sh', () => {
     }
   });
 
+  it('gates macOS open command behind uname Darwin check', () => {
+    const lines = INSTALL_SH.split('\n');
+    const openLines = lines.filter(
+      (l) =>
+        /\bopen\s+"http/.test(l) &&
+        !l.includes('xdg-open') &&
+        !l.trimStart().startsWith('#')
+    );
+    expect(openLines.length).toBeGreaterThan(0);
+    for (const line of openLines) {
+      const idx = lines.indexOf(line);
+      const context = lines
+        .slice(Math.max(0, idx - 1), idx + 1)
+        .join('\n');
+      expect(
+        context,
+        `open not gated behind Darwin: ${line.trim()}`
+      ).toContain('Darwin');
+    }
+  });
+
   it('redirects both stdout and stderr for xdg-open', () => {
     const xdgExecLines = INSTALL_SH.split('\n').filter(
       (l) => l.includes('xdg-open') && !l.includes('command -v')
@@ -168,6 +189,27 @@ describe('fairtrail-cli', () => {
         context,
         `xdg-open not guarded: ${line.trim()}`
       ).toMatch(/DISPLAY|WAYLAND_DISPLAY/);
+    }
+  });
+
+  it('gates macOS open command behind uname Darwin check', () => {
+    const lines = CLI_SH.split('\n');
+    const openLines = lines.filter(
+      (l) =>
+        /\bopen\s+"http/.test(l) &&
+        !l.includes('xdg-open') &&
+        !l.trimStart().startsWith('#')
+    );
+    expect(openLines.length).toBeGreaterThan(0);
+    for (const line of openLines) {
+      const idx = lines.indexOf(line);
+      const context = lines
+        .slice(Math.max(0, idx - 1), idx + 1)
+        .join('\n');
+      expect(
+        context,
+        `open not gated behind Darwin: ${line.trim()}`
+      ).toContain('Darwin');
     }
   });
 

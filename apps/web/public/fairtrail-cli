@@ -137,7 +137,7 @@ cmd_start_foreground() {
   if [ "$RETRIES" -gt 0 ]; then
     printf "${GREEN}${BOLD}✓${RESET} Running at ${BOLD}http://localhost:${PORT}${RESET}\n"
     # Open browser
-    if command -v open &>/dev/null; then
+    if [ "$(uname)" = "Darwin" ] && command -v open &>/dev/null; then
       open "http://localhost:${PORT}"
     elif [ -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ] && command -v xdg-open &>/dev/null; then
       xdg-open "http://localhost:${PORT}" >/dev/null 2>&1 &
@@ -166,7 +166,7 @@ cmd_start_background() {
   printf "  ${DIM}Stop with: fairtrail stop${RESET}\n"
 
   # Open browser
-  if command -v open &>/dev/null; then
+  if [ "$(uname)" = "Darwin" ] && command -v open &>/dev/null; then
     open "http://localhost:${PORT}"
   elif [ -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ] && command -v xdg-open &>/dev/null; then
     xdg-open "http://localhost:${PORT}" >/dev/null 2>&1 &
@@ -399,7 +399,7 @@ print(json.dumps(body))
   printf "${GREEN}${BOLD}✓${RESET} Tracking ${BOLD}%s${RESET} route(s) — prices checked every 3h\n" "$num_queries"
   printf "  ${BOLD}http://localhost:%s/q/%s${RESET}\n" "$PORT" "$query_id"
 
-  if command -v open &>/dev/null; then
+  if [ "$(uname)" = "Darwin" ] && command -v open &>/dev/null; then
     open "http://localhost:${PORT}/q/${query_id}"
   elif [ -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ] && command -v xdg-open &>/dev/null; then
     xdg-open "http://localhost:${PORT}/q/${query_id}" >/dev/null 2>&1 &

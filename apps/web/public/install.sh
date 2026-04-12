@@ -741,7 +741,7 @@ printf "  ${DIM}Ctrl+C to stop  |  fairtrail stop  |  fairtrail help${RESET}\n"
 echo ""
 
 # Open browser automatically (skip on headless systems)
-if command -v open &>/dev/null; then
+if [ "$(uname)" = "Darwin" ] && command -v open &>/dev/null; then
   open "http://localhost:${HOST_PORT}"
 elif [ -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ] && command -v xdg-open &>/dev/null; then
   xdg-open "http://localhost:${HOST_PORT}" >/dev/null 2>&1 &
