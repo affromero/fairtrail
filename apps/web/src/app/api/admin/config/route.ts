@@ -6,6 +6,7 @@ import { hashPassword } from '@/lib/password';
 import { registerForCommunity } from '@/lib/community-sync';
 import { encryptVpnCode } from '@/lib/vpn-crypto';
 import { isThemeId } from '@/lib/theme';
+import { updateCronInterval } from '@/lib/cron';
 
 function stripHashes(config: Record<string, unknown>) {
   const { adminPasswordHash, vpnActivationCode, ...rest } = config;
@@ -136,6 +137,11 @@ export async function PATCH(request: NextRequest) {
     update: data,
     create: { id: 'singleton', ...data },
   });
+
+  // Immediately reschedule cron if the scrape interval changed
+  if (typeof data.scrapeInterval === 'number') {
+    updateCronInterval(data.scrapeInterval);
+  }
 
   return apiSuccess(stripHashes(config as unknown as Record<string, unknown>));
 }

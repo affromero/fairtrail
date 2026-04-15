@@ -1,3 +1,5 @@
+import { prisma } from './prisma';
+
 const JITTER_RANGE_SECONDS = 150; // ±2.5 min → 5 min total window
 
 let timer: ReturnType<typeof setTimeout> | null = null;
@@ -20,6 +22,16 @@ function formatDuration(ms: number): string {
   if (m > 0) parts.push(`${m}m`);
   if (s > 0 || parts.length === 0) parts.push(`${s}s`);
   return parts.join(' ');
+}
+
+async function readDbInterval(): Promise<number> {
+  try {
+    const config = await prisma.extractionConfig.findFirst({ where: { id: 'singleton' } });
+    if (config?.scrapeInterval) return config.scrapeInterval;
+  } catch {
+    // DB not ready yet (startup) or connection error -- fall through to current value
+  }
+  return cronIntervalHours;
 }
 
 function scheduleNext() {
@@ -53,6 +65,13 @@ async function runAndReschedule() {
     console.error('[cron] Scrape failed:', err instanceof Error ? err.message : err);
   }
 
+  // Re-read interval from DB before scheduling next run
+  const dbInterval = await readDbInterval();
+  if (dbInterval !== cronIntervalHours) {
+    console.log(`[cron] Interval changed: ${cronIntervalHours}h → ${dbInterval}h`);
+    cronIntervalHours = dbInterval;
+  }
+
   scheduleNext();
 }
 
@@ -74,13 +93,28 @@ export function getCronInfo(): {
   };
 }
 
-export function startCron() {
+/** Immediately reschedule cron with a new interval (called when settings change). */
+export function updateCronInterval(hours: number) {
+  cronIntervalHours = Math.max(1, Math.min(24, hours));
+  console.log(`[cron] Interval updated to ${cronIntervalHours}h, rescheduling`);
+  if (timer) {
+    clearTimeout(timer);
+    timer = null;
+  }
+  scheduleNext();
+}
+
+export async function startCron() {
   if (process.env.CRON_ENABLED === 'false') {
     console.log('[cron] Disabled via CRON_ENABLED=false');
     return;
   }
 
-  cronIntervalHours = Math.max(1, parseInt(process.env.CRON_INTERVAL_HOURS ?? '3', 10));
+  // DB value takes priority, env var is fallback for first boot
+  const envFallback = Math.max(1, parseInt(process.env.CRON_INTERVAL_HOURS ?? '3', 10));
+  cronIntervalHours = envFallback;
+  const dbInterval = await readDbInterval();
+  cronIntervalHours = dbInterval;
 
   console.log(`[cron] Starting with ${cronIntervalHours}h base interval (±${JITTER_RANGE_SECONDS}s jitter)`);
   scheduleNext();
