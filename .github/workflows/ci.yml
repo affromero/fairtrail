@@ -62,6 +62,9 @@ jobs:
           echo "  User ${{ secrets.DEPLOY_USER }}" >> ~/.ssh/config
           echo "  IdentityFile ~/.ssh/staging_key" >> ~/.ssh/config
           echo "  StrictHostKeyChecking no" >> ~/.ssh/config
+          echo "  ServerAliveInterval 30" >> ~/.ssh/config
+          echo "  ServerAliveCountMax 120" >> ~/.ssh/config
+          echo "  TCPKeepAlive yes" >> ~/.ssh/config
       - name: Run staging tests
         env:
           STAGING_HOST: fairtrail-prod
