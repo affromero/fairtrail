@@ -17,13 +17,21 @@ export function ClarificationCard({
   onReset: () => void;
   loading: boolean;
 }) {
-  const [freeText, setFreeText] = useState('');
+  const [answers, setAnswers] = useState<Record<number, string>>({});
+
+  const setAnswer = (index: number, value: string) => {
+    setAnswers((prev) => ({ ...prev, [index]: value }));
+  };
+
+  const allAnswered = ambiguities.every((_, i) => (answers[i] ?? '').trim() !== '');
 
   const handleSubmit = () => {
-    const trimmed = freeText.trim();
-    if (!trimmed) return;
-    setFreeText('');
-    onAnswer(trimmed);
+    if (!allAnswered || loading) return;
+    const combined = ambiguities
+      .map((amb, i) => `${amb.question} ${answers[i]!.trim()}`)
+      .join('\n');
+    setAnswers({});
+    onAnswer(combined);
   };
 
   return (
@@ -38,42 +46,69 @@ export function ClarificationCard({
       )}
 
       <div className={styles.questions}>
-        {ambiguities.map((amb, i) => (
-          <div key={i} className={styles.question}>
-            <p className={styles.questionText}>{amb.question}</p>
-            {amb.options && amb.options.length > 0 && (
-              <div className={styles.options}>
-                {amb.options.map((opt) => (
-                  <button
-                    key={opt}
-                    className={styles.option}
-                    onClick={() => onAnswer(opt)}
-                    disabled={loading}
-                  >
-                    {opt}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-        ))}
+        {ambiguities.map((amb, i) => {
+          const current = answers[i] ?? '';
+          const hasOptions = !!(amb.options && amb.options.length > 0);
+          const matchesOption = hasOptions && amb.options!.includes(current);
+          const textValue = matchesOption ? '' : current;
+
+          return (
+            <div key={i} className={styles.question}>
+              <p className={styles.questionText}>{amb.question}</p>
+              {hasOptions && (
+                <div className={styles.options}>
+                  {amb.options!.map((opt) => {
+                    const selected = current === opt;
+                    return (
+                      <button
+                        key={opt}
+                        type="button"
+                        className={`${styles.option} ${selected ? styles.optionSelected : ''}`}
+                        onClick={() => setAnswer(i, opt)}
+                        disabled={loading}
+                      >
+                        {opt}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+              <input
+                type="text"
+                className={styles.input}
+                placeholder={hasOptions ? 'Or type your answer...' : 'Type your answer...'}
+                value={textValue}
+                onChange={(e) => setAnswer(i, e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && allAnswered && !loading) {
+                    handleSubmit();
+                  }
+                }}
+                disabled={loading}
+              />
+            </div>
+          );
+        })}
       </div>
 
-      <div className={styles.freeInput}>
-        <input
-          type="text"
-          className={styles.input}
-          placeholder="Or type your answer..."
-          value={freeText}
-          onChange={(e) => setFreeText(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && !loading && handleSubmit()}
+      <div className={styles.actions}>
+        <button
+          type="button"
+          className={styles.submit}
+          onClick={handleSubmit}
+          disabled={loading || !allAnswered}
+        >
+          {loading ? 'Submitting...' : 'Submit answers'}
+        </button>
+        <button
+          type="button"
+          className={styles.resetLink}
+          onClick={onReset}
           disabled={loading}
-        />
+        >
+          Start over
+        </button>
       </div>
-
-      <button className={styles.resetLink} onClick={onReset} disabled={loading}>
-        Start over
-      </button>
     </div>
   );
 }
