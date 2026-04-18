@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useId, useRef, useState } from 'react';
 import type { ParseAmbiguity, ParsedFlightQuery } from '@/lib/scraper/parse-query';
 import styles from './ClarificationCard.module.css';
 
@@ -13,17 +13,32 @@ export function ClarificationCard({
 }: {
   ambiguities: ParseAmbiguity[];
   partialParsed: ParsedFlightQuery | null;
-  onAnswer: (answer: string) => void;
+  onAnswer: (answer: string) => Promise<boolean>;
   onReset: () => void;
   loading: boolean;
 }) {
-  const [freeText, setFreeText] = useState('');
+  const [answers, setAnswers] = useState<Record<number, string>>({});
+  const submittingRef = useRef(false);
+  const baseId = useId();
 
-  const handleSubmit = () => {
-    const trimmed = freeText.trim();
-    if (!trimmed) return;
-    setFreeText('');
-    onAnswer(trimmed);
+  const setAnswer = (index: number, value: string) => {
+    setAnswers((prev) => ({ ...prev, [index]: value }));
+  };
+
+  const allAnswered = ambiguities.every((_, i) => (answers[i] ?? '').trim() !== '');
+
+  const handleSubmit = async () => {
+    if (submittingRef.current || !allAnswered || loading) return;
+    submittingRef.current = true;
+    try {
+      const combined = ambiguities
+        .map((_, i) => answers[i]!.trim())
+        .join('\n');
+      const ok = await onAnswer(combined);
+      if (ok) setAnswers({});
+    } finally {
+      submittingRef.current = false;
+    }
   };
 
   return (
@@ -38,42 +53,81 @@ export function ClarificationCard({
       )}
 
       <div className={styles.questions}>
-        {ambiguities.map((amb, i) => (
-          <div key={i} className={styles.question}>
-            <p className={styles.questionText}>{amb.question}</p>
-            {amb.options && amb.options.length > 0 && (
-              <div className={styles.options}>
-                {amb.options.map((opt) => (
-                  <button
-                    key={opt}
-                    className={styles.option}
-                    onClick={() => onAnswer(opt)}
-                    disabled={loading}
-                  >
-                    {opt}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-        ))}
+        {ambiguities.map((amb, i) => {
+          const current = answers[i] ?? '';
+          const hasOptions = !!(amb.options && amb.options.length > 0);
+          const matchesOption = hasOptions && amb.options!.includes(current);
+          const textValue = matchesOption ? '' : current;
+          const questionId = `${baseId}-q${i}`;
+          const inputId = `${baseId}-input${i}`;
+
+          return (
+            <div key={i} className={styles.question}>
+              <p id={questionId} className={styles.questionText}>{amb.question}</p>
+              {hasOptions && (
+                <div
+                  className={styles.options}
+                  role="group"
+                  aria-labelledby={questionId}
+                >
+                  {amb.options!.map((opt) => {
+                    const selected = current === opt;
+                    return (
+                      <button
+                        key={opt}
+                        type="button"
+                        className={`${styles.option} ${selected ? styles.optionSelected : ''}`}
+                        onClick={() => setAnswer(i, opt)}
+                        disabled={loading}
+                        aria-pressed={selected}
+                      >
+                        {opt}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+              <label htmlFor={inputId} className={styles.visuallyHidden}>
+                {amb.question}
+              </label>
+              <input
+                id={inputId}
+                type="text"
+                className={styles.input}
+                placeholder={hasOptions ? 'Or type your answer...' : 'Type your answer...'}
+                value={textValue}
+                onChange={(e) => setAnswer(i, e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && allAnswered && !loading) {
+                    void handleSubmit();
+                  }
+                }}
+                disabled={loading}
+                aria-labelledby={questionId}
+              />
+            </div>
+          );
+        })}
       </div>
 
-      <div className={styles.freeInput}>
-        <input
-          type="text"
-          className={styles.input}
-          placeholder="Or type your answer..."
-          value={freeText}
-          onChange={(e) => setFreeText(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && !loading && handleSubmit()}
+      <div className={styles.actions}>
+        <button
+          type="button"
+          className={styles.submit}
+          onClick={handleSubmit}
+          disabled={loading || !allAnswered}
+        >
+          {loading ? 'Submitting...' : 'Submit answers'}
+        </button>
+        <button
+          type="button"
+          className={styles.resetLink}
+          onClick={onReset}
           disabled={loading}
-        />
+        >
+          Start over
+        </button>
       </div>
-
-      <button className={styles.resetLink} onClick={onReset} disabled={loading}>
-        Start over
-      </button>
     </div>
   );
 }

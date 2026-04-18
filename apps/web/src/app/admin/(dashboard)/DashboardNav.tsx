@@ -7,6 +7,7 @@ import styles from './layout.module.css';
 
 const ALL_NAV_ITEMS = [
   { href: '/admin', label: 'Dashboard', selfHosted: true },
+  { href: '/admin/search', label: 'Search', selfHosted: true },
   { href: '/admin/queries', label: 'Queries', selfHosted: true },
   { href: '/admin/seed-routes', label: 'Seed Routes', selfHosted: false },
   { href: '/admin/insights', label: 'Insights', selfHosted: true },
