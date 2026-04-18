@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useId, useRef, useState } from 'react';
 import type { ParseAmbiguity, ParsedFlightQuery } from '@/lib/scraper/parse-query';
 import styles from './ClarificationCard.module.css';
 
@@ -13,11 +13,13 @@ export function ClarificationCard({
 }: {
   ambiguities: ParseAmbiguity[];
   partialParsed: ParsedFlightQuery | null;
-  onAnswer: (answer: string) => void;
+  onAnswer: (answer: string) => Promise<boolean>;
   onReset: () => void;
   loading: boolean;
 }) {
   const [answers, setAnswers] = useState<Record<number, string>>({});
+  const submittingRef = useRef(false);
+  const baseId = useId();
 
   const setAnswer = (index: number, value: string) => {
     setAnswers((prev) => ({ ...prev, [index]: value }));
@@ -25,13 +27,18 @@ export function ClarificationCard({
 
   const allAnswered = ambiguities.every((_, i) => (answers[i] ?? '').trim() !== '');
 
-  const handleSubmit = () => {
-    if (!allAnswered || loading) return;
-    const combined = ambiguities
-      .map((amb, i) => `${amb.question} ${answers[i]!.trim()}`)
-      .join('\n');
-    setAnswers({});
-    onAnswer(combined);
+  const handleSubmit = async () => {
+    if (submittingRef.current || !allAnswered || loading) return;
+    submittingRef.current = true;
+    try {
+      const combined = ambiguities
+        .map((_, i) => answers[i]!.trim())
+        .join('\n');
+      const ok = await onAnswer(combined);
+      if (ok) setAnswers({});
+    } finally {
+      submittingRef.current = false;
+    }
   };
 
   return (
@@ -51,12 +58,18 @@ export function ClarificationCard({
           const hasOptions = !!(amb.options && amb.options.length > 0);
           const matchesOption = hasOptions && amb.options!.includes(current);
           const textValue = matchesOption ? '' : current;
+          const questionId = `${baseId}-q${i}`;
+          const inputId = `${baseId}-input${i}`;
 
           return (
             <div key={i} className={styles.question}>
-              <p className={styles.questionText}>{amb.question}</p>
+              <p id={questionId} className={styles.questionText}>{amb.question}</p>
               {hasOptions && (
-                <div className={styles.options}>
+                <div
+                  className={styles.options}
+                  role="group"
+                  aria-labelledby={questionId}
+                >
                   {amb.options!.map((opt) => {
                     const selected = current === opt;
                     return (
@@ -66,6 +79,7 @@ export function ClarificationCard({
                         className={`${styles.option} ${selected ? styles.optionSelected : ''}`}
                         onClick={() => setAnswer(i, opt)}
                         disabled={loading}
+                        aria-pressed={selected}
                       >
                         {opt}
                       </button>
@@ -73,7 +87,11 @@ export function ClarificationCard({
                   })}
                 </div>
               )}
+              <label htmlFor={inputId} className={styles.visuallyHidden}>
+                {amb.question}
+              </label>
               <input
+                id={inputId}
                 type="text"
                 className={styles.input}
                 placeholder={hasOptions ? 'Or type your answer...' : 'Type your answer...'}
@@ -81,10 +99,11 @@ export function ClarificationCard({
                 onChange={(e) => setAnswer(i, e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && allAnswered && !loading) {
-                    handleSubmit();
+                    void handleSubmit();
                   }
                 }}
                 disabled={loading}
+                aria-labelledby={questionId}
               />
             </div>
           );
