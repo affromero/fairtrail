@@ -13,8 +13,14 @@ import { FlightPicker, type RouteFlights } from './FlightPicker';
 import { LinkBanner, type CreatedTracker } from './LinkBanner';
 import { ManualEntryForm, type ManualFormValues } from './ManualEntryForm';
 
-const PREVIEW_STORAGE_KEY = 'ft-preview-run';
+const PREVIEW_STORAGE_KEY_BASE = 'ft-preview-run';
 const PREVIEW_POLL_TIMEOUT_MS = 5 * 60 * 1000;
+
+function previewStorageKey(surface: SearchSurface): string {
+  return surface === 'admin' ? `${PREVIEW_STORAGE_KEY_BASE}-admin` : PREVIEW_STORAGE_KEY_BASE;
+}
+
+export type SearchSurface = 'public' | 'admin';
 
 interface SavedPreviewState {
   previewRunId: string;
@@ -48,11 +54,11 @@ function playNotificationSound() {
   }
 }
 
-function readSavedPreview(): SavedPreviewState | null {
+function readSavedPreview(key: string): SavedPreviewState | null {
   if (typeof window === 'undefined') return null;
 
   try {
-    const raw = window.sessionStorage.getItem(PREVIEW_STORAGE_KEY);
+    const raw = window.sessionStorage.getItem(key);
     if (!raw) return null;
     return JSON.parse(raw) as SavedPreviewState;
   } catch {
@@ -60,27 +66,34 @@ function readSavedPreview(): SavedPreviewState | null {
   }
 }
 
-function writeSavedPreview(state: SavedPreviewState) {
+function writeSavedPreview(key: string, state: SavedPreviewState) {
   if (typeof window === 'undefined') return;
 
   try {
-    window.sessionStorage.setItem(PREVIEW_STORAGE_KEY, JSON.stringify(state));
+    window.sessionStorage.setItem(key, JSON.stringify(state));
   } catch {
     // Ignore storage errors
   }
 }
 
-function clearSavedPreview() {
+function clearSavedPreview(key: string) {
   if (typeof window === 'undefined') return;
 
   try {
-    window.sessionStorage.removeItem(PREVIEW_STORAGE_KEY);
+    window.sessionStorage.removeItem(key);
   } catch {
     // Ignore storage errors
   }
 }
 
-export function SearchBar({ initialQuery }: { initialQuery?: string } = {}) {
+export function SearchBar({
+  initialQuery,
+  surface = 'public',
+}: {
+  initialQuery?: string;
+  surface?: SearchSurface;
+} = {}) {
+  const storageKey = previewStorageKey(surface);
   const [query, setQuery] = useState(initialQuery ?? '');
   const [parsed, setParsed] = useState<ParsedQuery | null>(null);
   const [loading, setLoading] = useState(false);
@@ -119,7 +132,7 @@ export function SearchBar({ initialQuery }: { initialQuery?: string } = {}) {
   }, []);
 
   useEffect(() => {
-    const saved = readSavedPreview();
+    const saved = readSavedPreview(storageKey);
     if (!saved) return;
 
     setParsed(saved.parsed);
@@ -128,9 +141,9 @@ export function SearchBar({ initialQuery }: { initialQuery?: string } = {}) {
     setVpnCountries(saved.vpnCountries);
     setPreviewRunId(saved.previewRunId);
     setPreviewLoading(true);
-  }, []);
+  }, [storageKey]);
 
-  const doParse = useCallback(async (input: string, history: ConversationMessage[]) => {
+  const doParse = useCallback(async (input: string, history: ConversationMessage[]): Promise<boolean> => {
     setLoading(true);
     setError(null);
 
@@ -148,7 +161,7 @@ export function SearchBar({ initialQuery }: { initialQuery?: string } = {}) {
 
       if (!data.ok) {
         setError(data.error || 'Failed to parse query');
-        return;
+        return false;
       }
 
       const { parsed: nextParsed, confidence, ambiguities: nextAmbiguities } = data.data;
@@ -171,8 +184,10 @@ export function SearchBar({ initialQuery }: { initialQuery?: string } = {}) {
           'Can you be more specific?';
         setConversation((prev) => [...prev, { role: 'assistant', content: assistantMsg }]);
       }
+      return true;
     } catch {
       setError('Network error - please try again');
+      return false;
     } finally {
       setLoading(false);
     }
@@ -195,18 +210,18 @@ export function SearchBar({ initialQuery }: { initialQuery?: string } = {}) {
           setError(data.error || 'Failed to search flights');
           setPreviewLoading(false);
           setPreviewRunId(null);
-          clearSavedPreview();
+          clearSavedPreview(storageKey);
           return;
         }
 
         const preview = data.data as PreviewRunStatusPayload;
-        const saved = readSavedPreview();
+        const saved = readSavedPreview(storageKey);
 
         if (saved && Date.now() - saved.startedAt > PREVIEW_POLL_TIMEOUT_MS) {
           setError('Flight search took too long. Please try again.');
           setPreviewLoading(false);
           setPreviewRunId(null);
-          clearSavedPreview();
+          clearSavedPreview(storageKey);
           return;
         }
 
@@ -215,7 +230,7 @@ export function SearchBar({ initialQuery }: { initialQuery?: string } = {}) {
           setPreviewRoutes(preview.result.routes);
           setPreviewLoading(false);
           setPreviewRunId(null);
-          clearSavedPreview();
+          clearSavedPreview(storageKey);
           return;
         }
 
@@ -223,7 +238,7 @@ export function SearchBar({ initialQuery }: { initialQuery?: string } = {}) {
           setError(preview.error || 'Failed to search flights');
           setPreviewLoading(false);
           setPreviewRunId(null);
-          clearSavedPreview();
+          clearSavedPreview(storageKey);
           return;
         }
 
@@ -243,7 +258,7 @@ export function SearchBar({ initialQuery }: { initialQuery?: string } = {}) {
         window.clearTimeout(timer);
       }
     };
-  }, [previewRunId, parsed]);
+  }, [previewRunId, parsed, storageKey]);
 
   const handleParse = useCallback(async () => {
     const trimmed = query.trim();
@@ -259,15 +274,15 @@ export function SearchBar({ initialQuery }: { initialQuery?: string } = {}) {
     setCreatedTrackers(null);
     setManualRawInput('');
     setManualFormValues(null);
-    clearSavedPreview();
+    clearSavedPreview(storageKey);
 
     await doParse(trimmed, []);
-  }, [query, doParse]);
+  }, [query, doParse, storageKey]);
 
-  const handleAnswer = useCallback(async (answer: string) => {
+  const handleAnswer = useCallback(async (answer: string): Promise<boolean> => {
     const newConversation: ConversationMessage[] = [...conversation, { role: 'user', content: answer }];
     setConversation(newConversation);
-    await doParse(answer, conversation);
+    return doParse(answer, conversation);
   }, [conversation, doParse]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -306,7 +321,7 @@ export function SearchBar({ initialQuery }: { initialQuery?: string } = {}) {
       }
 
       setPreviewRunId(nextPreviewRunId);
-      writeSavedPreview({
+      writeSavedPreview(storageKey, {
         previewRunId: nextPreviewRunId,
         parsed,
         query,
@@ -397,7 +412,7 @@ export function SearchBar({ initialQuery }: { initialQuery?: string } = {}) {
       })));
 
       setPreviewRunId(null);
-      clearSavedPreview();
+      clearSavedPreview(storageKey);
     } catch {
       setError('Network error - please try again');
     } finally {
@@ -408,7 +423,7 @@ export function SearchBar({ initialQuery }: { initialQuery?: string } = {}) {
   const handleBackFromPicker = () => {
     setPreviewRoutes(null);
     setPreviewRunId(null);
-    clearSavedPreview();
+    clearSavedPreview(storageKey);
   };
 
   const [editingValues, setEditingValues] = useState<ManualFormValues | null>(null);
@@ -428,7 +443,7 @@ export function SearchBar({ initialQuery }: { initialQuery?: string } = {}) {
     setManualFormValues(null);
     setVpnCountries([]);
     setEditingValues(null);
-    clearSavedPreview();
+    clearSavedPreview(storageKey);
     inputRef.current?.focus();
   };
 
@@ -443,7 +458,7 @@ export function SearchBar({ initialQuery }: { initialQuery?: string } = {}) {
     setPreviewLoading(false);
     setPreviewRunId(null);
     setCreatedTrackers(null);
-    clearSavedPreview();
+    clearSavedPreview(storageKey);
 
     if (wasManual) {
       setEditingValues(manualFormValues);

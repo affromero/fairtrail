@@ -16,7 +16,7 @@ export default function AdminSearchPage() {
       </div>
 
       <div className={styles.searchWrapper}>
-        <SearchBar />
+        <SearchBar surface="admin" />
       </div>
     </div>
   );
