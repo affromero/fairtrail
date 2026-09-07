@@ -117,6 +117,11 @@
     "refreshNow": "Preise jetzt aktualisieren"
   },
   "AccountSettings": {
+    "carProviderPreference": "Mietwagenanbieter",
+    "carProviderInherited": "Beide Anbieter werden in der Standardreihenfolge geprüft. Ändere die Auswahl oder Reihenfolge, um deine Präferenz zu speichern.",
+    "carProviderExplicit": "Die ausgewählten Anbieter werden in dieser Reihenfolge geprüft. Bestehende Preisüberwachungen behalten ihre eigenen Einstellungen.",
+    "carProviderMinimum": "Wähle mindestens einen Anbieter aus. Unvollständige Angebote ersetzen niemals verifizierte Preise.",
+    "carProviderReset": "Standardanbieter verwenden",
     "backLink": "Dein Konto",
     "title": "Kontoeinstellungen",
     "username": "Benutzername",

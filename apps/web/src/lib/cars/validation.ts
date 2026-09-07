@@ -1,5 +1,6 @@
 import { Temporal } from '@js-temporal/polyfill';
 import { CAR_SOURCES, CHILD_SEAT_CATEGORIES, CarError, type CarDriver, type CarExtras, type CarLocalTime, type CarLocation, type CarSearch, type CarTrackingOptions } from './types';
+import { validateCarProviders } from './preferences';
 import { currencyPrecision, validateCarMoney } from './money';
 
 export function carRecord(raw: unknown): Record<string, unknown> {
@@ -93,14 +94,10 @@ export function validateCarSearch(raw: unknown, now = new Date()): CarSearch {
   if (end - start > 90 * 86_400_000 || start - now.getTime() > 730 * 86_400_000) throw new CarError('Rentals must be within two years and no longer than 90 days');
   const currency = carText(r.currency, 3, 'currency').toUpperCase();
   currencyPrecision(currency);
-  if (!Array.isArray(r.sources) || !r.sources.length || r.sources.length > CAR_SOURCES.length) throw new CarError('Choose at least one rental provider');
-  const sources = r.sources.map(rawSource => {
-    const source = CAR_SOURCES.find(value => value === rawSource);
-    if (!source) throw new CarError('Unsupported car provider');
+  const sources = validateCarProviders(r.sources);
+  for (const source of sources) {
     if (!pickup.providerIds[source] || !dropoff.providerIds[source]) throw new CarError(`Select pickup and return locations for ${source}`);
-    return source;
-  });
-  if (new Set(sources).size !== sources.length) throw new CarError('Provider preferences must not contain duplicates');
+  }
   const f = carRecord(r.filters ?? {});
   const transmission = f.transmission ?? 'any';
   if (transmission !== 'any' && transmission !== 'automatic' && transmission !== 'manual') throw new CarError('Unknown transmission');

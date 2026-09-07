@@ -117,6 +117,11 @@
     "refreshNow": "Actualizar precios ahora"
   },
   "AccountSettings": {
+    "carProviderPreference": "Proveedores de alquiler de coches",
+    "carProviderInherited": "Se usan ambos proveedores en el orden predeterminado. Cambia la selección o el orden para guardar tu preferencia.",
+    "carProviderExplicit": "Los proveedores seleccionados se consultan en este orden. Los seguimientos existentes conservan sus propios ajustes.",
+    "carProviderMinimum": "Mantén al menos un proveedor seleccionado. Las ofertas incompletas nunca sustituyen los precios verificados.",
+    "carProviderReset": "Usar proveedores predeterminados",
     "backLink": "Tu cuenta",
     "title": "Configuración de la cuenta",
     "username": "Nombre de usuario",

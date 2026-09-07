@@ -7,6 +7,7 @@ import { isAggregatorSource } from '@/lib/scraper/navigate';
 import { isPresetSlug } from '@/lib/avatars';
 import { isThemeId } from '@/lib/theme';
 import { CABIN_CLASSES, isCabinClass } from '@/lib/cabin-class';
+import { validateCarProviders } from '@/lib/cars/preferences';
 
 async function requireUser() {
   if (!(await isMultiUserEnabled())) return { ok: false as const, status: 404 };
@@ -29,6 +30,7 @@ export async function GET() {
     defaultCountry: user.defaultCountry,
     preferredAirlines: user.preferredAirlines,
     preferredAggregators: user.preferredAggregators,
+    preferredCarProviders: user.preferredCarProviders,
     cabinClass: user.cabinClass,
   });
 }
@@ -41,6 +43,11 @@ export async function PATCH(request: NextRequest) {
   if (!body) return apiError('Invalid JSON body', 400);
 
   const data: Record<string, unknown> = {};
+
+  if (body.preferredCarProviders !== undefined) {
+    try { data.preferredCarProviders = validateCarProviders(body.preferredCarProviders, true); }
+    catch { return apiError('preferredCarProviders must be an ordered list of distinct supported rental providers, or [] for defaults', 400); }
+  }
 
   if (typeof body.displayName === 'string') {
     data.displayName = body.displayName.trim() || null;
@@ -127,6 +134,7 @@ export async function PATCH(request: NextRequest) {
       defaultCountry: true,
       preferredAirlines: true,
       preferredAggregators: true,
+      preferredCarProviders: true,
       cabinClass: true,
     },
   });

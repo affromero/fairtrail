@@ -117,6 +117,11 @@
     "refreshNow": "Actualiser les prix maintenant"
   },
   "AccountSettings": {
+    "carProviderPreference": "Fournisseurs de location de voitures",
+    "carProviderInherited": "Les deux fournisseurs sont utilisés dans l’ordre par défaut. Modifiez la sélection ou l’ordre pour enregistrer votre préférence.",
+    "carProviderExplicit": "Les fournisseurs sélectionnés sont consultés dans cet ordre. Les suivis existants conservent leurs propres réglages.",
+    "carProviderMinimum": "Gardez au moins un fournisseur sélectionné. Les offres incomplètes ne remplacent jamais les prix vérifiés.",
+    "carProviderReset": "Utiliser les fournisseurs par défaut",
     "backLink": "Ton compte",
     "title": "Paramètres du compte",
     "username": "Nom d’utilisateur",

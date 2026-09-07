@@ -138,6 +138,11 @@
       "first": "first"
     },
     "aggregatorPreference": "Aggregator preference",
+    "carProviderPreference": "Car rental providers",
+    "carProviderInherited": "Using both providers in the default order. Change the selection or order to save your preference.",
+    "carProviderExplicit": "Selected providers are checked in this order. Existing trackers keep their own provider settings.",
+    "carProviderMinimum": "Keep at least one provider selected. Incomplete quotes never replace verified prices.",
+    "carProviderReset": "Use default providers",
     "experimental": "experimental",
     "moveUp": "Move {name} up",
     "moveDown": "Move {name} down",

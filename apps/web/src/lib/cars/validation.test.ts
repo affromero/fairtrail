@@ -56,6 +56,8 @@ describe('rental search validation', () => {
   it.each([
     { currency: 'ZZZ' },
     { sources: [] },
+    { sources: null },
+    { sources: 'autoeurope' },
     { sources: ['discovercars', 'discovercars'] },
     { sources: ['unverified'] },
     { pickup: { ...location, providerIds: { discovercars: '1712' } } },

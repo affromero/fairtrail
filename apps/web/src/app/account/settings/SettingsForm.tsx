@@ -6,6 +6,8 @@ import { ALL_AGGREGATORS, AGGREGATOR_LABEL, EXPERIMENTAL_AGGREGATORS, type Aggre
 import { AvatarPicker } from '@/components/AvatarPicker/AvatarPicker';
 import { ThemePicker } from '@/components/ThemePicker/ThemePicker';
 import { type ThemeId } from '@/lib/theme';
+import type { CarSource } from '@/lib/cars/types';
+import { CarProviderPicker } from '@/components/cars/CarProviderPicker';
 import styles from './page.module.css';
 
 interface Preferences {
@@ -17,6 +19,7 @@ interface Preferences {
   defaultCountry: string | null;
   preferredAirlines: string[];
   preferredAggregators: string[];
+  preferredCarProviders: CarSource[];
   cabinClass: string | null;
 }
 
@@ -47,6 +50,7 @@ export function SettingsForm({
     initial.preferredAirlines.join(', '),
   );
   const [cabinClass, setCabinClass] = useState(initial.cabinClass ?? '');
+  const [preferredCarProviders, setPreferredCarProviders] = useState(initial.preferredCarProviders);
   const [aggregatorOrder, setAggregatorOrder] = useState<Aggregator[]>(
     () => buildInitialOrder(initial.preferredAggregators),
   );
@@ -104,6 +108,7 @@ export function SettingsForm({
         defaultCountry: defaultCountry.trim().toUpperCase() || null,
         preferredAirlines: airlines,
         preferredAggregators: selectedAggregators,
+        preferredCarProviders,
         cabinClass: cabinClass || null,
       }),
     });
@@ -242,6 +247,7 @@ export function SettingsForm({
         </p>
       </div>
 
+      <CarProviderPicker value={preferredCarProviders} onChange={setPreferredCarProviders} disabled={saving} />
       {error && <p className={styles.error}>{error}</p>}
       {message && <p className={styles.success}>{message}</p>}
 

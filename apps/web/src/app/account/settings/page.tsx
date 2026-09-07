@@ -48,6 +48,7 @@ export default async function AccountSettingsPage() {
           defaultCountry: user.defaultCountry,
           preferredAirlines: user.preferredAirlines,
           preferredAggregators: user.preferredAggregators,
+          preferredCarProviders: user.preferredCarProviders,
           cabinClass: user.cabinClass,
         }}
         adminEnabledAggregators={adminEnabledAggregators}
