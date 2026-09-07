@@ -6,6 +6,7 @@ import { carReportFixture, carSearchFixture } from '@/test/car-fixtures';
 import type { CarRunView } from '@/lib/cars/run-view';
 import { CAR_STATUS_TIMEOUT_MS, CarSearchStatus } from './CarSearchStatus';
 import en from '../../../messages/en/cars.json';
+import { TRAVEL_ACCESS_LOST_EVENT } from '../travel/client';
 
 vi.unmock('next-intl');
 function initial(status: CarRunView['status'] = 'running'): CarRunView {
@@ -21,6 +22,32 @@ afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); vi.restoreAllMocks(
 const settle = async () => { await act(async () => { await vi.advanceTimersByTimeAsync(0); }); };
 
 describe('private rental result lifecycle', () => {
+  it.each([401, 403, 404])('hides results and keeps creation recovery after a malformed HTTP %i acknowledgement', async status => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('<html>Unavailable</html>', { status })));
+    render(surface(initial('success')));
+    fireEvent.click(screen.getByRole('button', { name: 'Track this rental' })); await settle();
+    expect(screen.queryByRole('heading', { name: /Example car/ })).not.toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent(en.Cars.accessLost);
+    expect(screen.queryByRole('button', { name: 'Track this rental' })).not.toBeInTheDocument();
+    expect(JSON.parse(sessionStorage.getItem('ff-car-creation:alice:search-one')!).body.searchId).toBe('search-one');
+  });
+  it.each(['poll', 'cancel'])('ignores late %s responses after access loss and requires a fresh authorized read', async operation => {
+    const value = initial(operation === 'poll' ? 'success' : 'running');
+    let finish!: (value: Response) => void; let signal: AbortSignal | null | undefined;
+    vi.stubGlobal('fetch', vi.fn(async (url: string, options: RequestInit) => {
+      signal = options.signal; return new Promise<Response>(resolve => { finish = resolve; });
+    }));
+    render(surface(value));
+    fireEvent.click(screen.getByRole('button', { name: operation === 'poll' ? 'Refresh status' : 'Cancel search' }));
+    act(() => window.dispatchEvent(new Event(TRAVEL_ACCESS_LOST_EVENT)));
+    expect(signal?.aborted).toBe(true);
+    await act(async () => { finish(response(operation === 'poll' ? value : { id: value.id, status: 'cancelled' })); });
+    expect(screen.queryByRole('heading', { name: /Example car/ })).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: en.Cars.signIn })).toBeInTheDocument();
+    vi.stubGlobal('fetch', vi.fn(async () => response(value)));
+    fireEvent.click(screen.getByRole('button', { name: 'Retry status updates' })); await settle();
+    expect(screen.queryByRole('link', { name: en.Cars.signIn })).not.toBeInTheDocument();
+  });
   it('continues polling when provider locations resolve without changing the requested rental', async () => {
     const value = initial();
     value.search.pickup = { ...value.search.pickup, catalog: { id: 'ourairports:2434', version: 'a'.repeat(64) }, providerIds: {} };

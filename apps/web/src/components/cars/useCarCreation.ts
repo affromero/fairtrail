@@ -23,10 +23,11 @@ function restore(raw: string, searchId: string): PendingCreation {
 }
 
 /** Persist before sending; aborting a request never implies that creation was undone. */
-export function useCarCreation(actorScope: string, searchId: string) {
+export function useCarCreation(actorScope: string, searchId: string, onAccessLost?: () => void) {
   const storageKey = `ff-car-creation:${encodeURIComponent(actorScope)}:${encodeURIComponent(searchId)}`;
   const [state, setState] = useState<CreationState>(initial);
   const current = useRef(initial), generation = useRef(0), controller = useRef<AbortController | null>(null);
+  const accessLost = useRef(onAccessLost); accessLost.current = onAccessLost;
   const update = (next: CreationState) => { current.current = next; setState(next); };
   useEffect(() => {
     generation.current++;
@@ -70,6 +71,10 @@ export function useCarCreation(actorScope: string, searchId: string) {
       update({ ...initial, phase: 'created', trackerId });
     } catch (error) {
       if (active !== generation.current) return;
+      if (error instanceof TravelResponseError && [401, 403, 404].includes(error.status)) {
+        update({ ...initial, phase: 'uncertain', pending, error: error.definitive ? error.message : '' });
+        accessLost.current?.(); return;
+      }
       const rejected = !aborter.signal.aborted && error instanceof TravelResponseError && error.definitive && [400, 401, 403, 404, 409, 410, 413, 415, 429].includes(error.status);
       if (rejected && error.status === 410) {
         // Keep the receipt so a remount cannot silently create a replacement.

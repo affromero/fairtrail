@@ -28,8 +28,8 @@ function useOfferClock(offers: CarOffer[]) {
   return now;
 }
 
-export function CarResults({ actorScope, searchId, search, report, status, mutationsDisabled = false }: { actorScope: string; searchId: string; search: CarSearch; report: CarSearchReport; status: string; mutationsDisabled?: boolean }) {
-  const t = useTranslations('Cars'), locale = useLocale(), now = useOfferClock(report.offers), creation = useCarCreation(actorScope, searchId);
+export function CarResults({ actorScope, searchId, search, report, status, mutationsDisabled = false, onAccessLost }: { actorScope: string; searchId: string; search: CarSearch; report: CarSearchReport; status: string; mutationsDisabled?: boolean; onAccessLost?: () => void }) {
+  const t = useTranslations('Cars'), locale = useLocale(), now = useOfferClock(report.offers), creation = useCarCreation(actorScope, searchId, onAccessLost);
   const [draft, setDraft] = useState(defaultCarOptionsDraft), [localError, setLocalError] = useState('');
   const complete = status === 'success' || status === 'partial', running = status === 'queued' || status === 'running';
   let options: Options | null = null;

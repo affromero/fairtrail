@@ -5,7 +5,7 @@ import { useTranslations } from 'next-intl';
 import { carRunIsActive, validateCarRunView, type CarRunView } from '@/lib/cars/run-view';
 import { carRecord } from '@/lib/cars/validation';
 import { carSearchIdentity } from '@/lib/cars/search-identity';
-import { travelRequest, TravelResponseError } from '../travel/client';
+import { travelRequest, TravelResponseError, TRAVEL_ACCESS_LOST_EVENT } from '../travel/client';
 import { CarResults } from './CarResults';
 import styles from './Cars.module.css';
 
@@ -17,6 +17,15 @@ export function CarSearchStatus({ initial, actorScope }: { initial: CarRunView; 
   const [cancelling, setCancelling] = useState(false);
   const current = useRef(initial), generation = useRef(0), controller = useRef<AbortController | null>(null);
   const url = `/api/cars/search/${encodeURIComponent(initial.id)}`;
+  const loseAccess = useCallback(() => {
+    generation.current++; controller.current?.abort(); controller.current = null;
+    setPrivateHidden(true); setPaused(true); setBusy(false); setCancelling(false);
+    setError(t('accessLost'));
+  }, [t]);
+  useEffect(() => {
+    window.addEventListener(TRAVEL_ACCESS_LOST_EVENT, loseAccess);
+    return () => window.removeEventListener(TRAVEL_ACCESS_LOST_EVENT, loseAccess);
+  }, [loseAccess]);
   const read = useCallback(async (cancel = false) => {
     const sequence = ++generation.current;
     controller.current?.abort(); const aborter = new AbortController(); controller.current = aborter;
@@ -25,6 +34,8 @@ export function CarSearchStatus({ initial, actorScope }: { initial: CarRunView; 
     try {
       if (cancel) {
         const acknowledgement = carRecord(await travelRequest<unknown>(url, { method: 'DELETE', signal: aborter.signal }));
+        if (sequence !== generation.current) return;
+        aborter.signal.throwIfAborted();
         if (acknowledgement.id !== initial.id || !['cancelled', 'success', 'partial', 'failed', 'unavailable'].includes(String(acknowledgement.status))) throw new Error('Cancellation outcome is not confirmed');
       }
       const next = validateCarRunView(await travelRequest<unknown>(url, { signal: aborter.signal, cache: 'no-store' }), initial.id, true);
@@ -60,7 +71,7 @@ export function CarSearchStatus({ initial, actorScope }: { initial: CarRunView; 
     {busy && <p role="status" className={styles.notice}>{t('updatingStatus')}</p>}
     {privateHidden ? <Link className={styles.secondary} href={`/login?next=${encodeURIComponent(`/cars/search/${initial.id}`)}`}>{t('signIn')}</Link> : <>
       {job.error && <p role="alert" className={styles.error}>{job.error}</p>}
-      <CarResults actorScope={actorScope} searchId={job.id} search={job.search} report={result} status={job.status} mutationsDisabled={paused || busy} />
+      <CarResults actorScope={actorScope} searchId={job.id} search={job.search} report={result} status={job.status} mutationsDisabled={paused || busy} onAccessLost={loseAccess} />
     </>}
   </>;
 }
