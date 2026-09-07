@@ -1,0 +1,78 @@
+.root { color: var(--text); min-width: 0; margin-block: 2rem; }
+.root h2, .root h3, .root h4, .root h5 { font-family: var(--font-display); }
+.resultsHeader { display: flex; align-items: end; justify-content: space-between; gap: 2rem; padding-bottom: 1.25rem; border-bottom: 2px solid var(--accent); }
+.resultsHeader h2 { margin: .25rem 0 0; font-size: clamp(1.75rem, 4vw, 2.75rem); letter-spacing: -.04em; }
+.resultsHeader > p { max-width: 24rem; }
+.eyebrow { margin: 0 0 .5rem; color: var(--text-secondary); font: 500 .75rem var(--font-mono); letter-spacing: .06em; text-transform: uppercase; }
+.hint { margin: .5rem 0; color: var(--text-secondary); font-size: .85rem; line-height: 1.6; }
+.progress { list-style: none; padding: 0; margin: 0 0 1.5rem; }
+.progress li { display: grid; grid-template-columns: minmax(8rem, 1fr) minmax(6rem, 1fr) 2fr; gap: .5rem 1rem; padding: .9rem 0; border-bottom: 1px solid var(--border); font-size: .85rem; }
+.progress li span:last-child { color: var(--text-secondary); }
+.options { border: 1px solid var(--border); margin: 1.5rem 0; padding: 1.25rem; background: var(--surface); min-width: 0; }
+.options legend { padding-inline: .5rem; font: 600 1rem var(--font-display); }
+.fields { display: grid; grid-template-columns: 1.6fr 1.2fr .7fr; gap: 1rem; }
+.field { display: flex; flex-direction: column; gap: .4rem; min-width: 0; font-size: .85rem; }
+.field input, .field select { width: 100%; min-width: 0; min-height: 44px; border: 1px solid var(--border); border-radius: var(--radius-sm); padding: .65rem; background: var(--bg); color: var(--text); font: inherit; }
+.check { display: flex; align-items: center; gap: .65rem; min-height: 44px; margin-top: .5rem; font-size: .9rem; }
+.check input { width: 18px; height: 18px; accent-color: var(--accent); }
+.offers { border-top: 1px solid var(--border); }
+.offer { padding: 1.75rem 0; border-bottom: 1px solid var(--border); }
+.offerMain { display: grid; grid-template-columns: minmax(0, 1fr) minmax(12rem, .4fr); gap: 2rem; }
+.offer h3 { margin: .3rem 0; font-size: 1.6rem; letter-spacing: -.025em; }
+.similar { color: var(--text-secondary); font-size: .9rem; font-weight: 400; white-space: nowrap; }
+.journey { margin: 1.3rem 0 0; display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+.journey dt { margin-bottom: .35rem; color: var(--text-secondary); font-size: .75rem; text-transform: uppercase; letter-spacing: .05em; }
+.journey dd { margin: 0; font-size: .9rem; }
+.journey time { display: block; margin-top: .4rem; color: var(--text-secondary); font: .75rem/1.6 var(--font-mono); overflow-wrap: anywhere; }
+.quote { padding-left: 1.5rem; border-left: 1px dashed var(--border); }
+.price { margin: .35rem 0; font: 500 clamp(1.5rem, 3vw, 2rem) var(--font-mono); letter-spacing: -.045em; overflow-wrap: anywhere; }
+.payments { margin: 1rem 0; font-size: .8rem; }
+.payments > div { display: flex; justify-content: space-between; gap: 1rem; margin-block: .5rem; }
+.payments dd { margin: 0; font-family: var(--font-mono); }
+.button, .secondary { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: .7rem 1rem; border: 1px solid var(--accent); border-radius: var(--radius-sm); font: 600 .85rem var(--font-display); text-decoration: none; cursor: pointer; }
+.button { background: var(--accent); color: var(--bg); }
+.secondary { background: transparent; color: var(--text); border-color: var(--border); }
+.quote .button, .quote .secondary { width: 100%; margin-top: .65rem; }
+.root button:disabled, .options:disabled { opacity: .55; }
+.root button:disabled { cursor: default; }
+.button:enabled:hover, a.button:hover { background: var(--accent-hover); }
+.secondary:hover { border-color: var(--accent); }
+.root :focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
+.notice { background: var(--surface); padding: 1.1rem 1.25rem; margin-block: 1rem; border-left: 3px solid var(--accent); line-height: 1.6; font-size: .9rem; }
+.notice h3 { margin-top: 0; }
+.error { padding: .8rem 1rem; border-left: 3px solid var(--price-up); background: var(--surface); line-height: 1.6; overflow-wrap: anywhere; }
+.details { margin-top: 1rem; border-top: 1px solid var(--border); }
+.details > summary { min-height: 44px; padding: .8rem 0; font: 600 .9rem var(--font-display); cursor: pointer; }
+.detailBody { padding: .3rem 0 1rem; max-width: 58rem; }
+.detailBody h4 { margin: 1.5rem 0 .75rem; }
+.proof { padding: .25rem 0; border-bottom: 1px solid var(--border); }
+.proof > summary { display: flex; justify-content: space-between; gap: 1rem; min-height: 44px; align-items: center; cursor: pointer; font-size: .85rem; }
+.proof > summary span:last-child { text-align: right; color: var(--text-secondary); }
+.proof > summary::before { content: '+'; color: var(--accent); }
+.proof[open] > summary::before { content: '−'; }
+.proof > summary span:first-child { flex: 1; }
+.evidenceText { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.6; font-size: .85rem; }
+.security { margin-block: 1rem; padding: .25rem 1rem 1rem; border: 1px dashed var(--border); }
+.terms { margin: 0; }
+.terms > div { display: grid; grid-template-columns: 8rem 1fr; gap: 1rem; padding-block: .5rem; }
+.terms dt { color: var(--text-secondary); }
+.terms dd { margin: 0; overflow-wrap: anywhere; white-space: pre-wrap; }
+.extra h5 { margin: 1rem 0 .25rem; font-size: 1rem; }
+.requirements { margin-block: 1rem; }
+.candidates { margin-top: 2rem; }
+.candidate { padding: 1.25rem 0; border-top: 1px dashed var(--border); }
+.candidate h4 { margin: .4rem 0; }
+.candidatePrice { font-family: var(--font-mono); }
+.candidatePrice span { font: .8rem var(--font-body); color: var(--text-secondary); }
+.candidate li, .notice li { margin-block: .4rem; overflow-wrap: anywhere; }
+@media (max-width: 700px) {
+  .resultsHeader { display: block; }
+  .fields, .offerMain, .journey { grid-template-columns: 1fr; }
+  .offerMain { gap: 1.5rem; }
+  .quote { padding: 1rem 0 0; border-left: 0; border-top: 1px dashed var(--border); }
+  .progress li { grid-template-columns: 1fr 1fr; }
+  .progress li span:last-child { grid-column: 1 / -1; }
+  .proof > summary { flex-wrap: wrap; gap: .4rem; }
+  .proof > summary span:last-child { flex-basis: 100%; text-align: left; padding-left: 1rem; }
+  .terms > div { grid-template-columns: 1fr; gap: .25rem; }
+}
