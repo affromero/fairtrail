@@ -43,6 +43,11 @@ afterEach(async () => {
   await rm(directory, { recursive: true, force: true });
 });
 describe('durable car command execution', () => {
+  it('refuses confirmation from a different displayed account before writing a receipt or sending a mutation', async () => {
+    await expect(performCarMutation(directory, client, refresh, () => undefined, undefined, 'user:bob')).rejects.toMatchObject({ name: 'CarScopeError' });
+    expect(await readdir(directory)).toEqual([]);
+    expect(requests.every(request => request.method === 'GET' && request.path === '/api/cars/session')).toBe(true);
+  });
   it('recovers a lost acknowledgement after restart and concurrent retries without scheduling another refresh', async () => {
     let prepared = '', loseReply = true;
     const jobs = new Map<string, string>();

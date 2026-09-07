@@ -10,6 +10,9 @@ interface CarRequestOptions {
   revision?: number;
 }
 export interface CarSession { scope: string; isAdmin: boolean }
+export class CarScopeError extends Error {
+  constructor() { super('Car account changed; reload before continuing'); this.name = 'CarScopeError'; }
+}
 
 /** Car-only transport; mutation callers own durable receipts and acknowledgement validation. */
 export class CarClient {

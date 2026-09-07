@@ -6,11 +6,11 @@ import { CarMutationError, performCarMutation, replayCarMutation, waitForCarSear
 import type { CarOperation } from './car-receipts.js';
 import { carInteger, carRecord, carText } from '../../../../apps/web/src/lib/cars/validation.js';
 import { parseCarMoney } from '../../../../apps/web/src/lib/cars/money.js';
-import { validateCarTrackerView } from '../../../../apps/web/src/lib/cars/tracker-view.js';
 import { validateCarDetailView } from '../../../../apps/web/src/lib/cars/detail-view.js';
-import { validateCarRunSummary, validateCarRunView } from '../../../../apps/web/src/lib/cars/run-view.js';
+import { validateCarRunView } from '../../../../apps/web/src/lib/cars/run-view.js';
 import { validateCarParseDraft } from '../../../../apps/web/src/lib/cars/parse-draft.js';
 import { validateCarLocationChoice } from '../../../../apps/web/src/lib/cars/location-types.js';
+import { readCarSearchPage, readCarTrackerPage } from './car-views.js';
 
 interface Options {
   server?: string; json?: boolean; receiptDir?: string; file?: string; wait?: boolean; timeout?: string;
@@ -34,18 +34,6 @@ function target(options: Options) {
   if (!options.currency) throw new Error('--target requires --currency, for example GBP');
   return parseCarMoney(options.target, options.currency.toUpperCase());
 }
-function cursor(raw: unknown): string | null {
-  if (raw === null) return null;
-  if (typeof raw !== 'string' || !/^[A-Za-z0-9_-]{1,1500}$/.test(raw)) throw new Error('Invalid rental page cursor');
-  return raw;
-}
-function page<T extends { id: string }>(raw: unknown, key: string, parse: (value: unknown) => T, previous?: string) {
-  const value = carRecord(raw), rows = value[key], nextCursor = cursor(value.nextCursor);
-  if (!Array.isArray(rows) || rows.length > 25) throw new Error('Invalid rental page');
-  const records = rows.map(parse);
-  if (new Set(records.map(row => row.id)).size !== records.length || nextCursor && (!records.length || nextCursor === previous)) throw new Error('Rental page did not advance');
-  return { [key]: records, nextCursor };
-}
 function message(error: unknown) {
   return (error instanceof Error ? error.message : String(error)).replace(/\p{Cc}/gu, ' ');
 }
@@ -66,12 +54,22 @@ export function registerCarCommands(program: Command): () => boolean {
         console.error(options.json ? JSON.stringify({ receiptPath: path, state: 'prepared' }) : `Recovery receipt: ${path}`);
       }, controller.signal);
       const result = await run({ client, options, args: args.filter((arg): arg is string => typeof arg === 'string'), signal: controller.signal, mutate });
-      console.log(JSON.stringify(result, null, options.json ? undefined : 2));
+      if (result !== undefined) console.log(JSON.stringify(result, null, options.json ? undefined : 2));
     } catch (error) {
       const detail = error instanceof CarMutationError ? { receiptPath: error.receiptPath, outcome: error.outcome, status: error.status, current: error.current } : {};
       console.error(options.json ? JSON.stringify({ error: message(error), ...detail }) : `Error: ${message(error)}${error instanceof CarMutationError ? ` Receipt: ${error.receiptPath}${error.current ? `\n${JSON.stringify(error.current, null, 2)}` : ''}` : ''}`);
       process.exitCode = controller.signal.aborted ? 130 : 1;
     } finally { process.removeListener('SIGINT', interrupt); process.removeListener('SIGTERM', interrupt); }
+  });
+  action(cars.command('browse').description('Browse rental trackers and verified price history').option('--admin', 'Administrator list of all owners'), async ({ client, options, signal }) => {
+    if (options.json || !process.stdin.isTTY || !process.stdout.isTTY) throw new Error('cars browse requires an interactive terminal without --json; use cars list or cars view');
+    const [{ render }, { createElement }, { CarBrowser }, { CarBrowser: Browser }] = await Promise.all([
+      import('ink'), import('react'), import('../screens/CarBrowser.js'), import('./car-browser.js'),
+    ]);
+    const browser = new Browser(client, options.admin);
+    const instance = render(createElement(CarBrowser, { browser, signal }), { alternateScreen: true, exitOnCtrlC: false });
+    try { await instance.waitUntilExit(); }
+    finally { browser.close(); instance.cleanup(); }
   });
   action(cars.command('locations <query>').description('Find catalog IDs and versions for pickup or return'), async ({ client, args: [query], signal }) => {
     const raw = await client.request<unknown>(`/api/cars/locations?q=${encodeURIComponent(carText(query, 100, 'location query'))}`, { signal });
@@ -105,20 +103,8 @@ export function registerCarCommands(program: Command): () => boolean {
     return validateCarRunView(await client.request(`/api/cars/search/${id}`, { signal }), id);
   });
   action(cars.command('cancel <searchId>').description('Explicitly cancel a server search'), ({ args: [id], mutate }) => mutate({ kind: 'cancel', id: identity(id), revision: null, body: null }));
-  action(cars.command('searches').description('Read a page of your standalone searches').option('--cursor <cursor>'), async ({ client, options, signal }) => {
-    if (options.cursor) cursor(options.cursor);
-    return page(await client.request(`/api/cars/search${options.cursor ? `?cursor=${options.cursor}` : ''}`, { signal }), 'searches', raw => {
-      const value = carRecord(raw), row = validateCarRunSummary(value);
-      if (row.trackerId !== null) throw new Error('Standalone search list contains a tracker check');
-      return { ...row, label: carText(value.label, 503, 'rental label') };
-    }, options.cursor);
-  });
-  action(cars.command('list').description('Read a page of car trackers').option('--cursor <cursor>').option('--admin', 'Administrator list of all owners'), async ({ client, options, signal }) => {
-    const params = new URLSearchParams();
-    if (options.cursor) params.set('cursor', cursor(options.cursor)!);
-    if (options.admin) params.set('admin', 'true');
-    return page(await client.request(`/api/cars?${params}`, { signal }), 'trackers', validateCarTrackerView, options.cursor);
-  });
+  action(cars.command('searches').description('Read a page of your standalone searches').option('--cursor <cursor>'), ({ client, options, signal }) => readCarSearchPage(client, options.cursor ?? null, signal));
+  action(cars.command('list').description('Read a page of car trackers').option('--cursor <cursor>').option('--admin', 'Administrator list of all owners'), ({ client, options, signal }) => readCarTrackerPage(client, options.cursor ?? null, options.admin, signal));
   for (const name of ['view', 'history'] as const) action(cars.command(`${name} <id>`).description('Read tracker revision, price evidence, errors, and notification readiness'), async ({ client, args: [raw], signal }) => {
     const id = identity(raw); return validateCarDetailView(await client.request(`/api/cars/${id}`, { signal }), id);
   });

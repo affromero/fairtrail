@@ -74,8 +74,8 @@ export async function replayCarMutation(path: string, client: CarClient, signal?
     throw new CarMutationError(`${error instanceof Error ? error.message : String(error)}. ${explanation}${reconciliationError}`, path, outcome, status, current);
   }
 }
-export async function performCarMutation(directory: string, client: CarClient, intent: CarOperation, prepared: (path: string) => void, signal?: AbortSignal) {
-  const saved = await saveCarReceipt(directory, client, intent, signal);
+export async function performCarMutation(directory: string, client: CarClient, intent: CarOperation, prepared: (path: string) => void, signal?: AbortSignal, expectedScope?: string) {
+  const saved = await saveCarReceipt(directory, client, intent, signal, expectedScope);
   prepared(saved.path);
   return replayCarMutation(saved.path, client, signal);
 }

@@ -2,7 +2,7 @@ import { constants } from 'node:fs';
 import { link, mkdir, open, realpath, unlink, type FileHandle } from 'node:fs/promises';
 import { basename, dirname, join, resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { CarClient } from './car-client.js';
+import { CarClient, CarScopeError } from './car-client.js';
 import { carCreationInput } from '../../../../apps/web/src/lib/cars/creation-input.js';
 import { carInputFields, normalizeCarSearchInput } from '../../../../apps/web/src/lib/cars/public-input.js';
 import { carText, validateCarOptions } from '../../../../apps/web/src/lib/cars/validation.js';
@@ -107,8 +107,9 @@ async function unchanged(directory: string, expected: FileHandle) {
 }
 
 /** Immutable publication: no server mutation may precede this successful return. */
-export async function saveCarReceipt(directory: string, client: CarClient, intent: CarOperation, signal?: AbortSignal): Promise<{ path: string; receipt: CarReceipt }> {
+export async function saveCarReceipt(directory: string, client: CarClient, intent: CarOperation, signal?: AbortSignal, expectedScope?: string): Promise<{ path: string; receipt: CarReceipt }> {
   const session = await client.getSession(signal);
+  if (expectedScope !== undefined && session.scope !== expectedScope) throw new CarScopeError();
   const value = receipt({ version: 1, key: randomUUID(), origin: client.origin, scope: session.scope, createdAt: new Date().toISOString(), operation: intent }, true);
   const data = Buffer.from(JSON.stringify(value));
   if (data.length > MAX_BYTES) throw new Error('Car recovery record is too large');
