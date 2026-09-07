@@ -11,6 +11,8 @@ import { discoverCarsFixedDeposit } from '../apps/web/src/lib/cars/discovercars-
 import { extractDiscoverCarsOffer } from '../apps/web/src/lib/cars/discovercars-extraction';
 import { assessCarPrice } from '../apps/web/src/lib/cars/pricing';
 import { carContractIdentity } from '../apps/web/src/lib/cars/identity';
+import { navigateDiscoverCarsSearch, submitDiscoverCarsSearch } from '../apps/web/src/lib/cars/discovercars-navigation';
+import { verifyCarProviderContext } from '../apps/web/src/lib/cars/provider-context';
 
 // Read-only provider feasibility gate. This never proceeds into booking,
 // creates an account, supplies personal details, or touches the application DB.
@@ -27,24 +29,14 @@ pickup.setUTCMonth(pickup.getUTCMonth() + 1, 15);
 const dropoff = new Date(pickup);
 dropoff.setUTCDate(dropoff.getUTCDate() + 3);
 const isoDate = (date: Date) => date.toISOString().slice(0, 10);
+const pickupLocation = { name: 'London Airport Heathrow (LHR)', country: 'GB', timeZone: 'Europe/London', providerIds: { discovercars: '1712' } };
+const dropoffLocation = oneWay ? { ...pickupLocation, name: 'London Airport Gatwick (LGW)', providerIds: { discovercars: '1600' } } : pickupLocation;
+const baseCriteria = validateCarSearch({ pickup: pickupLocation, dropoff: dropoffLocation, pickupAt: { date: isoDate(pickup), time: '11:00' }, dropoffAt: { date: isoDate(dropoff), time: '11:00' }, driver: { age: driverAge, licenceYears: 2, residenceCountry }, currency: 'USD', sources: ['discovercars'] });
 
 async function capture(page: Page, name: string) {
   await writeFile(resolve(output, `${name}.html`), await page.content());
   await writeFile(resolve(output, `${name}.txt`), await page.locator('body').innerText());
   await page.screenshot({ path: resolve(output, `${name}.png`), fullPage: true });
-}
-
-async function selectDay(page: Page, date: Date) {
-  const monthName = date.toLocaleDateString('en-US', { month: 'short', year: 'numeric', timeZone: 'UTC' });
-  const month = page.locator('.rdrMonth').filter({ has: page.locator('.rdrMonthName', { hasText: monthName }) });
-  await month.locator('button.rdrDay:not(.rdrDayPassive):not(.rdrDayDisabled)')
-    .filter({ hasText: new RegExp(`^${date.getUTCDate()}$`) }).click();
-}
-
-function searchContext(url: string): Record<string, unknown> {
-  const encoded = new URL(url).searchParams.get('sq');
-  assert.ok(encoded, 'Provider must expose the actual search context');
-  return JSON.parse(Buffer.from(encoded, 'base64').toString('utf8')) as Record<string, unknown>;
 }
 
 async function main() {
@@ -58,42 +50,11 @@ async function main() {
     const page = await context.newPage();
     page.setDefaultTimeout(30_000);
     page.setDefaultNavigationTimeout(45_000);
-    await navigateCarPage(page, 'https://www.discovercars.com/', 'discovercars');
-    // The server-rendered input precedes hydration of its autocomplete handler.
-    await page.waitForTimeout(3000);
-    if (residenceCountry === 'GB') {
-      await page.locator('#sb-country .CustomSelect-SelectHandler').click();
-      await page.locator('.CustomSelect-SelectOption:visible').filter({ hasText: /^United Kingdom$/ }).click();
-    }
-    const location = page.getByPlaceholder('Enter airport or city', { exact: true });
-    await location.click();
-    await location.fill('Heathrow');
-    await page.getByText('London Airport Heathrow (LHR)', { exact: true }).click();
-    if (oneWay) {
-      await page.getByText('Return car in same location', { exact: true }).click();
-      await page.getByPlaceholder('Enter airport or city', { exact: true }).nth(1).fill('Gatwick');
-      await page.getByText('London Airport Gatwick (LGW)', { exact: true }).click();
-    }
-    if (driverAge === 23) {
-      await page.locator('.CustomSelect-SelectHandler').filter({ hasText: /^30-65$/ }).click();
-      await page.locator('.CustomSelect-SelectOption:visible').filter({ hasText: /^23$/ }).click();
-    }
-    await page.locator('.DatePicker-CalendarField').first().click();
-    await selectDay(page, pickup);
-    await selectDay(page, dropoff);
-    await page.locator('button[type="submit"]').filter({ hasText: 'Search now' }).click();
-    await page.waitForURL('**/search/**');
-    await page.locator('a.SearchCar-CtaBtn:visible').first().waitFor();
-    const request = searchContext(page.url());
-    assert.equal(request.PickupLocationId, 1712, 'Heathrow selected');
-    assert.equal(request.DropOffLocationId, oneWay ? 1600 : 1712, 'Requested airport selected');
-    assert.equal(request.PickupDateTime, `${isoDate(pickup)}T11:00:00`, 'Pickup local wall time preserved');
-    assert.equal(request.DropOffDateTime, `${isoDate(dropoff)}T11:00:00`, 'Return local wall time preserved');
-    assert.equal(request.ResidenceCountry, residenceCountry, 'Requested residence is preserved');
-    assert.equal(request.DriverAge, driverAge, 'Requested driver age preserved');
+    const links = await navigateDiscoverCarsSearch(page, baseCriteria);
+    const request = verifyCarProviderContext(page.url(), 'discovercars', baseCriteria);
     await page.getByRole('button', { name: 'USD', exact: true }).waitFor();
     await capture(page, 'search');
-    const href = await page.locator('a.SearchCar-CtaBtn:visible').first().getAttribute('href');
+    const href = links[0];
     assert.ok(href);
     const detailUrl = new URL(href, page.url());
     assert.equal(detailUrl.origin, 'https://www.discovercars.com');
@@ -142,10 +103,8 @@ async function main() {
     await writeFile(resolve(output, 'rental-conditions.txt'), conditionText);
     await writeFile(resolve(output, 'rental-conditions.html'), await conditions.innerHTML());
     await capture(detail, 'conditions');
-    const pickupLocation = { name: 'London Airport Heathrow (LHR)', country: 'GB', timeZone: 'Europe/London', providerIds: { discovercars: '1712' } };
-    const dropoffLocation = oneWay ? { ...pickupLocation, name: 'London Airport Gatwick (LGW)', providerIds: { discovercars: '1600' } } : pickupLocation;
     const coverageId = String((renderedOffer.coverage as { id?: unknown }).id);
-    const criteria = validateCarSearch({ pickup: pickupLocation, dropoff: dropoffLocation, pickupAt: { date: isoDate(pickup), time: '11:00' }, dropoffAt: { date: isoDate(dropoff), time: '11:00' }, driver: { age: driverAge, licenceYears: 2, residenceCountry }, currency: 'USD', sources: ['discovercars'], extras: { protection: process.env.CAR_SMOKE_PROTECTION === 'true' ? [{ source: 'discovercars', productId: coverageId }] : [] } });
+    const criteria = validateCarSearch({ ...baseCriteria, extras: { protection: process.env.CAR_SMOKE_PROTECTION === 'true' ? [{ source: 'discovercars', productId: coverageId }] : [] } });
     const observed = await captureDiscoverCarsDetail(detail, detailUrl.href, criteria, page);
     assert.ok(observed.sections.some(section => section.title === 'document' && /license|licence/i.test(section.text)));
     await writeFile(resolve(output, 'capture.json'), JSON.stringify(observed));
@@ -155,15 +114,12 @@ async function main() {
     else assert.ok(verified.reasons.length, 'An incomplete quote exposes the reason it cannot qualify');
     await page.reload({ waitUntil: 'domcontentloaded' });
     await page.locator('a.SearchCar-CtaBtn:visible').first().waitFor();
-    assert.deepEqual(searchContext(page.url()), request, 'Repeat search preserves its pricing context');
+    assert.equal(verifyCarProviderContext(page.url(), 'discovercars', criteria), request, 'Repeat search preserves its pricing context');
     await capture(page, 'repeat');
-    const previousPath = new URL(page.url()).pathname;
-    await page.locator('button[type="submit"]').filter({ hasText: /^Search$/ }).click();
-    await page.waitForURL(url => url.pathname.startsWith('/search/') && url.pathname !== previousPath);
-    await page.locator('a.SearchCar-CtaBtn:visible').first().waitFor();
-    assert.deepEqual(searchContext(page.url()), request, 'Fresh discovery preserves its pricing context');
+    const freshLinks = await submitDiscoverCarsSearch(page, criteria);
+    assert.equal(verifyCarProviderContext(page.url(), 'discovercars', criteria), request, 'Fresh discovery preserves its pricing context');
     await capture(page, 'fresh-search');
-    const freshLink = await page.locator('a.SearchCar-CtaBtn:visible').first().getAttribute('href');
+    const freshLink = freshLinks[0];
     assert.ok(freshLink);
     const freshCapture = await captureDiscoverCarsDetail(detail, new URL(freshLink, page.url()).href, criteria, page);
     const fresh = extractDiscoverCarsOffer(freshCapture, criteria);
