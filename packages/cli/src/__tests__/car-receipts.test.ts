@@ -33,6 +33,16 @@ afterEach(async () => {
   await rm(directory, { recursive: true, force: true });
 });
 describe('durable car CLI recovery records', () => {
+  it.each([
+    { id: null, revision: null, body: { offerId: 'offer', choiceId: 'c51f31ce-1f53-486b-b84c-2817429f3a73' } },
+    { id: 'parent', revision: 0, body: { offerId: 'offer', choiceId: 'c51f31ce-1f53-486b-b84c-2817429f3a73' } },
+    { id: 'parent', revision: null, body: { offerId: 'offer', choiceId: 'invented' } },
+    { id: 'parent', revision: null, body: { offerId: 'offer', choiceId: 'c51f31ce-1f53-486b-b84c-2817429f3a73', price: 1 } },
+  ])('refuses invalid protection targets or invented payload fields before publication', async invalid => {
+    await expect(saveCarReceipt(directory, client, { kind: 'protect', ...invalid })).rejects.toThrow();
+    expect(await readdir(directory)).toEqual([]);
+    expect(requests.every(request => request === 'GET /api/cars/session')).toBe(true);
+  });
   it('rejects a FIFO receipt without waiting for a writer', async () => {
     const path = join(directory, 'pipe.json');
     await promisify(execFile)('mkfifo', ['-m', '600', path]);

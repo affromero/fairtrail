@@ -12,12 +12,15 @@ import { validateCarParseDraft } from '../../../../apps/web/src/lib/cars/parse-d
 import { validateCarLocationChoice } from '../../../../apps/web/src/lib/cars/location-types.js';
 import { readCarPreferences, readCarSearchPage, readCarTrackerPage } from './car-views.js';
 import { validateCarProviders } from '../../../../apps/web/src/lib/cars/preferences.js';
+import { readCarOfferReview, requireCarReview } from './car-protection.js';
+import { carProtectionInput } from '../../../../apps/web/src/lib/cars/creation-input.js';
 
 interface Options {
   server?: string; json?: boolean; receiptDir?: string; file?: string; wait?: boolean; timeout?: string;
   revision?: string; target?: string; currency?: string; clearTarget?: boolean; lows?: boolean; interval?: string;
   mode?: string; label?: string; cursor?: string; admin?: boolean; locale?: string;
   providers?: string; reset?: boolean;
+  review?: string; reviewProtection?: string;
 }
 interface Context { client: CarClient; options: Options; args: string[]; signal: AbortSignal; mutate: (intent: CarOperation, expectedScope?: string) => Promise<Awaited<ReturnType<typeof performCarMutation>>> }
 function identity(raw: string | undefined): string {
@@ -122,6 +125,24 @@ export function registerCarCommands(program: Command): () => boolean {
     const id = identity(raw);
     return validateCarRunView(await client.request(`/api/cars/search/${id}`, { signal }), id);
   });
+  action(cars.command('protection <searchId> <offerId>').description('Read protection terms, observed prices and identities for explicit review'), ({ client, args: [searchId, offerId], signal }) =>
+    readCarOfferReview(client, identity(searchId), carText(offerId, 200, 'offer identity'), signal));
+  action(cars.command('protect <searchId> <offerId> <choiceId>').description('Recheck a reviewed protection option; does not book or purchase coverage')
+    .requiredOption('--review <hash>', 'Exact choice review identity from cars protection')
+    .option('--wait', 'Wait for the fresh result without cancelling server work on interruption')
+    .option('--timeout <minutes>', 'Wait limit from 1 to 120 minutes', '120'), async ({ client, args: [searchId, offerId, choiceId], options, signal, mutate }) => {
+    const id = identity(searchId), body = carProtectionInput({ offerId, choiceId });
+    const timeoutMs = integer(options.timeout, 1, 120, '--timeout') * 60_000;
+    const review = await readCarOfferReview(client, id, body.offerId, signal);
+    requireCarReview(review.discovery?.choices.find(choice => choice.id === body.choiceId)?.review, options.review);
+    const result = await mutate({ kind: 'protect', id, revision: null, body }, review.scope);
+    if (!options.wait) return result;
+    const child = identity(carRecord(result.result).id as string);
+    console.error(options.json ? JSON.stringify(result) : `Protected search ${child} accepted. Receipt: ${result.receiptPath}`);
+    const run = await waitForCarSearch(client, child, { signal, timeoutMs });
+    if (run.status === 'failed' || run.status === 'cancelled') process.exitCode = 1;
+    return { receiptPath: result.receiptPath, result: run };
+  });
   action(cars.command('cancel <searchId>').description('Explicitly cancel a server search'), ({ args: [id], mutate }) => mutate({ kind: 'cancel', id: identity(id), revision: null, body: null }));
   action(cars.command('searches').description('Read a page of your standalone searches').option('--cursor <cursor>'), ({ client, options, signal }) => readCarSearchPage(client, options.cursor ?? null, signal));
   action(cars.command('list').description('Read a page of car trackers').option('--cursor <cursor>').option('--admin', 'Administrator list of all owners'), ({ client, options, signal }) => readCarTrackerPage(client, options.cursor ?? null, options.admin, signal));
@@ -130,11 +151,19 @@ export function registerCarCommands(program: Command): () => boolean {
   });
   action(cars.command('track <searchId> <offerId>').description('Track a checked offer with durable creation recovery')
     .option('--mode <mode>', 'best or contract', 'best').option('--target <amount>', 'Whole-rental decimal amount').option('--currency <code>')
-    .option('--no-lows', 'Disable historical-low alerts').option('--interval <hours>', 'Check interval from 1 to 24 hours', '3').option('--label <label>'),
-  ({ args: [searchId, offerId], options, mutate }) => mutate({ kind: 'track', id: null, revision: null, body: {
+    .option('--no-lows', 'Disable historical-low alerts').option('--interval <hours>', 'Check interval from 1 to 24 hours', '3').option('--label <label>')
+    .option('--review-protection <hash>', 'Exact fresh protected offer review identity from cars protection'),
+  async ({ client, args: [searchId, offerId], options, signal, mutate }) => {
+    const body = {
     searchId: identity(searchId), offerId: carText(offerId, 200, 'offer identity'), mode: options.mode,
     target: target(options) ?? null, notifyLows: options.lows !== false, scrapeInterval: integer(options.interval, 1, 24, '--interval'), ...(options.label === undefined ? {} : { label: options.label }),
-  } }));
+    };
+    const review = await readCarOfferReview(client, body.searchId, body.offerId, signal);
+    if (!review.canTrack) throw new Error('This rental is not currently eligible for tracking; inspect cars protection or start a fresh search');
+    if (review.protectedQuote) requireCarReview(review.trackingReview, options.reviewProtection);
+    else if (options.reviewProtection !== undefined) throw new Error('This is a base rental; no protected offer review applies');
+    return mutate({ kind: 'track', id: null, revision: null, body }, review.scope);
+  });
   for (const name of ['pause', 'resume', 'delete', 'refresh'] as const) action(cars.command(`${name} <id>`)
     .description('Use the revision shown by cars view; use retry for a lost acknowledgement').requiredOption('--revision <revision>', 'Expected tracker revision'),
   ({ args: [id], options, mutate }) => mutate({ kind: name === 'pause' || name === 'resume' ? 'edit' : name, id: identity(id), revision: integer(options.revision, 0, 2147483647, '--revision'), body: name === 'pause' || name === 'resume' ? { active: name === 'resume' } : null }));

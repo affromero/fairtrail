@@ -3,12 +3,12 @@ import { link, mkdir, open, realpath, unlink, type FileHandle } from 'node:fs/pr
 import { basename, dirname, join, resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { CarClient, CarScopeError } from './car-client.js';
-import { carCreationInput } from '../../../../apps/web/src/lib/cars/creation-input.js';
+import { carCreationInput, carProtectionInput } from '../../../../apps/web/src/lib/cars/creation-input.js';
 import { carInputFields, normalizeCarSearchInput } from '../../../../apps/web/src/lib/cars/public-input.js';
 import { carText, validateCarOptions } from '../../../../apps/web/src/lib/cars/validation.js';
 import { validateCarProviders } from '../../../../apps/web/src/lib/cars/preferences.js';
 
-type Kind = 'search' | 'track' | 'refresh' | 'edit' | 'delete' | 'cancel' | 'preferences';
+type Kind = 'search' | 'protect' | 'track' | 'refresh' | 'edit' | 'delete' | 'cancel' | 'preferences';
 export interface CarOperation { kind: Kind; id: string | null; body: Record<string, unknown> | null; revision: number | null }
 export interface CarReceipt { version: 1; key: string; origin: string; scope: string; createdAt: string; operation: CarOperation }
 const MAX_BYTES = 128 * 1024;
@@ -18,6 +18,7 @@ const fields: Record<Kind, readonly string[]> = {
   track: ['searchId', 'offerId', 'label', 'mode', 'target', 'notifyLows', 'scrapeInterval'],
   refresh: [], edit: ['active', 'target', 'notifyLows', 'scrapeInterval', 'userId', 'label'], delete: [], cancel: [],
   preferences: ['providers'],
+  protect: ['offerId', 'choiceId'],
 };
 function object(raw: unknown): Record<string, unknown> {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error('Invalid car recovery record');
@@ -27,6 +28,7 @@ function exact(value: Record<string, unknown>, allowed: readonly string[]) {
   if (Object.keys(value).some(key => !allowed.includes(key))) throw new Error('Unexpected field in car recovery record');
 }
 function normalizePayload(body: Record<string, unknown>, kind: Kind): Record<string, unknown> {
+  if (kind === 'protect') return carProtectionInput(body);
   if (kind === 'preferences') return { providers: validateCarProviders(body.providers, true) };
   if (kind === 'search') return normalizeCarSearchInput(body);
   if (body.target != null) carInputFields(body.target, ['currency', 'minor']);

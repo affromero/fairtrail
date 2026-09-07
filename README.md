@@ -431,6 +431,8 @@ hotel commands. Start with catalog locations and a reviewed search file:
 flight-finder cars locations "London Heathrow" --json
 flight-finder cars parse "A London rental for next weekend" --json
 flight-finder cars search --file rental.json --wait --json
+flight-finder cars protection <searchId> <offerId> --json
+flight-finder cars protect <searchId> <offerId> <choiceId> --review <choiceReview> --wait
 flight-finder cars track <searchId> <offerId> --mode best --target 300 --currency GBP
 flight-finder cars browse
 flight-finder cars view <id> --json
@@ -444,6 +446,23 @@ start a search. Use the public search shape in [API.md](API.md), with catalog
 `id` and `version` values from `locations`. Input files and stdin (`--file -`)
 are limited to 64 KiB. Amounts use decimal major units with an explicit currency;
 the client converts them to exact integer minor units.
+
+`protection` prints the selected rental's full price evidence and observed
+protection options, including terms, policy links, observation time and extra
+price. Review a choice before passing its `review` value to `protect`. That
+command checks the same base rental with the chosen product and a fresh total;
+it does not reserve a car or purchase coverage. The observed extra is never
+presented as a verified combined price.
+
+After the protected search finishes, run `protection` with its new search ID
+and an offer ID. Review the fresh terms, full total, payment timing, deposit
+and requirements. Pass its `trackingReview` value to
+`cars track <searchId> <offerId> --review-protection <trackingReview>`.
+Reviews apply to the exact server, account and displayed content. Changed
+terms or prices require another review. Base rentals need no protection flag.
+Closed or ineligible results remain inspectable but cannot start new tracking.
+After a lost acknowledgement, use the saved receipt with `retry`; recovery
+does not require a new review or an unexpired original quote.
 
 `browse` opens a keyboard-driven tracker list with paged results and price
 evidence. Enter opens history; arrow keys scroll, and `r` reloads server state.
@@ -463,7 +482,7 @@ retained receipt paths; server work continues. Use `list` and `view` with
 
 Before changing tracking state, the CLI prints a private recovery receipt path.
 After a timeout or lost response, use `cars retry <receipt>` with the
-original server and account. Repeating `search`, `track`, or `refresh` starts a
+original server and account. Repeating `search`, `protect`, `track`, or `refresh` starts a
 new request. Receipts contain request data, never cookies or access tokens.
 The installed CLI stores them under `/app/data/car-receipts` and refuses
 mutations if that persistent volume is missing. Direct Node CLI use defaults

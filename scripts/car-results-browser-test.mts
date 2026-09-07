@@ -180,7 +180,7 @@ try {
   }
   passed.push('Five locale result controls and keyboard evidence disclosure');
   await carProtectionBrowserScenarios(db, alice, output);
-  passed.push('Protection options in both themes and responsive layouts, explicit terms review, lost real acknowledgement recovery, fresh protected tracker and permanent parent closure preserving accepted child searches');
+  passed.push('Protection options in both themes and responsive layouts, explicit terms review, lost real acknowledgement recovery, web and built CLI protected tracking with review required, and permanent parent closure preserving accepted child searches');
   await page.route('**/api/cars/search/car-browser-search', route => route.abort());
   await page.getByRole('button', { name: 'Refresh status' }).click();
   await page.getByRole('alert').filter({ hasText: 'Status updates interrupted' }).waitFor();

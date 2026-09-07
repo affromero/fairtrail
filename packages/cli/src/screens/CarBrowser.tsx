@@ -57,6 +57,9 @@ export function CarBrowser({ browser, signal }: { browser: Browser; signal: Abor
   });
   const price = (minor: number | null, currency: string) => minor === null ? 'No eligible price' : formatCarMoney({ minor, currency });
   const start = Math.max(0, selection - available + 1);
+  if (state.confirmation) return <Box flexDirection="column" paddingX={1}>
+    <CarConfirmation confirmation={state.confirmation} rows={rows} onConfirm={() => { void browser.confirm(); }} />
+  </Box>;
   return <Box flexDirection="column" paddingX={1}>
     <Text bold color="#80a8a5">FLIGHT FINDER / CARS</Text>
     <Text dimColor>Whole-rental prices · independent of flights and hotels</Text>
@@ -64,7 +67,6 @@ export function CarBrowser({ browser, signal }: { browser: Browser; signal: Abor
     {state.notice && <Text color="#80a8a5">{state.notice}</Text>}
     {state.busy && <Text color="#80a8a5">Loading verified rental data…</Text>}
     {state.mutationBusy && <Text color="#80a8a5">Waiting for acknowledgement… Exiting retains the recovery receipt.</Text>}
-    {state.confirmation && <CarConfirmation confirmation={state.confirmation} rows={rows} onConfirm={() => { void browser.confirm(); }} />}
     {enteringReceipt && !state.confirmation && <>
       <Text bold color="#80a8a5">RECOVER A SAVED REQUEST</Text>
       {state.recoveries.slice(-5).map((row, index) => <Text key={row.path} wrap="truncate-end">{Math.max(0, state.recoveries.length - 5) + index + 1}. {row.outcome} · {carTerminalText(row.path)}</Text>)}

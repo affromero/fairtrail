@@ -2,7 +2,34 @@ import assert from 'node:assert/strict';
 import { resolve } from 'node:path';
 import type { BrowserContext } from 'playwright';
 import type pg from 'pg';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { carOfferFixture, carReportFixture, carSearchFixture } from '../apps/web/src/test/car-fixtures';
+
+async function cliProtectedTracking(context: BrowserContext, origin: string, searchId: string, offerId: string) {
+  const session = (await context.cookies(origin)).find(cookie => cookie.name === 'ft-session');
+  assert.ok(session, 'Disposable CLI test requires the browser account session');
+  const directory = await mkdtemp(resolve(tmpdir(), 'car-protected-cli-browser-'));
+  const run = async (args: string[]) => {
+    const result = await promisify(execFile)(process.execPath, [resolve('packages/cli/dist/index.js'), 'cars', '--server', origin,
+      '--receipt-dir', directory, '--json', ...args], { timeout: 30_000, maxBuffer: 16 * 1024 * 1024,
+      env: { ...process.env, FLIGHT_FINDER_SESSION: session.value, FLIGHT_FINDER_TOKEN: '', FLIGHT_FINDER_CAR_REQUIRE_MOUNT: '0' } });
+    return JSON.parse(result.stdout);
+  };
+  try {
+    const review = await run(['protection', searchId, offerId]);
+    assert.equal(review.canTrack, true); assert.match(review.trackingReview, /^[a-f0-9]{64}$/);
+    assert.match(JSON.stringify(review.offer), /Fresh test policy/);
+    await assert.rejects(run(['track', searchId, offerId]), /Review the current terms/);
+    const tracked = await run(['track', searchId, offerId, '--review-protection', review.trackingReview]);
+    assert.deepEqual(tracked.result.tracker.search.extras.protection, [{ source: 'discovercars', productId: '35' }]);
+    assert.equal(tracked.result.tracker.search.protectionRecheck, undefined);
+    const removed = await run(['delete', tracked.result.tracker.id, '--revision', String(tracked.result.tracker.revision)]);
+    assert.equal(removed.result.deleted, true);
+  } finally { await rm(directory, { recursive: true, force: true }); }
+}
 
 /** Stored provider fixtures; authentication, creation, receipts and browser UI remain real. */
 export async function carProtectionBrowserScenarios(db: pg.Client, context: BrowserContext, output: string) {
@@ -60,6 +87,7 @@ export async function carProtectionBrowserScenarios(db: pg.Client, context: Brow
     await db.query(`UPDATE "TravelJob" SET status='succeeded',"activeKey"=NULL,"completedAt"=now() WHERE "carRunId"=$1`, [childId]);
     await open.click();
     await page.getByRole('region', { name: 'Fresh protection terms' }).waitFor();
+    await cliProtectedTracking(context, new URL(page.url()).origin, childId, offer.id);
     assert.ok(await page.getByRole('button', { name: 'Track this rental' }).isDisabled());
     assert.match(await page.getByRole('region', { name: 'Fresh protection terms' }).innerText(), /Fresh test policy/);
     for (const width of [1280, 390]) {

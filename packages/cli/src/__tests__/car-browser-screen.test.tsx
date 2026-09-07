@@ -10,7 +10,36 @@ import { expect, it, vi } from 'vitest';
 import { CarBrowser as Browser } from '../lib/car-browser.js';
 import { CarClient } from '../lib/car-client.js';
 import { CarBrowser } from '../screens/CarBrowser.js';
+import { CarConfirmation } from '../screens/CarConfirmation.js';
 import { carTrackerViewFixture } from '../../../../apps/web/src/test/car-fixtures.js';
+
+it('keeps protection receipt confirmation visible in a narrow terminal while every saved field remains scrollable', async () => {
+  const stdout = Object.assign(new PassThrough(), { columns: 40, rows: 20, isTTY: true }) as unknown as NodeJS.WriteStream;
+  const stdin = Object.assign(new PassThrough(), { isTTY: true, setRawMode: () => stdin, ref: () => stdin, unref: () => stdin }) as unknown as NodeJS.ReadStream;
+  const stderr = new PassThrough() as unknown as NodeJS.WriteStream;
+  const frames: string[] = []; let confirmed = false;
+  stdout.on('data', chunk => { const frame = stripVTControlCharacters(String(chunk)); if (frame.includes('Type yes, then Enter:')) frames.push(frame); });
+  const choiceId = 'c51f31ce-1f53-486b-b84c-2817429f3a73';
+  const instance = render(<CarConfirmation rows={20} confirmation={{ operation: { kind: 'protect', id: 'parent-search', revision: null,
+    body: { offerId: 'selected-rental', choiceId } }, scope: 'user:alice', origin: 'https://rental.example.test', label: 'Saved protection choice',
+    receiptPath: `/private/${'long-private-directory/'.repeat(10)}receipt.json`, receipt: null, conflict: false,
+  }} onConfirm={() => { confirmed = true; }} />, { stdout, stdin, stderr, debug: true, interactive: true, patchConsole: false });
+  try {
+    await vi.waitFor(() => expect(frames.length).toBeGreaterThan(0));
+    for (let index = 0; index < 60; index++) { stdin.push('\u001b[B'); await instance.waitUntilRenderFlush(); }
+    const text = frames.join('\n');
+    expect(text.replace(/\s+/g, ' ')).toContain('Does not book a car or buy coverage.');
+    expect(text.replace(/\s+/g, '')).toContain(choiceId);
+    expect(confirmed).toBe(false);
+    for (const frame of frames) {
+      expect(frame.trimEnd().split('\n').length).toBeLessThanOrEqual(20);
+      expect(frame.split('\n').every(line => line.length <= 40)).toBe(true);
+      expect(frame).toContain('Esc cancels');
+    }
+    stdin.push('yes'); await vi.waitFor(() => expect(frames.at(-1)).toContain('Enter: yes'));
+    stdin.push('\r'); await vi.waitFor(() => expect(confirmed).toBe(true));
+  } finally { instance.unmount(); instance.cleanup(); stdin.destroy(); stdout.destroy(); stderr.destroy(); }
+});
 
 it.each([
   { editing: false, behavior: 'renders exact prices, opens history, resizes, and exits without server mutations' },

@@ -45,10 +45,10 @@ function acknowledgement(raw: unknown, receipt: CarReceipt) {
     return { id: resultId, deleted: true };
   }
   if (typeof value.status !== 'string' || !statuses.includes(value.status)) throw new Error('Unknown rental operation status');
-  if (kind === 'search' && value.creationKey !== receipt.key) throw new Error('Search acknowledgement belongs to another request');
+  if ((kind === 'search' || kind === 'protect') && value.creationKey !== receipt.key) throw new Error('Search acknowledgement belongs to another request');
   if (kind === 'refresh' && (value.refreshKey !== receipt.key || value.trackerId !== id)) throw new Error('Refresh acknowledgement belongs to another request');
   if (kind === 'cancel' && (resultId !== id || ['queued', 'running'].includes(value.status))) throw new Error('Server did not confirm search cancellation or completion');
-  return { id: resultId, status: value.status, ...(kind === 'search' ? { creationKey: receipt.key } : {}), ...(kind === 'refresh' ? { trackerId: id, refreshKey: receipt.key } : {}) };
+  return { id: resultId, status: value.status, ...(kind === 'search' || kind === 'protect' ? { creationKey: receipt.key } : {}), ...(kind === 'refresh' ? { trackerId: id, refreshKey: receipt.key } : {}) };
 }
 
 /** A retry reads its original identity from disk and never substitutes a new request or revision. */
@@ -58,7 +58,7 @@ export async function replayCarMutation(path: string, client: CarClient, signal?
     receipt = await readCarReceipt(path, client, signal, expectedReceipt?.scope);
     if (expectedReceipt && !isDeepStrictEqual(receipt, expectedReceipt)) throw new Error('Recovery receipt changed after review; review it again before retrying');
     const { kind, id, body, revision } = receipt.operation;
-    const endpoint = kind === 'preferences' ? `/api/cars/preferences/${id}` : kind === 'search' ? '/api/cars/search' : kind === 'track' ? '/api/cars' : kind === 'cancel' ? `/api/cars/search/${id}` : `/api/cars/${id}${kind === 'refresh' ? '/scrape' : ''}`;
+    const endpoint = kind === 'protect' ? `/api/cars/search/${id}/protection` : kind === 'preferences' ? `/api/cars/preferences/${id}` : kind === 'search' ? '/api/cars/search' : kind === 'track' ? '/api/cars' : kind === 'cancel' ? `/api/cars/search/${id}` : `/api/cars/${id}${kind === 'refresh' ? '/scrape' : ''}`;
     const raw = await client.request<unknown>(endpoint, {
       method: kind === 'edit' || kind === 'preferences' ? 'PATCH' : kind === 'delete' || kind === 'cancel' ? 'DELETE' : 'POST',
       ...(body === null ? {} : { body }), ...(revision === null ? {} : { revision }), idempotencyKey: receipt.key, signal,
@@ -71,7 +71,7 @@ export async function replayCarMutation(path: string, client: CarClient, signal?
     const outcome = definitive && status === 410 ? 'removed' : error instanceof CarScopeError || [401, 403, 404].includes(status ?? 0) ? 'inaccessible'
       : definitive && status === 412 ? 'stale' : definitive && [400, 409, 413, 415, 428, 429].includes(status ?? 0) ? 'rejected' : 'unconfirmed';
     let current: unknown, reconciliationError = '';
-    if (outcome === 'stale' && receipt?.operation.id && receipt.operation.kind !== 'cancel') {
+    if (outcome === 'stale' && receipt?.operation.id && ['preferences', 'refresh', 'edit', 'delete'].includes(receipt.operation.kind)) {
       try {
         if (receipt.operation.kind === 'preferences') {
           const preferences = validateCarPreferencesView(await client.request('/api/cars/preferences', { signal }));
