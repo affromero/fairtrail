@@ -250,14 +250,15 @@ Content-Type: application/json
 
 ### Admin endpoints
 
-#### Shared travel recovery (self-hosted)
+#### Shared travel recovery
 
 `GET /api/admin/travel` returns the shared worker admission state: `quarantinedAt`,
 `reason`, `recoveryGeneration`, `topologyVersion`, `systemWide`, `vpnEnabled`, and
 lease resource/state/generation/expiry. It does not expose lease owner tokens or
 VPN endpoint credentials. Both methods return `Cache-Control: private, no-store`.
-Public deployments return 404; multi-user deployments require an administrator
-session. Solo self-hosted deployments follow the existing administrator access model.
+Public deployments require a valid, non-revoked administrator session; multi-user
+deployments require an administrator account. Solo self-hosted deployments follow
+the existing administrator access model.
 
 An expired lease or unverified cleanup keeps shared execution stopped. After
 stopping old workers and independently verifying the network, an administrator
@@ -274,8 +275,8 @@ Recovery marks interrupted shared jobs and their runs failed, retains previous
 observations, invalidates old worker generations, and returns the updated state.
 A missing or stale incident returns 412; omitted confirmations return 400.
 Never automatically submit these confirmations based on a VPN status response.
-This endpoint governs shared jobs; the legacy flight and hotel runtime cutover
-is not yet enabled.
+Scheduled and manual flight, hotel, and car checks use shared admission. Flight
+country grouping, intervals, and configuration defaults remain unchanged.
 
 These require an admin session cookie (set via `/admin` login). Useful for programmatic management but not typically needed by agents.
 

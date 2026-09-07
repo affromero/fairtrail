@@ -10,6 +10,7 @@ import { acquireTravelLease, claimTravelJob, releaseTravelLease, type TravelLeas
 import { cancelCarSearch, createCarSearch, createCarTracker, editCarTracker } from './store';
 import { executeCarJob } from './run';
 import type { CarActor } from './access';
+import { executeTravelJob } from '../travel/coordinator';
 
 const transport = vi.hoisted(() => ({ origin: '', browsers: [] as Browser[], failClose: false, beforeRequest: null as ((url: URL) => Promise<void>) | null }));
 vi.mock('playwright', async importOriginal => {
@@ -238,12 +239,14 @@ describe.skipIf(process.env.TRAVEL_BROWSER_TESTS !== '1')('bounded rental provid
     expect(transport.browsers.every(browser => !browser.isConnected())).toBe(true);
   }, 30_000);
 
-  async function queued() {
+  async function queued(acquire = true) {
     const url = new URL(process.env.DATABASE_URL ?? 'http://invalid');
     if (url.hostname !== '127.0.0.1' || url.port !== '55440' || url.pathname !== '/car_test') throw new Error('Car execution tests require disposable localhost:55440/car_test');
     actor = { userId: (await prisma.user.create({ data: { username: `car-browser-${crypto.randomUUID()}` } })).id, isAdmin: false };
-    lease = await acquireTravelLease('browser');
-    if (!lease) throw new Error('Expected isolated browser lease');
+    if (acquire) {
+      lease = await acquireTravelLease('browser');
+      if (!lease) throw new Error('Expected isolated browser lease');
+    }
     return createCarSearch(criteria(), actor);
   }
   async function execute(runId: string) {
@@ -253,6 +256,23 @@ describe.skipIf(process.env.TRAVEL_BROWSER_TESTS !== '1')('bounded rental provid
     return { execution, work: () => withTravelExecution(execution, () => executeCarJob(job.id, lease!)) };
   }
   const databaseTest = it.skipIf(process.env.CAR_RUN_INTEGRATION_TESTS !== '1');
+
+  databaseTest('dispatches discovery and a tracked refresh through the production shared coordinator', async () => {
+    const first = await queued(false);
+    const job = await prisma.travelJob.findUniqueOrThrow({ where: { carRunId: first.id } });
+    expect(await executeTravelJob(job.id)).toBe(true);
+    const found = await prisma.carSearchRun.findUniqueOrThrow({ where: { id: first.id } });
+    expect(found.status).toBe('success');
+    const result = found.result as unknown as Awaited<ReturnType<typeof searchCars>>;
+    const tracker = await createCarTracker({ searchId: first.id, offerId: result.offers[0]!.id, target: { currency: 'USD', minor: 5000 } }, actor!);
+    const refresh = await prisma.travelJob.findFirstOrThrow({ where: { carRun: { trackerId: tracker.id } } });
+    expect(await executeTravelJob(refresh.id)).toBe(true);
+    expect(await prisma.carTracker.findUnique({ where: { id: tracker.id } })).toMatchObject({ latestPriceMinor: 4965n, targetArmed: false });
+    expect(await prisma.carSnapshot.findMany({ where: { trackerId: tracker.id } })).toMatchObject([{ totalMinor: 4965n, eligible: true }]);
+    expect(await prisma.travelAlertDelivery.count({ where: { carTrackerId: tracker.id, pending: true } })).toBe(1);
+    expect(transport.browsers.every(browser => !browser.isConnected())).toBe(true);
+    lease = await acquireTravelLease('browser'); expect(lease).not.toBeNull();
+  }, 45_000);
 
   databaseTest('executes an owned search and refresh through real browser extraction and atomic price alerts', async () => {
     const first = await queued(); await (await execute(first.id)).work();

@@ -2,6 +2,10 @@ BEGIN;
 -- Serializes startup by multiple application replicas. No historical records
 -- are rewritten: an incompatible database fails visibly before serving traffic.
 SELECT pg_advisory_xact_lock(761932104);
+-- Replace the original checks atomically to admit process-owned previews while
+-- retaining strict references and lifecycle rules for every persisted job.
+ALTER TABLE "TravelJob" DROP CONSTRAINT IF EXISTS "TravelJob_reference_check";
+ALTER TABLE "TravelJob" DROP CONSTRAINT IF EXISTS "TravelJob_lifecycle_check";
 DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'TravelLease_state_check' AND conrelid = '"TravelLease"'::regclass) THEN
     ALTER TABLE "TravelLease" ADD CONSTRAINT "TravelLease_state_check" CHECK (
@@ -18,7 +22,7 @@ DO $$ BEGIN
   END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'TravelJob_reference_check' AND conrelid = '"TravelJob"'::regclass) THEN
     ALTER TABLE "TravelJob" ADD CONSTRAINT "TravelJob_reference_check" CHECK (
-      (kind = 'flight_batch' AND "queryId" IS NULL AND "hotelRunId" IS NULL AND "carRunId" IS NULL) OR
+      (kind IN ('flight_batch', 'flight_preview') AND "queryId" IS NULL AND "hotelRunId" IS NULL AND "carRunId" IS NULL) OR
       (kind = 'flight_query' AND "queryId" IS NOT NULL AND "hotelRunId" IS NULL AND "carRunId" IS NULL) OR
       (kind = 'hotel_search' AND "queryId" IS NULL AND "hotelRunId" IS NOT NULL AND "carRunId" IS NULL) OR
       (kind = 'car_search' AND "queryId" IS NULL AND "hotelRunId" IS NULL AND "carRunId" IS NOT NULL)
@@ -29,6 +33,7 @@ DO $$ BEGIN
       attempts >= 0 AND
       ((status IN ('queued', 'running') AND "activeKey" = CASE kind
         WHEN 'flight_batch' THEN 'flight_batch'
+        WHEN 'flight_preview' THEN 'flight_preview:' || id
         WHEN 'flight_query' THEN 'flight_query:' || "queryId"
         WHEN 'hotel_search' THEN 'hotel_search:' || "hotelRunId"
         WHEN 'car_search' THEN 'car_search:' || "carRunId" END AND "activeKey" IS NOT NULL AND "completedAt" IS NULL)

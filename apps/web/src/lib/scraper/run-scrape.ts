@@ -12,8 +12,10 @@ import { extractPrices, type ExtractionFailureReason } from './extract-prices';
 import { getModelCosts } from './ai-registry';
 import { isKnownAirline } from './airline-urls';
 import { getCountryProfile } from './country-profiles';
-import { createVpnProvider, type VpnProviderType } from './vpn';
 import { expandQueryDates } from './scrape-dates';
+import { currentTravelContext, checkTravelAuthority, travelTransaction } from '../travel/context';
+import { flightTransaction, submitFlightJob } from '../travel/flights';
+import { currentTravelExecution, travelDelay } from '../travel/execution';
 
 const RETRYABLE_FAILURES: ExtractionFailureReason[] = [
   'empty_extraction',
@@ -228,6 +230,7 @@ async function scrapeOneDatePair(
               continue;
           }
         } catch (err) {
+          currentTravelExecution()?.check();
           console.error(`[scrape] query=${queryId} pair=${travelDateFallback} aggregator=${source} threw err=${err instanceof Error ? err.message : err}`);
           continue;
         }
@@ -242,7 +245,7 @@ async function scrapeOneDatePair(
     if (attempt < MAX_EXTRACT_ATTEMPTS && lastFailureReason && RETRYABLE_FAILURES.includes(lastFailureReason as ExtractionFailureReason)) {
       const delay = 5000 + Math.random() * 5000;
       console.log(`[scrape] query=${queryId} pair=${travelDateFallback} retrying after ${Math.round(delay)}ms (reason: ${lastFailureReason})`);
-      await new Promise((r) => setTimeout(r, delay));
+      await travelDelay(delay);
     }
   }
 
@@ -253,6 +256,9 @@ async function scrapeOneDatePair(
 async function scrapeQueryForCountry(
   queryId: string,
   query: {
+    id: string;
+    userId: string | null;
+    updatedAt: Date;
     origin: string;
     destination: string;
     preferredAirlines: string[];
@@ -335,6 +341,7 @@ async function scrapeQueryForCountry(
         queryId, pairParams, filters, directAirlines, useAirlineDirect, aggregatorChain, countryProfile, proxyUrl, vpnCountry,
       );
     } catch (err) {
+      currentTravelExecution()?.check();
       const msg = err instanceof Error ? err.message : String(err);
       console.error(`[scrape] query=${queryId} pair=${pairTravelDate} threw err=${msg}`);
       lastFailureReason = lastFailureReason ?? 'page_not_loaded';
@@ -449,70 +456,72 @@ async function scrapeQueryForCountry(
       fetchRunId,
     }));
 
-  if (withFlightIds.length > 0) {
-    await prisma.priceSnapshot.createMany({
-      // Drop flightIdLegacy before insert; it is only used for in-memory
-      // sold-out matching above.
-      data: withFlightIds.map(({ flightIdLegacy: _legacy, ...p }) => ({
-        queryId,
-        travelDate: new Date(p.travelDate),
-        price: p.price,
-        currency: p.currency,
-        airline: p.airline,
-        bookingUrl: p.bookingUrl,
-        stops: p.stops,
-        duration: p.duration,
-        ...(p.layovers ? { layovers: p.layovers } : {}),
-        departureTime: p.departureTime ?? null,
-        arrivalTime: p.arrivalTime ?? null,
-        flightId: p.flightId,
-        flightNumber: p.flightNumber ?? null,
-        seatsLeft: p.seatsLeft ?? null,
-        vpnCountry,
-        fetchRunId,
-      })),
+  return flightTransaction(query, async tx => {
+    if (withFlightIds.length > 0) {
+      await tx.priceSnapshot.createMany({
+        // Drop flightIdLegacy before insert; it is only used for in-memory
+        // sold-out matching above.
+        data: withFlightIds.map(({ flightIdLegacy: _legacy, ...p }) => ({
+          queryId,
+          travelDate: new Date(p.travelDate),
+          price: p.price,
+          currency: p.currency,
+          airline: p.airline,
+          bookingUrl: p.bookingUrl,
+          stops: p.stops,
+          duration: p.duration,
+          ...(p.layovers ? { layovers: p.layovers } : {}),
+          departureTime: p.departureTime ?? null,
+          arrivalTime: p.arrivalTime ?? null,
+          flightId: p.flightId,
+          flightNumber: p.flightNumber ?? null,
+          seatsLeft: p.seatsLeft ?? null,
+          vpnCountry,
+          fetchRunId,
+        })),
+      });
+    }
+
+    if (soldOutSnapshots.length > 0) {
+      await tx.priceSnapshot.createMany({
+        data: soldOutSnapshots,
+      });
+    }
+
+    console.log(`[scrape] query=${queryId} vpn=${vpnCountry ?? 'local'} finished — ${allPrices.length} prices, cost=$${extractionCost.toFixed(4)}`);
+    const failureReason = allPrices.length === 0 ? lastFailureReason : undefined;
+    const failureMessages: Record<string, string> = {
+      page_not_loaded: 'Page did not load results — blocked, CAPTCHA, or timeout.',
+      no_json_in_response: 'LLM response contained no parseable JSON array. Page HTML may be a consent wall, error page, or empty shell.',
+      empty_extraction: 'LLM parsed the page but returned 0 flights. Page likely loaded without flight content (rate-limited or empty response).',
+      all_filtered_out: 'Flights were extracted but all removed by query filters (price/stops/airline).',
+      llm_error: 'LLM call failed (timeout, rate limit, or provider error). The provider may be temporarily unavailable.',
+      json_parse_error: 'LLM returned invalid JSON. Provider output was malformed or truncated.',
+    };
+    const errorMsg = failureReason ? failureMessages[failureReason] : undefined;
+
+    const sourceLabel = sources.size === 1 ? [...sources][0]! : [...sources].join('+');
+
+    await tx.fetchRun.update({
+      where: { id: fetchRunId },
+      data: {
+        status: allPrices.length > 0 ? 'success' : 'failed',
+        source: sourceLabel,
+        snapshotsCount: allPrices.length,
+        extractionCost,
+        error: errorMsg,
+        completedAt: new Date(),
+      },
     });
-  }
 
-  if (soldOutSnapshots.length > 0) {
-    await prisma.priceSnapshot.createMany({
-      data: soldOutSnapshots,
-    });
-  }
-
-  console.log(`[scrape] query=${queryId} vpn=${vpnCountry ?? 'local'} finished — ${allPrices.length} prices, cost=$${extractionCost.toFixed(4)}`);
-  const failureReason = allPrices.length === 0 ? lastFailureReason : undefined;
-  const failureMessages: Record<string, string> = {
-    page_not_loaded: 'Page did not load results — blocked, CAPTCHA, or timeout.',
-    no_json_in_response: 'LLM response contained no parseable JSON array. Page HTML may be a consent wall, error page, or empty shell.',
-    empty_extraction: 'LLM parsed the page but returned 0 flights. Page likely loaded without flight content (rate-limited or empty response).',
-    all_filtered_out: 'Flights were extracted but all removed by query filters (price/stops/airline).',
-    llm_error: 'LLM call failed (timeout, rate limit, or provider error). The provider may be temporarily unavailable.',
-    json_parse_error: 'LLM returned invalid JSON. Provider output was malformed or truncated.',
-  };
-  const errorMsg = failureReason ? failureMessages[failureReason] : undefined;
-
-  const sourceLabel = sources.size === 1 ? [...sources][0]! : [...sources].join('+');
-
-  await prisma.fetchRun.update({
-    where: { id: fetchRunId },
-    data: {
+    return {
+      queryId,
       status: allPrices.length > 0 ? 'success' : 'failed',
-      source: sourceLabel,
       snapshotsCount: allPrices.length,
       extractionCost,
       error: errorMsg,
-      completedAt: new Date(),
-    },
+    };
   });
-
-  return {
-    queryId,
-    status: allPrices.length > 0 ? 'success' : 'failed',
-    snapshotsCount: allPrices.length,
-    extractionCost,
-    error: errorMsg,
-  };
 }
 
 /** Scrape a single query (no VPN logic -- called by runScrapeAll which handles country grouping). */
@@ -522,6 +531,11 @@ export async function runScrapeForQuery(
   proxyUrl?: string,
   opts?: { fetchRunId?: string },
 ): Promise<ScrapeResult> {
+  if (!currentTravelContext()) {
+    if (proxyUrl) throw new Error('Direct proxy execution requires shared VPN admission');
+    return await submitFlightJob(queryId, { mode: 'single', country: vpnCountry ?? null }, opts?.fetchRunId) as ScrapeResult;
+  }
+  await checkTravelAuthority();
   const query = await prisma.query.findUnique({
     where: { id: queryId },
     include: { user: { select: { preferredAggregators: true } } },
@@ -532,15 +546,15 @@ export async function runScrapeForQuery(
     // the manual scrape endpoint's lock doesn't see a stuck row forever
     // and refuse all future refreshes.
     if (opts?.fetchRunId) {
-      await prisma.fetchRun.update({
-        where: { id: opts.fetchRunId },
+      await travelTransaction((tx, job) => tx.fetchRun.updateMany({
+        where: { id: opts.fetchRunId, travelJobId: job.id, status: 'in_progress' },
         data: { status: 'failed', error: errorMsg, completedAt: new Date() },
-      }).catch(() => {});
+      }));
     }
     return { queryId, status: 'failed', snapshotsCount: 0, extractionCost: 0, error: errorMsg };
   }
 
-  const config = await prisma.extractionConfig.findFirst({ where: { id: 'singleton' } });
+  const config = currentTravelContext()!.config;
   const effectiveCurrency = query.currency ?? config?.defaultCurrency ?? null;
   const effectiveCountry = vpnCountry ?? config?.defaultCountry ?? null;
 
@@ -562,24 +576,25 @@ export async function runScrapeForQuery(
   // network IO starts. Falls back to creating a fresh row for the cron path.
   const fetchRun = opts?.fetchRunId
     ? { id: opts.fetchRunId }
-    : await prisma.fetchRun.create({
-        data: { queryId, status: 'in_progress', vpnCountry: vpnCountry ?? null },
-      });
+    : await flightTransaction(query, tx => tx.fetchRun.create({
+        data: { queryId, status: 'in_progress', vpnCountry: vpnCountry ?? null, travelJobId: currentTravelContext()!.job.id },
+      }));
 
   try {
     return await scrapeQueryForCountry(
       queryId, query, searchParams, config, vpnCountry ?? null, proxyUrl, fetchRun.id
     );
   } catch (err) {
+    currentTravelExecution()?.check();
     const errorMsg = err instanceof Error ? err.message : String(err);
     // Log before updating the DB row so cron operators can diagnose silent
     // failures from logs alone (issue #65). Without this, the only signal
     // was the cron summary line "0 ok, N failed".
     console.error(`[scrape] runScrapeForQuery failed query=${queryId} err=${errorMsg}`);
-    await prisma.fetchRun.update({
+    await flightTransaction(query, tx => tx.fetchRun.update({
       where: { id: fetchRun.id },
       data: { status: 'failed', error: errorMsg, completedAt: new Date() },
-    });
+    }));
     return { queryId, status: 'failed', snapshotsCount: 0, extractionCost: 0, error: errorMsg };
   }
 }
@@ -601,12 +616,13 @@ export async function runFullScrapeForQuery(
   queryId: string,
   opts?: { fetchRunId?: string },
 ): Promise<ScrapeResult[]> {
+  if (!currentTravelContext()) return await submitFlightJob(queryId, { mode: 'full' }, opts?.fetchRunId) as ScrapeResult[];
+  await checkTravelAuthority();
   const query = await prisma.query.findUnique({ where: { id: queryId } });
   if (!query) return [];
 
-  const config = await prisma.extractionConfig.findFirst({ where: { id: 'singleton' } });
-  const vpnProviderType = (config?.vpnProvider as VpnProviderType) ?? 'none';
-  const vpnProvider = createVpnProvider(vpnProviderType);
+  const config = currentTravelContext()!.config;
+  const vpnProvider = currentTravelContext()!.vpn;
   const defaultVpnCountries = config?.vpnCountries ?? [];
   const proxyUrl = vpnProvider.getProxyUrl?.() ?? undefined;
 
@@ -630,25 +646,16 @@ export async function runFullScrapeForQuery(
     if (ci === 0 && opts?.fetchRunId) {
       passFetchRunId = opts.fetchRunId;
     } else {
-      const row = await prisma.fetchRun.create({
-        data: { queryId, status: 'in_progress', vpnCountry: country },
+      const row = await flightTransaction(query, tx => tx.fetchRun.create({
+        data: { queryId, status: 'in_progress', vpnCountry: country, travelJobId: currentTravelContext()!.job.id },
         select: { id: true },
-      });
+      }));
       passFetchRunId = row.id;
     }
 
     if (isVpnPass) {
-      const connected = await vpnProvider.connect(country);
-      if (!connected) {
-        console.error(`[scrape] failed to connect VPN to ${country}, skipping`);
-        // Don't leave the just-pre-created row stuck at in_progress.
-        await prisma.fetchRun.update({
-          where: { id: passFetchRunId },
-          data: { status: 'failed', error: `VPN connect to ${country} failed`, completedAt: new Date() },
-        }).catch(() => {});
-        continue;
-      }
-      await new Promise((r) => setTimeout(r, 3000));
+      await vpnProvider.connect(country);
+      await travelDelay(3000);
     } else if (ci > 0) {
       await vpnProvider.disconnect();
     }
@@ -657,7 +664,7 @@ export async function runFullScrapeForQuery(
     results.push(result);
 
     if (isVpnPass && ci < countriesToScrape.length - 1) {
-      await new Promise((r) => setTimeout(r, VPN_INTER_COUNTRY_DELAY_MS + Math.random() * 3000));
+      await travelDelay(VPN_INTER_COUNTRY_DELAY_MS + Math.random() * 3000);
     }
   }
 
@@ -688,6 +695,11 @@ async function trySyncToHub(): Promise<void> {
 let scrapeInProgress = false;
 
 export async function runScrapeAll(): Promise<ScrapeResult[]> {
+  if (!currentTravelContext()) {
+    const config = await prisma.extractionConfig.findFirst({ where: { id: 'singleton' } });
+    if (config?.enabled === false) return [];
+    return await submitFlightJob(null, { mode: 'batch' }) as ScrapeResult[];
+  }
   if (scrapeInProgress) {
     throw new Error('Scrape already in progress');
   }
@@ -700,7 +712,7 @@ export async function runScrapeAll(): Promise<ScrapeResult[]> {
 }
 
 async function runScrapeAllInner(): Promise<ScrapeResult[]> {
-  const config = await prisma.extractionConfig.findFirst({ where: { id: 'singleton' } });
+  const config = currentTravelContext()!.config;
   // Respect the GUI pause toggle (ExtractionConfig.enabled). When paused, skip
   // the entire run so no background scraping or API cost happens.
   if (config?.enabled === false) {
@@ -710,8 +722,7 @@ async function runScrapeAllInner(): Promise<ScrapeResult[]> {
   const globalInterval = config?.scrapeInterval ?? 3;
 
   // Create VPN provider from config
-  const vpnProviderType = (config?.vpnProvider as VpnProviderType) ?? 'none';
-  const vpnProvider = createVpnProvider(vpnProviderType);
+  const vpnProvider = currentTravelContext()!.vpn;
   const defaultVpnCountries = config?.vpnCountries ?? [];
   const proxyUrl = vpnProvider.getProxyUrl?.() ?? undefined;
 
@@ -768,12 +779,8 @@ async function runScrapeAllInner(): Promise<ScrapeResult[]> {
     // Switch VPN for this country pass
     if (isVpnPass) {
       console.log(`[scrape-all] switching VPN to ${country}...`);
-      const connected = await vpnProvider.connect(country);
-      if (!connected) {
-        console.error(`[scrape-all] failed to connect VPN to ${country}, skipping all queries for this country`);
-        continue;
-      }
-      await new Promise((r) => setTimeout(r, 3000));
+      await vpnProvider.connect(country);
+      await travelDelay(3000);
     } else if (ci > 0) {
       await vpnProvider.disconnect();
     }
@@ -793,12 +800,12 @@ async function runScrapeAllInner(): Promise<ScrapeResult[]> {
       results.push(result);
 
       if (qi < queriesForCountry.length - 1) {
-        await new Promise((resolve) => setTimeout(resolve, 5000 + Math.random() * 5000));
+        await travelDelay(5000 + Math.random() * 5000);
       }
     }
 
     if (isVpnPass && ci < countriesToScrape.length - 1) {
-      await new Promise((r) => setTimeout(r, VPN_INTER_COUNTRY_DELAY_MS + Math.random() * 3000));
+      await travelDelay(VPN_INTER_COUNTRY_DELAY_MS + Math.random() * 3000);
     }
   }
 

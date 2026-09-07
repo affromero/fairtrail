@@ -7,6 +7,7 @@ export { TravelJobError } from './errors';
 export { acquireTravelLease, renewTravelLease, releaseTravelLease, lockTravelAdmission, lockTravelLease, type TravelLeaseToken } from './admission';
 export type TravelJobRequest =
   | { kind: 'flight_batch'; userId: null }
+  | { kind: 'flight_preview'; userId: string | null }
   | { kind: 'flight_query'; queryId: string; userId: string | null }
   | { kind: 'hotel_search'; hotelRunId: string; userId: string | null }
   | { kind: 'car_search'; carRunId: string; userId: string | null };
@@ -26,7 +27,9 @@ export async function enqueueTravelJob(request: TravelJobRequest, tx?: Prisma.Tr
   // Follow the same resource-first lock order as result commits. This also
   // serializes enqueue with a generation change without taking over the lease.
   await lockTravelResource(tx, request.kind);
+  const id = randomUUID();
   let activeKey: string = request.kind;
+  if (request.kind === 'flight_preview') activeKey += `:${id}`;
   let owner: { userId: string | null } | null = null;
   if (request.kind === 'flight_query') {
     activeKey += `:${request.queryId}`;
@@ -50,7 +53,7 @@ export async function enqueueTravelJob(request: TravelJobRequest, tx?: Prisma.Tr
     }
     owner = (await tx.$queryRaw<{ userId: string | null }[]>`SELECT "userId" FROM "CarSearchRun" WHERE id = ${request.carRunId} FOR UPDATE`)[0] ?? null;
   }
-  if (request.kind !== 'flight_batch' && (!owner || owner.userId !== request.userId)) throw new TravelJobError('Travel job owner does not match its source', 404);
+  if (request.kind !== 'flight_batch' && request.kind !== 'flight_preview' && (!owner || owner.userId !== request.userId)) throw new TravelJobError('Travel job owner does not match its source', 404);
   const conflict = request.kind === 'hotel_search'
     ? Prisma.sql`("hotelRunId") DO UPDATE SET "hotelRunId" = EXCLUDED."hotelRunId"`
     : request.kind === 'car_search'
@@ -58,7 +61,7 @@ export async function enqueueTravelJob(request: TravelJobRequest, tx?: Prisma.Tr
       : Prisma.sql`("activeKey") DO UPDATE SET "activeKey" = EXCLUDED."activeKey"`;
   const jobs = await tx.$queryRaw<TravelJob[]>`
     INSERT INTO "TravelJob" (id, kind, "userId", "queryId", "hotelRunId", "carRunId", "activeKey")
-    VALUES (${randomUUID()}, ${request.kind}::"TravelJobKind", ${request.userId},
+    VALUES (${id}, ${request.kind}::"TravelJobKind", ${request.userId},
       ${request.kind === 'flight_query' ? request.queryId : null},
       ${request.kind === 'hotel_search' ? request.hotelRunId : null},
       ${request.kind === 'car_search' ? request.carRunId : null}, ${activeKey})

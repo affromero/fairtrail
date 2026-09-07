@@ -1,6 +1,7 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { prisma } from '@/lib/prisma';
 import { createUserSessionToken } from '../user-auth';
+import { createSessionToken } from '../admin-auth';
 import { acquireTravelLease, getTravelAdmission, quarantineTravelLease } from './admission';
 import { GET, POST } from '@/app/api/admin/travel/route';
 
@@ -51,12 +52,29 @@ describe.skipIf(process.env.TRAVEL_INTEGRATION_TESTS !== '1')('administrator tra
       boundary.token = createUserSessionToken(memberId);
       await prisma.user.update({ where: { id: memberId }, data: { sessionsValidFrom: new Date(Date.now() + 1000) } });
     }
-    const expected = mode === 'public' ? 404 : mode === 'member' ? 403 : 401;
+    const expected = mode === 'member' ? 403 : 401;
     const status = await GET(), recovery = await POST(await request());
     expect(status.status).toBe(expected); expect(recovery.status).toBe(expected);
     expect(status.headers.get('cache-control')).toBe('private, no-store');
     expect(recovery.headers.get('cache-control')).toBe('private, no-store');
     expect((await getTravelAdmission()).quarantinedAt).toBeInstanceOf(Date);
+  });
+  it('allows a public-site administrator to recover flights but rejects a revoked administrator session', async () => {
+    vi.stubEnv('SELF_HOSTED', 'false');
+    boundary.token = createSessionToken();
+    expect((await GET()).status).toBe(200);
+    const previousRevocation = await prisma.extractionConfig.findUniqueOrThrow({ where: { id: 'singleton' }, select: { adminSessionsValidFrom: true } });
+    try {
+      await prisma.extractionConfig.update({ where: { id: 'singleton' }, data: { adminSessionsValidFrom: new Date(Date.now() + 1000) } });
+      expect((await GET()).status).toBe(401);
+      expect((await POST(await request())).status).toBe(401);
+      expect((await getTravelAdmission()).quarantinedAt).toBeInstanceOf(Date);
+      await prisma.extractionConfig.update({ where: { id: 'singleton' }, data: { adminSessionsValidFrom: null } });
+      expect((await POST(await request())).status).toBe(200);
+      expect((await getTravelAdmission()).quarantinedAt).toBeNull();
+    } finally {
+      await prisma.extractionConfig.update({ where: { id: 'singleton' }, data: previousRevocation });
+    }
   });
   it('returns sanitized recovery state and applies one acknowledged administrator recovery', async () => {
     const status = await GET(); expect(status.status).toBe(200);

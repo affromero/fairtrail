@@ -1,11 +1,44 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { chromium } from 'playwright';
 import { launchBrowser } from '@/lib/scraper/browser';
-import { TravelExecution, withTravelExecution } from './execution';
+import { closeTravelBrowser, TravelExecution, withTravelExecution } from './execution';
+import { navigateFlightDetail } from '../scraper/navigate';
+import { captureHotelSource } from '../hotels/providers';
+import { DEFAULT_HOTEL_FILTERS } from '../hotels/types';
 
 const execution = () => new TravelExecution({ jobId: crypto.randomUUID(), generation: 1, resource: 'browser' });
 
 describe.skipIf(process.env.TRAVEL_BROWSER_TESTS !== '1')('travel execution with real Chromium', () => {
+  it.each(['flight', 'hotel'] as const)('propagates %s provider and browser cleanup failures together', async provider => {
+    const browser = await chromium.launch({ headless: true, executablePath: process.env.CHROME_PATH || undefined, args: ['--no-sandbox'] });
+    const close = browser.close.bind(browser);
+    const launcher = vi.spyOn(chromium, 'launch').mockResolvedValueOnce(browser);
+    vi.spyOn(browser, 'newContext').mockRejectedValueOnce(new Error('provider context unavailable'));
+    vi.spyOn(browser, 'close').mockImplementationOnce(async () => { await close(); throw new Error('provider close acknowledgement lost'); });
+    try {
+      await expect(withTravelExecution(execution(), async () => {
+        if (provider === 'flight') return navigateFlightDetail({ origin: 'LHR', destination: 'JFK', dateFrom: new Date('2027-05-01'), dateTo: new Date('2027-05-10') }, 0);
+        const search = { destination: 'London', dateMode: 'fixed' as const, checkIn: '2027-05-01', checkOut: '2027-05-04', flexibility: 0, minNights: 3, maxNights: 3, rooms: [{ adults: 2, children: [] }], currency: 'GBP', sources: ['booking' as const], filters: DEFAULT_HOTEL_FILTERS };
+        return captureHotelSource(search, { checkIn: search.checkIn, checkOut: search.checkOut }, 'booking');
+      })).rejects.toMatchObject({ name: 'TravelCleanupError' });
+      expect(browser.isConnected()).toBe(false);
+    } finally { launcher.mockRestore(); await close(); }
+  });
+  it.each([false, true])('retains rejected cleanup and blocks later browser work even if its immediate exception is caught (primary error: %s)', async primary => {
+    const scope = execution();
+    await expect(withTravelExecution(scope, async () => {
+      const browser = await launchBrowser(), close = browser.close.bind(browser);
+      vi.spyOn(browser, 'close').mockImplementationOnce(async () => { await close(); throw new Error('lost close acknowledgement'); });
+      try {
+        await closeTravelBrowser(browser, primary ? new Error('provider rejected request') : undefined);
+      } catch (error) {
+        expect(error).toMatchObject({ name: 'TravelCleanupError', errors: expect.arrayContaining([expect.objectContaining({ message: 'lost close acknowledgement' })]) });
+        if (primary) expect(error).toMatchObject({ errors: expect.arrayContaining([expect.objectContaining({ message: 'provider rejected request' })]) });
+      }
+      await expect(launchBrowser()).rejects.toMatchObject({ name: 'TravelCleanupError' });
+      expect(browser.isConnected()).toBe(false);
+    })).rejects.toMatchObject({ name: 'TravelCleanupError' });
+  });
   it('closes a live browser and prevents further page work on cancellation', async () => {
     const scope = execution();
     await expect(withTravelExecution(scope, async () => {

@@ -381,6 +381,7 @@ model CarSnapshot {
 enum TravelJobKind {
   flight_batch
   flight_query
+  flight_preview
   hotel_search
   car_search
 }
@@ -407,6 +408,7 @@ model TravelJob {
   leaseResource   String?
   leaseOwner      String?
   leaseGeneration Int?
+  request         Json?
   result          Json?
   error           String?
   createdAt       DateTime @default(now())

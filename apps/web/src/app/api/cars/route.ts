@@ -4,6 +4,7 @@ import { carTrackerDto, createCarTracker } from '@/lib/cars/store';
 import { listCarTrackerPage } from '@/lib/cars/list';
 import { CarError } from '@/lib/cars/types';
 import { validateCarCreationKey } from '@/lib/cars/creation-input';
+import { wakeTravelWorker } from '@/lib/travel/http';
 
 export async function GET(request: Request) {
   return carEndpoint(async actor => {
@@ -16,6 +17,7 @@ export async function POST(request: Request) {
   return carEndpoint(async actor => {
     const input = await readCarJson(request), creationKey = validateCarCreationKey(request.headers.get('Idempotency-Key'));
     const tracker = await createCarTracker(input, actor, creationKey);
+    wakeTravelWorker();
     return apiSuccess({ tracker: carTrackerDto(tracker), creationKey }, 201);
   });
 }

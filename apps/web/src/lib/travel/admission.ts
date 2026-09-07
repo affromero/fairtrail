@@ -2,6 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { prisma } from '@/lib/prisma';
 import type { Prisma, TravelAdmission, TravelLease } from '@/generated/prisma/client';
 import { TravelJobError } from './errors';
+import { interruptTravelRun } from './interruption';
 
 export interface TravelLeaseToken { id: string; owner: string; generation: number; topologyVersion: number }
 const DEFAULT_LEASE_MS = 120_000;
@@ -37,6 +38,8 @@ async function checkAdmission(tx: Prisma.TransactionClient): Promise<TravelAdmis
       (state = 'held' AND "expiresAt" <= clock_timestamp()) OR state = 'quarantined' OR
       (state = 'idle' AND "expiresAt" > ${EPOCH}) LIMIT 1`;
   if (expired.length) return quarantine(tx, 'A travel worker stopped without verified cleanup. Stop old workers and verify the network before recovery.');
+  const legacy = await tx.hotelLease.findUnique({ where: { id: 'worker' } });
+  if (legacy && legacy.expiresAt.getTime() > 0) return quarantine(tx, 'A previous hotel worker requires upgrade recovery. Stop old workers and verify the network before continuing.');
   return current;
 }
 
@@ -168,12 +171,12 @@ export async function recoverTravelAdmission(actor: { userId: string | null; isA
     const now = new Date(), message = 'Travel worker interrupted; previous verified observations were retained.';
     const jobs = await tx.travelJob.findMany({ where: { status: 'running' } });
     for (const job of jobs) {
-      if (job.carRunId) await tx.carSearchRun.updateMany({ where: { id: job.carRunId, status: { in: ['queued', 'running'] } }, data: { status: 'failed', error: message, completedAt: now } });
-      if (job.hotelRunId) await tx.hotelSearchRun.updateMany({ where: { id: job.hotelRunId, status: { in: ['queued', 'running'] } }, data: { status: 'failed', error: message, completedAt: now } });
-      await tx.fetchRun.updateMany({ where: { travelJobId: job.id, status: 'in_progress' }, data: { status: 'failed', error: message, completedAt: now } });
+      await interruptTravelRun(tx, job, message);
       await tx.travelJob.update({ where: { id: job.id }, data: { status: 'failed', error: message, completedAt: now, activeKey: null, leaseResource: null, leaseOwner: null, leaseGeneration: null } });
     }
     await tx.travelLease.updateMany({ data: { state: 'idle', expiresAt: EPOCH, generation: { increment: 1 } } });
+    await tx.hotelLease.updateMany({ data: { owner: randomUUID(), expiresAt: EPOCH } });
+    await tx.hotelSearchRun.updateMany({ where: { status: 'running', travelJob: null }, data: { status: 'failed', error: message, completedAt: now } });
     await tx.travelAdmission.update({ where: { id: admission.id }, data: {
       quarantinedAt: null, quarantineReason: null, recoveredAt: now, recoveredBy: actor.userId ?? 'instance-administrator', recoveryGeneration: { increment: 1 },
     } });

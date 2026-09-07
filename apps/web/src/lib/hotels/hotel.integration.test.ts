@@ -9,6 +9,7 @@ import { POST as searchRoute } from '@/app/api/hotels/search/route';
 import { GET as detailRoute, DELETE as deleteRoute } from '@/app/api/hotels/[id]/route';
 import { invalidateMultiUserCache } from '@/lib/multi-user';
 import type { HotelOffer } from './types';
+import { acquireTravelLease, releaseTravelLease } from '../travel/jobs';
 
 const boundary = vi.hoisted(() => ({ search: vi.fn(), cookie: vi.fn() }));
 // Provider adapters and request cookies are external I/O boundaries; domain,
@@ -40,6 +41,9 @@ describe.skipIf(!enabled)('hotel workflows against isolated PostgreSQL', () => {
     await prisma.hotelTracker.deleteMany();
     await prisma.hotelSearchRun.deleteMany();
     await prisma.hotelLease.deleteMany();
+    await prisma.travelJob.deleteMany();
+    await prisma.travelLease.deleteMany();
+    await prisma.travelAdmission.deleteMany();
     await prisma.extractionConfig.upsert({ where: { id: 'singleton' }, create: { enabled: true, multiUserMode: false, provider: 'anthropic', model: 'flight-model', scrapeInterval: 6 }, update: { enabled: true, multiUserMode: false, provider: 'anthropic', model: 'flight-model', scrapeInterval: 6 } });
     await invalidateMultiUserCache();
   });
@@ -102,16 +106,17 @@ describe.skipIf(!enabled)('hotel workflows against isolated PostgreSQL', () => {
     expect(await prisma.hotelSearchRun.findUnique({ where: { id: run.id } })).toMatchObject({ status: 'cancelled', result: null });
   });
   it('recovers an interrupted worker with a visible failed job', async () => {
-    const run = await createHotelSearch(criteria, solo);
-    await prisma.hotelSearchRun.update({ where: { id: run.id }, data: { status: 'running' } });
+    const run = await prisma.hotelSearchRun.create({ data: { request: json(criteria), status: 'running' } });
     await pumpHotelJobs();
     expect(await prisma.hotelSearchRun.findUnique({ where: { id: run.id } })).toMatchObject({ status: 'failed', error: expect.stringContaining('interrupted') });
   });
   it('honors a lease held by another process', async () => {
     const run = await createHotelSearch(criteria, solo);
-    await prisma.hotelLease.create({ data: { id: 'worker', owner: 'other-process', expiresAt: new Date(Date.now() + 60_000) } });
+    const lease = await acquireTravelLease('browser');
+    if (!lease) throw new Error('Expected isolated browser resource');
     await pumpHotelJobs();
     expect(await prisma.hotelSearchRun.findUnique({ where: { id: run.id } })).toMatchObject({ status: 'queued', result: null });
+    await releaseTravelLease(lease);
   });
   it('excludes approximate room observations from alerts unless opted in', async () => {
     const tracker = await tracked({ mode: 'room' });
@@ -234,7 +239,7 @@ describe.skipIf(!enabled)('hotel workflows against isolated PostgreSQL', () => {
     const tracker = await tracked();
     const run = await refreshHotelTracker(tracker.id, solo);
     boundary.search.mockImplementation(async () => {
-      await prisma.hotelLease.update({ where: { id: 'worker' }, data: { owner: 'new-worker', expiresAt: new Date(Date.now() + 60_000) } });
+      await prisma.travelLease.update({ where: { id: 'browser' }, data: { owner: 'new-worker', expiresAt: new Date(Date.now() + 60_000) } });
       return [sample];
     });
     await pumpHotelJobs();

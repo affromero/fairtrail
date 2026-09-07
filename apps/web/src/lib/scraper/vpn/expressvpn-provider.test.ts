@@ -3,7 +3,7 @@ import { ExpressVpnProvider } from './expressvpn-provider';
 
 const geo = vi.hoisted(() => ({ lookup: vi.fn() }));
 vi.mock('geoip-lite', () => ({ default: geo }));
-const provider = new ExpressVpnProvider();
+let provider: ExpressVpnProvider;
 const http = vi.fn<typeof fetch>();
 const modernStatus = (connected: boolean) => JSON.stringify({ connected, server: connected ? 'uk-london' : '', status: connected ? 'Connected' : 'Disconnected', ip: '' });
 
@@ -11,6 +11,7 @@ beforeEach(() => {
   vi.useFakeTimers();
   vi.stubGlobal('fetch', http);
   vi.stubEnv('EXPRESSVPN_API_URL', 'http://vpn.test');
+  provider = new ExpressVpnProvider();
   http.mockReset();
   geo.lookup.mockReset().mockReturnValue({ country: 'GB' });
 });
@@ -21,6 +22,17 @@ function responses(...bodies: string[]) {
 }
 
 describe('VPN status observations', () => {
+  it('keeps the admitted endpoint and proxy when process configuration changes', async () => {
+    vi.stubEnv('EXPRESSVPN_SOCKS_URL', 'socks5://original.test:1080');
+    const captured = new ExpressVpnProvider();
+    vi.stubEnv('EXPRESSVPN_API_URL', 'http://replacement.test');
+    vi.stubEnv('EXPRESSVPN_SOCKS_URL', '');
+    responses('Not connected');
+    await captured.getStatus();
+    expect(http.mock.calls[0]?.[0]).toBe('http://vpn.test/v1/status');
+    expect(captured.getProxyUrl()).toBe('socks5://original.test:1080');
+    expect(captured.isSystemWide()).toBe(false);
+  });
   it.each(['Not connected', 'Disconnected', ' Not connected\n'])('recognizes an explicit disconnected response: %s', async status => {
     responses(status);
     await expect(provider.getStatus()).resolves.toEqual({ connected: false, currentLocation: null, currentCountry: null });

@@ -70,19 +70,27 @@ export async function GET(request: NextRequest) {
   // which the version check and the fixture-based extraction check both miss.
   checks.push(
     await runCheck('browser_launch', async () => {
-      const { launchBrowser } = await import('@/lib/scraper/browser');
-      const browser = await launchBrowser();
-      try {
-        const page = await browser.newPage();
-        await page.setContent('<h1>flight-finder smoke</h1>');
-        const text = await page.textContent('h1');
-        if (text !== 'flight-finder smoke') {
-          throw new Error(`unexpected rendered text: ${text}`);
+      const { withPreviewTravelAdmission } = await import('@/lib/travel/preview');
+      return withPreviewTravelAdmission(async () => {
+        const { launchBrowser } = await import('@/lib/scraper/browser');
+        const { closeTravelBrowser } = await import('@/lib/travel/execution');
+        const browser = await launchBrowser();
+        let failure: unknown;
+        try {
+          const page = await browser.newPage();
+          await page.setContent('<h1>flight-finder smoke</h1>');
+          const text = await page.textContent('h1');
+          if (text !== 'flight-finder smoke') {
+            throw new Error(`unexpected rendered text: ${text}`);
+          }
+          return `Launched ${browser.version()} and rendered a page`;
+        } catch (error) {
+          failure = error;
+          throw error;
+        } finally {
+          await closeTravelBrowser(browser, failure);
         }
-        return `Launched ${browser.version()} and rendered a page`;
-      } finally {
-        await browser.close();
-      }
+      });
     })
   );
 

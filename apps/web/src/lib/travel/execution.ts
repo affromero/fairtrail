@@ -30,6 +30,11 @@ export class TravelExecution {
 
   check(): void { this.signal.throwIfAborted(); }
 
+  recordCleanupFailure(error: TravelCleanupError): void {
+    this.failures.push(error);
+    this.abort(error);
+  }
+
   abort(reason: unknown = new Error('Travel execution cancelled')): void {
     if (!this.signal.aborted) this.controller.abort(reason);
     for (const browser of this.browsers.keys()) this.closeBrowser(browser);
@@ -71,6 +76,16 @@ export class TravelExecution {
 }
 
 export function currentTravelExecution(): TravelExecution | undefined { return executions.getStore(); }
+
+/** A successful close preserves the caller's outcome; a rejected close is unsafe. */
+export async function closeTravelBrowser(browser: Browser, primaryError?: unknown): Promise<void> {
+  try { await browser.close(); }
+  catch (error) {
+    const cleanup = new TravelCleanupError(primaryError === undefined ? [error] : [primaryError, error], 'Travel browser cleanup failed', { cause: error });
+    currentTravelExecution()?.recordCleanupFailure(cleanup);
+    throw cleanup;
+  }
+}
 
 export async function withTravelExecution<T>(execution: TravelExecution, work: () => Promise<T>): Promise<T> {
   return executions.run(execution, async () => {

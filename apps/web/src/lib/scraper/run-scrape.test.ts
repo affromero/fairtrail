@@ -1,12 +1,20 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
+import { createHash } from 'node:crypto';
+import { withTravelContext } from '../travel/context';
+import { TravelVpnSession } from '../travel/vpn';
+import type { ExtractionConfig, TravelJob } from '@/generated/prisma/client';
 
-const { mockPrisma, mockNavigateGoogleFlights, mockNavigateAirlineDirect, mockNavigateSkyscanner, mockNavigateKayak, mockExtractPrices, mockIsKnownAirline } = vi.hoisted(() => {
+const { mockPrisma, mockNavigateGoogleFlights, mockNavigateAirlineDirect, mockNavigateSkyscanner, mockNavigateKayak, mockExtractPrices } = vi.hoisted(() => {
   const mockPrisma = {
+    $transaction: vi.fn(),
+    $queryRaw: vi.fn(),
+    $executeRaw: vi.fn(),
+    travelAdmission: { upsert: vi.fn() },
     query: { findUnique: vi.fn() },
     fetchRun: { create: vi.fn(), update: vi.fn() },
-    extractionConfig: { findFirst: vi.fn() },
+    extractionConfig: { findFirst: vi.fn(), findUnique: vi.fn() },
     priceSnapshot: { createMany: vi.fn(), findMany: vi.fn() },
     apiUsageLog: { create: vi.fn() },
   };
@@ -15,8 +23,7 @@ const { mockPrisma, mockNavigateGoogleFlights, mockNavigateAirlineDirect, mockNa
   const mockNavigateSkyscanner = vi.fn();
   const mockNavigateKayak = vi.fn();
   const mockExtractPrices = vi.fn();
-  const mockIsKnownAirline = vi.fn();
-  return { mockPrisma, mockNavigateGoogleFlights, mockNavigateAirlineDirect, mockNavigateSkyscanner, mockNavigateKayak, mockExtractPrices, mockIsKnownAirline };
+  return { mockPrisma, mockNavigateGoogleFlights, mockNavigateAirlineDirect, mockNavigateSkyscanner, mockNavigateKayak, mockExtractPrices };
 });
 
 vi.mock('@/lib/prisma', () => ({ prisma: mockPrisma }));
@@ -32,35 +39,29 @@ vi.mock('./extract-prices', () => ({
   extractPrices: (...args: unknown[]) => mockExtractPrices(...args),
 }));
 
-vi.mock('./ai-registry', () => ({
-  getModelCosts: vi.fn().mockReturnValue({ costPer1kInput: 0, costPer1kOutput: 0 }),
-}));
-
-vi.mock('./airline-urls', () => ({
-  isKnownAirline: (...args: unknown[]) => mockIsKnownAirline(...args),
-}));
-
-vi.mock('./country-profiles', () => ({
-  getCountryProfile: vi.fn().mockReturnValue(undefined),
-}));
-
-vi.mock('./vpn', () => ({
-  createVpnProvider: vi.fn().mockReturnValue({
-    type: 'none',
-    getStatus: vi.fn().mockResolvedValue({ connected: false, currentLocation: null, currentCountry: null }),
-    connect: vi.fn().mockResolvedValue(true),
-    disconnect: vi.fn().mockResolvedValue(undefined),
-    listLocations: vi.fn().mockResolvedValue([]),
-    isSystemWide: vi.fn().mockReturnValue(false),
-  }),
-}));
-
 vi.mock('fs/promises', () => ({
   mkdir: vi.fn().mockResolvedValue(undefined),
   writeFile: vi.fn().mockResolvedValue(undefined),
 }));
 
-import { runScrapeForQuery, runScrapeAll } from './run-scrape';
+import { runScrapeForQuery as scrapeAdmittedQuery, runScrapeAll } from './run-scrape';
+
+const lease = { id: 'vpn', owner: 'unit-worker', generation: 1, topologyVersion: 1 };
+const job = { id: 'unit-job', kind: 'flight_query', queryId: 'q1', userId: null, status: 'running' } as TravelJob;
+beforeEach(() => {
+  mockPrisma.$transaction.mockImplementation((work: (tx: typeof mockPrisma) => Promise<unknown>) => work(mockPrisma));
+  mockPrisma.$executeRaw.mockResolvedValue(1);
+  mockPrisma.$queryRaw.mockImplementation(async (sql: TemplateStringsArray) => sql.join('').includes('FROM "TravelJob"') ? [job] : [{ id: 'vpn' }]);
+  mockPrisma.travelAdmission.upsert.mockResolvedValue({ quarantinedAt: null, topologyVersion: 1, topologyHash: createHash('sha256').update(JSON.stringify(['none', null, null])).digest('hex') });
+  mockPrisma.extractionConfig.findUnique.mockResolvedValue({ vpnProvider: 'none' });
+});
+
+// These extraction regressions exercise the admitted pipeline. Queue and worker
+// lifecycle behavior is covered separately against PostgreSQL and real browsers.
+async function runScrapeForQuery(...args: Parameters<typeof scrapeAdmittedQuery>) {
+  const config = await mockPrisma.extractionConfig.findFirst() as ExtractionConfig | null;
+  return withTravelContext({ job, lease, config, vpn: new TravelVpnSession(lease, 'none') }, () => scrapeAdmittedQuery(...args));
+}
 
 describe('runScrapeAll pause gate (issue #106)', () => {
   beforeEach(() => vi.clearAllMocks());
@@ -75,6 +76,8 @@ describe('runScrapeAll pause gate (issue #106)', () => {
 
 const BASE_QUERY = {
   id: 'q1',
+  userId: null,
+  updatedAt: new Date('2026-01-01'),
   active: true,
   isSeed: false,
   origin: 'JFK',
@@ -100,7 +103,6 @@ const BASE_QUERY = {
 describe('runScrapeForQuery', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockIsKnownAirline.mockReturnValue(false);
     mockPrisma.query.findUnique.mockResolvedValue(BASE_QUERY);
     mockPrisma.fetchRun.create.mockResolvedValue({ id: 'run1' });
     mockPrisma.fetchRun.update.mockResolvedValue({});
@@ -799,7 +801,6 @@ describe('runScrapeForQuery airline_direct -> google_flights diversification (is
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mockIsKnownAirline.mockReturnValue(true);
     mockPrisma.query.findUnique.mockResolvedValue(TURKISH_QUERY);
     mockPrisma.fetchRun.create.mockResolvedValue({ id: 'run1' });
     mockPrisma.fetchRun.update.mockResolvedValue({});
@@ -1004,7 +1005,6 @@ describe('resolveAggregatorChain', () => {
 describe('runScrapeForQuery aggregator chain walk', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockIsKnownAirline.mockReturnValue(false);
     mockPrisma.query.findUnique.mockResolvedValue(BASE_QUERY);
     mockPrisma.fetchRun.create.mockResolvedValue({ id: 'run1' });
     mockPrisma.fetchRun.update.mockResolvedValue({});

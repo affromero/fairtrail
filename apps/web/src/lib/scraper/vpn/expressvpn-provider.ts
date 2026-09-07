@@ -29,8 +29,7 @@ async function withDeadline<T>(milliseconds: number, work: (signal: AbortSignal)
   } finally { clearTimeout(timeout); }
 }
 
-async function sidecarApi(path: string, signal: AbortSignal, method: 'GET' | 'POST' = 'GET', body?: string): Promise<string> {
-  const apiUrl = process.env.EXPRESSVPN_API_URL || DEFAULT_API_URL;
+async function sidecarApi(apiUrl: string, path: string, signal: AbortSignal, method: 'GET' | 'POST' = 'GET', body?: string): Promise<string> {
   signal.throwIfAborted();
   const res = await fetch(apiUrl + path, {
     method, signal, redirect: 'error', ...(body === undefined ? {} : { body, headers: { 'Content-Type': 'application/json' } }),
@@ -62,8 +61,8 @@ function objectFrom(text: string): Record<string, unknown> {
   return raw as Record<string, unknown>;
 }
 
-async function readStatus(signal: AbortSignal): Promise<{ status: VpnStatus; modern: boolean }> {
-  const text = await sidecarApi('/v1/status', signal);
+async function readStatus(apiUrl: string, signal: AbortSignal): Promise<{ status: VpnStatus; modern: boolean }> {
+  const text = await sidecarApi(apiUrl, '/v1/status', signal);
   if (text.startsWith('{')) {
     const raw = objectFrom(text);
     if (typeof raw.connected !== 'boolean' || typeof raw.server !== 'string' || typeof raw.status !== 'string'
@@ -87,8 +86,8 @@ function acknowledge(text: string, modern: boolean, expected: string): void {
   if (modern ? objectFrom(text).success !== true : text !== expected) throw new Error('VPN did not acknowledge ' + expected.toLowerCase());
 }
 
-async function sidecarRegion(country: string, signal: AbortSignal): Promise<string> {
-  const raw: unknown = JSON.parse(await sidecarApi('/v1/servers', signal));
+async function sidecarRegion(apiUrl: string, country: string, signal: AbortSignal): Promise<string> {
+  const raw: unknown = JSON.parse(await sidecarApi(apiUrl, '/v1/servers', signal));
   if (!Array.isArray(raw) || raw.length > 10000 || raw.some(value => typeof value !== 'string' || !value || value.length > 200)) throw new Error('Invalid VPN regions');
   const region = SIDECAR_REGIONS[country];
   const selected = [region, region + '-1', EXPRESSVPN_SERVERS[country]].find(value => value && raw.includes(value));
@@ -109,25 +108,28 @@ async function pause(signal: AbortSignal): Promise<void> {
 export class ExpressVpnProvider implements VpnProvider {
   readonly type = 'expressvpn' as const;
 
-  getProxyUrl(): string | undefined { return process.env.EXPRESSVPN_SOCKS_URL || undefined; }
+  constructor(private readonly apiUrl = process.env.EXPRESSVPN_API_URL || DEFAULT_API_URL,
+    private readonly proxyUrl = process.env.EXPRESSVPN_SOCKS_URL || undefined) {}
+
+  getProxyUrl(): string | undefined { return this.proxyUrl; }
 
   async getStatus(): Promise<VpnStatus> {
-    return withDeadline(10_000, async signal => (await readStatus(signal)).status);
+    return withDeadline(10_000, async signal => (await readStatus(this.apiUrl, signal)).status);
   }
 
   async connect(countryCode: string): Promise<boolean> {
     const server = EXPRESSVPN_SERVERS[countryCode.toUpperCase()];
     if (!server) return false;
     return withDeadline(CONNECT_TIMEOUT_MS, async signal => {
-      const { modern } = await readStatus(signal);
+      const { modern } = await readStatus(this.apiUrl, signal);
       const acknowledgement = modern
-        ? await sidecarApi('/v1/connect', signal, 'POST', JSON.stringify({ server: await sidecarRegion(countryCode.toUpperCase(), signal) }))
-        : await sidecarApi('/v1/connect/' + server, signal, 'POST');
+        ? await sidecarApi(this.apiUrl, '/v1/connect', signal, 'POST', JSON.stringify({ server: await sidecarRegion(this.apiUrl, countryCode.toUpperCase(), signal) }))
+        : await sidecarApi(this.apiUrl, '/v1/connect/' + server, signal, 'POST');
       acknowledge(acknowledgement, modern, 'Connected');
       while (true) {
-        const { status } = await readStatus(signal);
+        const { status } = await readStatus(this.apiUrl, signal);
         if (status.connected) {
-          const ipText = await sidecarApi('/v1/publicip/ip', signal);
+          const ipText = await sidecarApi(this.apiUrl, '/v1/publicip/ip', signal);
           const exitIp = modern ? objectFrom(ipText).public_ip : ipText;
           if (typeof exitIp !== 'string' || !isIP(exitIp)) throw new Error('VPN exit IP is not verified');
           const { default: geoip } = await import(/* webpackIgnore: true */ 'geoip-lite');
@@ -144,11 +146,11 @@ export class ExpressVpnProvider implements VpnProvider {
 
   async disconnect(): Promise<void> {
     await withDeadline(CONNECT_TIMEOUT_MS, async signal => {
-      const { status, modern } = await readStatus(signal);
+      const { status, modern } = await readStatus(this.apiUrl, signal);
       if (!status.connected) return;
-      acknowledge(await sidecarApi('/v1/disconnect', signal, 'POST'), modern, 'Disconnected');
+      acknowledge(await sidecarApi(this.apiUrl, '/v1/disconnect', signal, 'POST'), modern, 'Disconnected');
       while (true) {
-        if (!(await readStatus(signal)).status.connected) return;
+        if (!(await readStatus(this.apiUrl, signal)).status.connected) return;
         await pause(signal);
       }
     });
@@ -158,5 +160,5 @@ export class ExpressVpnProvider implements VpnProvider {
     return Object.entries(EXPRESSVPN_SERVERS).map(([code, alias]) => code + ': ' + alias);
   }
 
-  isSystemWide(): boolean { return !process.env.EXPRESSVPN_SOCKS_URL; }
+  isSystemWide(): boolean { return !this.proxyUrl; }
 }

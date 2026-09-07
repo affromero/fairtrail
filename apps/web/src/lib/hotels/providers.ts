@@ -9,6 +9,7 @@ import { navigateHotelPage } from './navigation';
 import { captureBookingRates } from './booking-capture';
 import { captureHotelLinks } from './link-capture';
 import type { HotelOffer, HotelSearch, HotelSelection, HotelSource, HotelStay } from './types';
+import { closeTravelBrowser, currentTravelExecution, TravelCleanupError } from '../travel/execution';
 
 export const HOTEL_DISCOVERY_LIMIT = 8;
 
@@ -22,6 +23,7 @@ export class PartialHotelSourceError extends Error {
 export async function captureHotelSource(search: HotelSearch, stay: HotelStay, source: HotelSource, selection?: HotelSelection): Promise<HotelPageCapture> {
   const url = source === 'booking' ? bookingSearchUrl(search, stay, selection) : googleSearchUrl(search, stay, selection);
   const browser = await launchBrowser();
+  let failure: unknown;
   try {
     const profile = COUNTRY_PROFILES.GB!;
     const context = await createStealthContext(browser, { countryProfile: profile });
@@ -49,8 +51,11 @@ export async function captureHotelSource(search: HotelSearch, stay: HotelStay, s
       starsLabel: [...(document.querySelector('#hp_hotel_name,.pp-header__title')?.parentElement?.parentElement?.querySelectorAll('[aria-label],[title]') ?? [])].map(element => element.getAttribute('aria-label') ?? element.getAttribute('title') ?? '').find(label => /[1-5] (?:out of 5|stars)/i.test(label)),
     }));
     return { url: page.url(), text: text.slice(0, 90000), controls: controls.slice(0, 20000), links: links.slice(0, 150), images: images.filter(image => /(?:bstatic\.com.*\/hotel\/|googleusercontent\.com)/.test(image.url)).slice(0, 12), rates, totalPriceBasis, ...metadata };
+  } catch (error) {
+    failure = error;
+    throw error;
   } finally {
-    await browser.close();
+    await closeTravelBrowser(browser, failure);
   }
 }
 
@@ -82,6 +87,8 @@ export async function searchHotelSource(search: HotelSearch, stay: HotelStay, so
       const detail = await captureHotelSource(search, stay, source, property);
       offers.push(...(source === 'booking' ? extractBookingOffers(detail, search, stay) : extractGoogleOffers(detail, search, stay)));
     } catch (error) {
+      currentTravelExecution()?.check();
+      if (error instanceof TravelCleanupError) throw error;
       errors.push(`${new URL(link.url).pathname}: ${error instanceof Error ? error.message : String(error)}`);
     }
   }

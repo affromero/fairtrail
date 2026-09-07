@@ -1,4 +1,4 @@
-import { requireAdminApi } from '@/lib/admin-guard';
+import { requireAdminApi, verifyAdminSessionRevocable } from '@/lib/admin-guard';
 import { apiError, apiSuccess } from '@/lib/api-response';
 import { carActor } from '@/lib/cars/access';
 import { readCarJson } from '@/lib/cars/http';
@@ -9,7 +9,7 @@ import { TravelJobError } from '@/lib/travel/errors';
 async function endpoint(action: () => Promise<Response>): Promise<Response> {
   let response: Response;
   try {
-    if (process.env.SELF_HOSTED !== 'true') response = apiError('Not found', 404);
+    if (process.env.SELF_HOSTED !== 'true') response = await verifyAdminSessionRevocable() ? await action() : apiError('Unauthorized', 401);
     else response = await requireAdminApi() ?? await action();
   } catch (error) {
     if (error instanceof TravelJobError || error instanceof CarError) response = apiError(error.message, error.status);
@@ -29,7 +29,7 @@ export async function GET(): Promise<Response> {
 
 export async function POST(request: Request): Promise<Response> {
   return endpoint(async () => {
-    const actor = await carActor();
+    const actor = process.env.SELF_HOSTED === 'true' ? await carActor() : { userId: null, isAdmin: true };
     await recoverTravelAdmission(actor, await readCarJson(request));
     return apiSuccess(await getTravelAdmission());
   });

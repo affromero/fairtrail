@@ -12,6 +12,7 @@ import { GET as status, DELETE as cancel } from '@/app/api/cars/search/[id]/rout
 
 const boundary = vi.hoisted(() => ({ token: '' }));
 vi.mock('next/headers', () => ({ cookies: async () => ({ get: () => boundary.token ? { value: boundary.token } : undefined }) }));
+vi.mock('next/server', async original => ({ ...await original<typeof import('next/server')>(), after: vi.fn() }));
 const request = (body?: unknown, method = 'GET', key = crypto.randomUUID()) => new Request('http://localhost/api/cars', { method, ...(body === undefined ? {} : { headers: { 'Content-Type': 'application/json', 'Idempotency-Key': key }, body: JSON.stringify(body) }) });
 const context = (id: string) => ({ params: Promise.resolve({ id }) });
 
