@@ -1,5 +1,14 @@
 {
   "Cars": {
+    "searchTitle": "Your rental search",
+    "statusInterrupted": "Status updates interrupted. The results below are the last confirmed view; tracking is disabled until status is refreshed.",
+    "cancelUncertain": "Cancellation is not confirmed. The check may have finished or been cancelled. Refresh status before taking another action.",
+    "accessLost": "Access to this private search is no longer available. Sign in again or check that you are using the correct account.",
+    "retryStatus": "Retry status updates",
+    "refreshStatus": "Refresh status",
+    "cancelSearch": "Cancel search",
+    "updatingStatus": "Updating search status…",
+    "signIn": "Sign in",
     "selectedOffer": "Selected offer",
     "pendingSettings": "Settings being recovered",
     "noTarget": "No target",

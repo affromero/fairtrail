@@ -111,6 +111,20 @@ describe.skipIf(process.env.CAR_HTTP_INTEGRATION_TESTS !== '1')('car HTTP owners
     expect((await status(request(), context(run.id))).status).toBe(200);
     expect((await create(request({ searchId: run.id, offerId: offer.id }, 'POST'))).status).toBe(409);
   });
+  it('reports the selected provider for an exact-contract refresh without changing the stored search', async () => {
+    const source = await completed();
+    const row = await createCarTracker({ searchId: source.id, offerId: 'verified-quote', mode: 'contract' }, { userId: owner, isAdmin: false });
+    const run = await prisma.carSearchRun.findFirstOrThrow({ where: { trackerId: row.id } });
+    const response = await status(request(), context(run.id));
+    expect(response.status).toBe(200);
+    expect((await response.json()).data).toMatchObject({ id: run.id, trackerId: row.id, status: 'queued', search: { sources: ['discovercars'] } });
+    expect((await prisma.carSearchRun.findUniqueOrThrow({ where: { id: run.id } })).request).toEqual(run.request);
+    const offer = carOfferFixture();
+    await prisma.carSearchRun.update({ where: { id: run.id }, data: { status: 'success', completedAt: new Date(), result: carJson(carReportFixture([offer], ['discovercars'])) } });
+    const done = await status(request(), context(run.id));
+    expect(done.status).toBe(200);
+    expect((await done.json()).data.result).toMatchObject({ total: 1, completed: 1, offers: [{ id: offer.id }] });
+  });
   it('preserves owned search visibility across tracker reassignment without exposing the tracker', async () => {
     const row = await tracker(), run = await prisma.carSearchRun.findFirstOrThrow({ where: { trackerId: row.id } });
     await prisma.user.update({ where: { id: owner }, data: { isAdmin: true } });

@@ -28,7 +28,7 @@ function useOfferClock(offers: CarOffer[]) {
   return now;
 }
 
-export function CarResults({ actorScope, searchId, search, report, status }: { actorScope: string; searchId: string; search: CarSearch; report: CarSearchReport; status: string }) {
+export function CarResults({ actorScope, searchId, search, report, status, mutationsDisabled = false }: { actorScope: string; searchId: string; search: CarSearch; report: CarSearchReport; status: string; mutationsDisabled?: boolean }) {
   const t = useTranslations('Cars'), locale = useLocale(), now = useOfferClock(report.offers), creation = useCarCreation(actorScope, searchId);
   const [draft, setDraft] = useState(defaultCarOptionsDraft), [localError, setLocalError] = useState('');
   const complete = status === 'success' || status === 'partial', running = status === 'queued' || status === 'running';
@@ -37,7 +37,7 @@ export function CarResults({ actorScope, searchId, search, report, status }: { a
   const assessments = report.offers.map(offer => assessCarPrice(offer, search, new Date(now)));
   const pendingOffer = report.offers.find(offer => offer.id === creation.pending?.body.offerId);
   async function track(offer: CarOffer) {
-    if (!complete || !options || creation.locked) return;
+    if (!complete || !options || creation.locked || mutationsDisabled) return;
     if (!assessCarPrice(offer, search).eligible) { setLocalError(t('expired')); return; }
     setLocalError(''); await creation.create(offer.id, options);
   }
@@ -52,12 +52,12 @@ export function CarResults({ actorScope, searchId, search, report, status }: { a
     {report.errors.map((entry, index) => <p key={`${entry.source}-${index}`} role="alert" className={styles.error}>{CAR_PROVIDER_LABELS[entry.source]}: {entry.message}</p>)}
     {(localError || creation.error) && <p role="alert" className={styles.error}>{localError || creation.error}</p>}
     {creation.phase === 'sending' && <p role="status" className={styles.notice}>{t('saving')}</p>}
-    {creation.phase === 'uncertain' && <div role="alert" className={styles.notice}><h3>{t('uncertainTitle')}</h3><p>{t('uncertainHelp')}</p><button type="button" className={styles.button} onClick={() => void creation.retry()}>{t('retryCreation')}</button></div>}
+    {creation.phase === 'uncertain' && <div role="alert" className={styles.notice}><h3>{t('uncertainTitle')}</h3><p>{t('uncertainHelp')}</p><button type="button" className={styles.button} disabled={mutationsDisabled} onClick={() => void creation.retry()}>{t('retryCreation')}</button></div>}
     {creation.phase === 'storage_error' && <p role="alert" className={styles.error}>{t('storageError')}</p>}
     {creation.phase === 'created' && creation.trackerId && <div role="status" className={styles.notice}><h3>{t('created')}</h3><Link className={styles.button} href={`/cars/${encodeURIComponent(creation.trackerId)}`}>{t('openTracker')}</Link></div>}
     {creation.pending && <dl className={styles.terms} aria-label={t('pendingSettings')}><div><dt>{t('selectedOffer')}</dt><dd>{pendingOffer && `${pendingOffer.supplier} · ${pendingOffer.contract.model} · `}{creation.pending.body.offerId}</dd></div><div><dt>{t('mode')}</dt><dd>{t(creation.pending.body.mode)}</dd></div><div><dt>{t('target', { currency: search.currency })}</dt><dd>{creation.pending.body.target ? formatCarMoney(creation.pending.body.target, locale) : t('noTarget')}</dd></div><div><dt>{t('interval')}</dt><dd>{creation.pending.body.scrapeInterval}</dd></div><div><dt>{t('notifyLows')}</dt><dd>{t(creation.pending.body.notifyLows ? 'yes' : 'no')}</dd></div></dl>}
-    {report.offers.length > 0 && <>{!creation.pending && <CarTrackingOptions value={draft} currency={search.currency} disabled={creation.locked || !complete} invalid={options === null} onChange={setDraft} />}
-      <div className={styles.offers}>{report.offers.map((offer, index) => <CarOfferRow key={offer.id} offer={offer} search={search} assessment={assessments[index]!} disabled={creation.locked || !complete || options === null} onTrack={() => void track(offer)} />)}</div></>}
+    {report.offers.length > 0 && <>{!creation.pending && <CarTrackingOptions value={draft} currency={search.currency} disabled={creation.locked || !complete || mutationsDisabled} invalid={options === null} onChange={setDraft} />}
+      <div className={styles.offers}>{report.offers.map((offer, index) => <CarOfferRow key={offer.id} offer={offer} search={search} assessment={assessments[index]!} disabled={creation.locked || !complete || options === null || mutationsDisabled} onTrack={() => void track(offer)} />)}</div></>}
     {!running && !report.offers.length && <p className={styles.notice}>{t('noVerified')}</p>}
     {report.candidates.length > 0 && <section className={styles.candidates} aria-label={t('candidates')}><h3>{t('candidates')}</h3><p className={styles.hint}>{t('candidateHelp')}</p>{report.candidates.map((candidate, index) => {
       const booking = safeCarLink(candidate.bookingUrl, candidate.source);

@@ -4,7 +4,7 @@ import { assertCarOwner, type CarActor } from './access';
 import { carMinorNumber, carTrackerDto } from './store';
 import { validateCarOffer } from './offer-validation';
 import { carContractHash } from './selection';
-import { validateCarReport } from './report';
+import { validateCarRunView } from './run-view';
 import { validateCarSearch } from './validation';
 import { CarError } from './types';
 import { assessCarPrice } from './pricing';
@@ -47,7 +47,8 @@ export async function getCarRunView(id: string, actor: CarActor) {
       const tracker = row.trackerId ? await tx.carTracker.findUnique({ where: { id: row.trackerId } }) : null;
       const selection = tracker ? carTrackerDto(tracker).selection : null;
       const sources = selection ? [selection.source] : search.sources;
-      return { ...summary(row), result: row.result === null ? null : validateCarReport(row.result, sources, row.completedAt ?? new Date()) };
+      const executionSearch = { ...search, sources, extras: { ...search.extras, protection: search.extras.protection.filter(product => sources.includes(product.source)) } };
+      return validateCarRunView({ ...summary(row), search: executionSearch, result: row.result }, id);
     } catch (error) { throw new CarError('Stored rental result is invalid; check the server logs', 500, { cause: error }); }
   }, { isolationLevel: 'RepeatableRead', maxWait: 1000, timeout: 3000 });
 }

@@ -1,5 +1,14 @@
 {
   "Cars": {
+    "searchTitle": "Sua busca de aluguel",
+    "statusInterrupted": "As atualizações foram interrompidas. Os resultados abaixo são a última visualização confirmada; o monitoramento está desativado até atualizar o status.",
+    "cancelUncertain": "O cancelamento não foi confirmado. A verificação pode ter terminado ou sido cancelada. Atualize o status antes de outra ação.",
+    "accessLost": "O acesso a esta busca privada não está mais disponível. Entre novamente ou confira se está usando a conta correta.",
+    "retryStatus": "Tentar atualizar novamente",
+    "refreshStatus": "Atualizar status",
+    "cancelSearch": "Cancelar busca",
+    "updatingStatus": "Atualizando o status da busca…",
+    "signIn": "Entrar",
     "selectedOffer": "Oferta selecionada",
     "pendingSettings": "Configurações em recuperação",
     "noTarget": "Sem meta",

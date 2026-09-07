@@ -1,5 +1,14 @@
 {
   "Cars": {
+    "searchTitle": "Votre recherche de location",
+    "statusInterrupted": "Les mises à jour sont interrompues. Les résultats ci-dessous sont la dernière vue confirmée ; le suivi est désactivé jusqu’à l’actualisation du statut.",
+    "cancelUncertain": "L’annulation n’est pas confirmée. La vérification peut être terminée ou annulée. Actualisez le statut avant toute autre action.",
+    "accessLost": "Vous n’avez plus accès à cette recherche privée. Reconnectez-vous ou vérifiez que vous utilisez le bon compte.",
+    "retryStatus": "Réessayer les mises à jour",
+    "refreshStatus": "Actualiser le statut",
+    "cancelSearch": "Annuler la recherche",
+    "updatingStatus": "Mise à jour du statut…",
+    "signIn": "Se connecter",
     "selectedOffer": "Offre sélectionnée",
     "pendingSettings": "Paramètres en cours de récupération",
     "noTarget": "Aucun objectif",

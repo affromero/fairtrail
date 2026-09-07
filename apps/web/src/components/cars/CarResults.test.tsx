@@ -18,13 +18,24 @@ import pt from '../../../messages/pt/cars.json';
 
 vi.unmock('next-intl');
 const locales = { en, es, fr, de, pt };
-function Results({ report = carReportFixture(), status = 'success', locale = 'en', search = carSearchFixture() }: { report?: CarSearchReport; status?: string; locale?: keyof typeof locales; search?: CarSearch }) {
-  return <NextIntlClientProvider locale={locale} messages={locales[locale]}><CarResults actorScope="alice" searchId="search-one" search={search} report={report} status={status} /></NextIntlClientProvider>;
+function Results({ report = carReportFixture(), status = 'success', locale = 'en', search = carSearchFixture(), mutationsDisabled = false }: { report?: CarSearchReport; status?: string; locale?: keyof typeof locales; search?: CarSearch; mutationsDisabled?: boolean }) {
+  return <NextIntlClientProvider locale={locale} messages={locales[locale]}><CarResults actorScope="alice" searchId="search-one" search={search} report={report} status={status} mutationsDisabled={mutationsDisabled} /></NextIntlClientProvider>;
 }
 beforeEach(() => { sessionStorage.clear(); });
 afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
 describe('rental results and honest tracking controls', () => {
+  it('preserves draft settings while stale results are read-only and restores controls on recovery', () => {
+    const view = render(<Results />);
+    fireEvent.change(screen.getByLabelText('Alert at or below total (GBP)'), { target: { value: '85.75' } });
+    view.rerender(<Results mutationsDisabled />);
+    expect(screen.getByLabelText('Alert at or below total (GBP)')).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Track this rental' })).toBeDisabled();
+    expect(screen.getByRole('link', { name: 'View on provider' })).toBeInTheDocument();
+    view.rerender(<Results />);
+    expect(screen.getByLabelText('Alert at or below total (GBP)')).toHaveValue('85.75');
+    expect(screen.getByRole('button', { name: 'Track this rental' })).toBeEnabled();
+  });
   it('separates a verified rental total from unknown deposit and liability', async () => {
     render(<Results />);
     expect(screen.getByRole('heading', { name: /Example car or similar/ })).toBeInTheDocument();

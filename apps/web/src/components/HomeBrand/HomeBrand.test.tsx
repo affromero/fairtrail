@@ -14,7 +14,7 @@ vi.mock('next/link', () => ({
 afterEach(cleanup);
 
 describe('HomeBrand', () => {
-  it.each(['/account', '/', '/hotels', '/hotels/saved-stay'])('provides a home link on %s', (path) => {
+  it.each(['/account', '/', '/hotels', '/hotels/saved-stay', '/cars', '/cars/search/owned-search', '/cars/saved-rental'])('provides a home link on %s', (path) => {
     vi.mocked(usePathname).mockReturnValue(path);
     render(<HomeBrand />);
     expect(screen.getByRole('link', { name: /Flight Finder home/i })).toHaveAttribute('href', '/');

@@ -1,4 +1,7 @@
 .root { color: var(--text); min-width: 0; margin-block: 2rem; }
+.page { max-width: 1120px; width: 100%; margin: 0 auto; padding: 6rem 1.5rem 3rem; color: var(--text); }
+.pageHeader h1 { margin: .4rem 0 1.5rem; font: 600 clamp(2rem, 5vw, 3.25rem) var(--font-display); letter-spacing: -.04em; }
+.actions { display: flex; flex-wrap: wrap; gap: .75rem; }
 .root h2, .root h3, .root h4, .root h5 { font-family: var(--font-display); }
 .resultsHeader { display: flex; align-items: end; justify-content: space-between; gap: 2rem; padding-bottom: 1.25rem; border-bottom: 2px solid var(--accent); }
 .resultsHeader h2 { margin: .25rem 0 0; font-size: clamp(1.75rem, 4vw, 2.75rem); letter-spacing: -.04em; }

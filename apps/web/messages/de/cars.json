@@ -1,5 +1,14 @@
 {
   "Cars": {
+    "searchTitle": "Ihre Mietwagensuche",
+    "statusInterrupted": "Statusaktualisierungen unterbrochen. Die Ergebnisse zeigen den zuletzt bestätigten Stand; die Preisbeobachtung bleibt bis zur Aktualisierung deaktiviert.",
+    "cancelUncertain": "Der Abbruch ist nicht bestätigt. Die Prüfung könnte abgeschlossen oder abgebrochen sein. Aktualisieren Sie den Status vor einer weiteren Aktion.",
+    "accessLost": "Sie haben keinen Zugriff mehr auf diese private Suche. Melden Sie sich erneut an oder prüfen Sie, ob Sie das richtige Konto verwenden.",
+    "retryStatus": "Statusaktualisierung wiederholen",
+    "refreshStatus": "Status aktualisieren",
+    "cancelSearch": "Suche abbrechen",
+    "updatingStatus": "Suchstatus wird aktualisiert…",
+    "signIn": "Anmelden",
     "selectedOffer": "Ausgewähltes Angebot",
     "pendingSettings": "Wiederherzustellende Einstellungen",
     "noTarget": "Kein Zielpreis",
