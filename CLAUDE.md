@@ -36,7 +36,7 @@ Critical: `DATABASE_URL`, `REDIS_URL`, `ANTHROPIC_API_KEY`, `ADMIN_PASSWORD`, `A
 ```bash
 npm install                    # All workspaces
 docker compose -f docker-compose.prod.yml up -d db redis
-npx prisma db push --schema=apps/web/prisma/schema.prisma
+npm run db:push                # schema plus shared travel constraints
 npx prisma generate --schema=apps/web/prisma/schema.prisma
 npm run dev                    # Web app on :3003 (next dev --port 3003, no doppler wrapper at workspace level)
 npm run ci                     # lint + typecheck + test + build (both web and cli workspaces)

@@ -45,6 +45,8 @@ model Query {
   snapshots PriceSnapshot[]
   fetchRuns FetchRun[]
   editEvents QueryEditEvent[]
+  travelJobs TravelJob[]
+  travelAlerts TravelAlertDelivery[]
   user      User?           @relation(fields: [userId], references: [id], onDelete: SetNull)
 
   @@index([active])
@@ -109,9 +111,11 @@ model FetchRun {
   error          String?
   startedAt      DateTime  @default(now())
   completedAt    DateTime?
+  travelJobId    String?
 
   query     Query           @relation(fields: [queryId], references: [id], onDelete: Cascade)
   snapshots PriceSnapshot[]
+  travelJob TravelJob? @relation(fields: [travelJobId], references: [id], onDelete: SetNull)
 
   @@index([queryId, startedAt])
 }
@@ -176,12 +180,16 @@ model User {
   preferredAirlines    String[] @default([])
   preferredAggregators String[] @default([]) // ordered fallback chain after airline_direct; empty = inherit admin default
   cabinClass        String?  // override; null falls back to "economy"
+  preferredCarProviders CarProvider[] @default([])
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
   queries  Query[]
   hotelTrackers HotelTracker[]
   hotelSearches HotelSearchRun[]
+  carTrackers CarTracker[]
+  carSearches CarSearchRun[]
+  travelJobs TravelJob[]
   channels NotificationChannel[]
 
   @@index([isAdmin])
@@ -226,6 +234,7 @@ model HotelSearchRun {
   user        User? @relation(fields: [userId], references: [id], onDelete: Cascade)
   tracker     HotelTracker? @relation(fields: [trackerId], references: [id], onDelete: Cascade)
   snapshots   HotelSnapshot[]
+  travelJob   TravelJob?
   @@index([status, createdAt])
   @@index([userId, createdAt])
   @@index([trackerId, createdAt])
@@ -253,6 +262,7 @@ model HotelAlert {
   nextAttemptAt DateTime @default(now())
   createdAt    DateTime @default(now())
   tracker      HotelTracker @relation(fields: [trackerId], references: [id], onDelete: Cascade)
+  travelDelivery TravelAlertDelivery?
   @@index([pending, createdAt])
   @@index([pending, nextAttemptAt])
 }
@@ -261,6 +271,171 @@ model HotelLease {
   id        String @id
   owner     String
   expiresAt DateTime
+}
+
+enum CarProvider {
+  discovercars
+  autoeurope
+}
+
+enum CarTrackingMode {
+  best
+  contract
+}
+
+enum CarRunStatus {
+  queued
+  running
+  success
+  partial
+  unavailable
+  failed
+  cancelled
+}
+
+model CarTracker {
+  id                 String @id @default(cuid())
+  userId             String?
+  label              String
+  search             Json
+  selection          Json?
+  mode               CarTrackingMode @default(best)
+  currency           String @db.VarChar(3)
+  active             Boolean @default(true)
+  revision           Int @default(0)
+  scrapeInterval     Int @default(3)
+  targetMinor        BigInt?
+  notifyLows         Boolean @default(true)
+  targetArmed        Boolean @default(true)
+  historicalLowMinor BigInt?
+  latestPriceMinor   BigInt?
+  lastCheckedAt      DateTime?
+  lastError          String?
+  nextCheckAt        DateTime @default(now())
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  user               User? @relation(fields: [userId], references: [id], onDelete: Cascade)
+  runs               CarSearchRun[]
+  snapshots          CarSnapshot[]
+  alerts             TravelAlertDelivery[]
+
+  @@index([userId])
+  @@index([active, nextCheckAt])
+}
+
+model CarSearchRun {
+  id              String @id @default(cuid())
+  userId          String?
+  trackerId       String?
+  trackerRevision Int?
+  request         Json
+  result          Json?
+  status          CarRunStatus @default(queued)
+  error           String?
+  createdAt       DateTime @default(now())
+  completedAt     DateTime?
+  user            User? @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tracker         CarTracker? @relation(fields: [trackerId], references: [id], onDelete: Cascade)
+  snapshots       CarSnapshot[]
+  travelJob       TravelJob?
+
+  @@unique([id, trackerId])
+  @@index([status, createdAt])
+  @@index([userId, createdAt])
+  @@index([trackerId, createdAt])
+}
+
+model CarSnapshot {
+  id           String @id @default(cuid())
+  trackerId    String
+  runId        String
+  source       CarProvider
+  offer        Json
+  currency     String @db.VarChar(3)
+  totalMinor   BigInt?
+  eligible     Boolean
+  reasons      String[] @default([])
+  contractHash String @db.Char(64)
+  observedAt   DateTime
+  tracker      CarTracker @relation(fields: [trackerId], references: [id], onDelete: Cascade)
+  run          CarSearchRun @relation(fields: [runId, trackerId], references: [id, trackerId], onDelete: Cascade)
+
+  @@index([trackerId, observedAt])
+  @@index([trackerId, contractHash, observedAt])
+}
+
+enum TravelJobKind {
+  flight_batch
+  flight_query
+  hotel_search
+  car_search
+}
+
+enum TravelJobStatus {
+  queued
+  running
+  succeeded
+  failed
+  cancelled
+}
+
+model TravelJob {
+  id              String @id @default(cuid())
+  kind            TravelJobKind
+  status          TravelJobStatus @default(queued)
+  userId          String?
+  queryId         String?
+  hotelRunId      String? @unique
+  carRunId        String? @unique
+  activeKey       String? @unique
+  priority        Int @default(0)
+  attempts        Int @default(0)
+  leaseResource   String?
+  leaseOwner      String?
+  leaseGeneration Int?
+  result          Json?
+  error           String?
+  createdAt       DateTime @default(now())
+  claimedAt       DateTime?
+  completedAt     DateTime?
+  cancelledAt     DateTime?
+  user            User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+  query           Query? @relation(fields: [queryId], references: [id], onDelete: Cascade)
+  hotelRun        HotelSearchRun? @relation(fields: [hotelRunId], references: [id], onDelete: Cascade)
+  carRun          CarSearchRun? @relation(fields: [carRunId], references: [id], onDelete: Cascade)
+  lease           TravelLease? @relation(fields: [leaseResource], references: [id], onDelete: Restrict)
+  fetchRuns       FetchRun[]
+
+  @@index([status, priority, createdAt])
+  @@index([queryId, createdAt])
+  @@index([userId, createdAt])
+}
+
+model TravelLease {
+  id         String @id
+  owner      String
+  generation Int @default(0)
+  expiresAt  DateTime
+  jobs       TravelJob[]
+}
+
+model TravelAlertDelivery {
+  id            String @id @default(cuid())
+  queryId       String?
+  hotelAlertId  String? @unique
+  carTrackerId  String?
+  eventKey      String @unique
+  message       Json
+  deliveredIds  String[] @default([])
+  pending       Boolean @default(true)
+  lastError     String?
+  nextAttemptAt DateTime @default(now())
+  createdAt     DateTime @default(now())
+  query         Query? @relation(fields: [queryId], references: [id], onDelete: Cascade)
+  hotelAlert    HotelAlert? @relation(fields: [hotelAlertId], references: [id], onDelete: Cascade)
+  carTracker    CarTracker? @relation(fields: [carTrackerId], references: [id], onDelete: Cascade)
+
+  @@index([pending, nextAttemptAt])
 }
 
 model NotificationChannel {

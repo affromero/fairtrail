@@ -140,6 +140,7 @@ RUN mkdir -p /app/data && chown node:node /app/data
 
 COPY --chown=node:node docker-entrypoint.sh ./
 COPY --chown=node:node seed-cli-credentials.mjs ./
+COPY --chown=node:node scripts/apply-travel-constraints.mjs ./scripts/apply-travel-constraints.mjs
 RUN chmod +x docker-entrypoint.sh seed-cli-credentials.mjs
 USER node
 RUN flight-finder-tui --help >/dev/null

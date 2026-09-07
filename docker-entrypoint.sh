@@ -93,6 +93,9 @@ else
   exit 1
 fi
 
+# Relational job invariants and partial indexes are not represented by Prisma.
+node /app/scripts/apply-travel-constraints.mjs
+
 # --- CLI provider auth + install (Claude Code / Codex) ---
 # Gated on INSTALL_CLI_PROVIDERS (default true), independent of app mode: the hosted
 # production box installs the CLIs for the Claude Code provider, while fast hosted
