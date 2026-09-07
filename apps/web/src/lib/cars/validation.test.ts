@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { resolveCarLocalTime, validateCarExtras, validateCarOptions, validateCarSearch } from './validation';
+import { resolveCarLocalTime, validateCarExtras, validateCarFilters, validateCarLocalDateTime, validateCarOptions, validateCarSearch } from './validation';
 
 const now = new Date('2026-09-01T00:00:00Z');
 const location = { name: 'London Heathrow Airport', country: 'GB', timeZone: 'Europe/London', providerIds: { discovercars: '1712', autoeurope: '547' } };
@@ -12,6 +12,16 @@ const request = () => ({
 });
 
 describe('rental search validation', () => {
+  it('validates local syntax independently of station DST and current eligibility for durable replay', () => {
+    expect(validateCarLocalDateTime({ date: '2000-01-01', time: '01:30' })).toEqual({ date: '2000-01-01', time: '01:30' });
+    expect(validateCarLocalDateTime({ date: '2026-10-25', time: '01:30' })).toEqual({ date: '2026-10-25', time: '01:30' });
+    expect(() => resolveCarLocalTime({ date: '2026-10-25', time: '01:30' }, 'Europe/London')).toThrow(/ambiguous/);
+  });
+  it('uses the same filter defaults and currency rules before and after catalog resolution', () => {
+    const filters = { transmission: 'automatic', maxTotal: { currency: 'USD', minor: 12500 } };
+    expect(validateCarSearch({ ...request(), filters }, now).filters).toEqual(validateCarFilters(filters, 'USD'));
+    expect(() => validateCarFilters(filters, 'GBP')).toThrow(/currencies/);
+  });
   it('keeps distinct provider labels bound to the same selected location IDs', () => {
     const providerNames = { discovercars: 'London Airport Heathrow (LHR)', autoeurope: 'London Heathrow Airport' };
     const result = validateCarSearch({ ...request(), pickup: { ...location, providerNames } }, now);

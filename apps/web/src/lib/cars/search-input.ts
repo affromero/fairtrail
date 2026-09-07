@@ -4,6 +4,7 @@ import { carRecord, carText, validateCarSearch } from './validation';
 import { validateCarCreationKey } from './creation-input';
 import { CarError, type CarLocation } from './types';
 import type { CarActor } from './access';
+import { normalizeCarSearchInput } from './public-input';
 
 async function location(raw: unknown): Promise<CarLocation> {
   const input = carRecord(raw);
@@ -26,12 +27,7 @@ export function carSearchReceipt(raw: unknown, actor: CarActor, requestKey: unkn
 }
 
 export async function carSearchIntent(raw: unknown) {
-  const input = carRecord(raw);
-  const allowed = ['pickup', 'dropoff', 'pickupAt', 'dropoffAt', 'driver', 'currency', 'sources', 'extras', 'filters'];
-  if (Object.keys(input).some(field => !allowed.includes(field))) throw new CarError('Unsupported rental search field');
-  for (const rawTime of [input.pickupAt, input.dropoffAt]) {
-    if (Object.keys(carRecord(rawTime)).some(field => !['date', 'time'].includes(field))) throw new CarError('Enter date and local time; the station timezone is server-managed');
-  }
+  const input = normalizeCarSearchInput(raw);
   const pickup = await location(input.pickup), dropoff = await location(input.dropoff);
   const search = validateCarSearch({ ...input, pickup, dropoff }, new Date(), { allowUnresolvedProviders: true });
   // Protection products must first be observed at the provider, not invented by a client.

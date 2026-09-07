@@ -31,12 +31,18 @@ function timeZone(raw: unknown): string {
   try { return new Intl.DateTimeFormat('en', { timeZone: zone }).resolvedOptions().timeZone; }
   catch { throw new CarError('Choose a valid station timezone'); }
 }
-export function resolveCarLocalTime(raw: unknown, stationTimeZone?: string): CarLocalTime {
+export function validateCarLocalDateTime(raw: unknown): Pick<CarLocalTime, 'date' | 'time'> {
   const r = carRecord(raw);
   const date = carText(r.date, 10, 'date');
   const time = carText(r.time, 5, 'local time');
-  const zone = timeZone(stationTimeZone ?? r.timeZone);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !/^\d{2}:\d{2}$/.test(time)) throw new CarError('Use YYYY-MM-DD and HH:mm local time');
+  try { Temporal.PlainDateTime.from(`${date}T${time}`, { overflow: 'reject' }); }
+  catch { throw new CarError('Invalid local date or time'); }
+  return { date, time };
+}
+export function resolveCarLocalTime(raw: unknown, stationTimeZone?: string): CarLocalTime {
+  const r = carRecord(raw), { date, time } = validateCarLocalDateTime(raw);
+  const zone = timeZone(stationTimeZone ?? r.timeZone);
   if (r.timeZone !== undefined && timeZone(r.timeZone) !== zone) throw new CarError('Time must use the selected station timezone');
   try {
     const local = Temporal.PlainDateTime.from(`${date}T${time}`, { overflow: 'reject' });
@@ -107,16 +113,18 @@ export function validateCarSearch(raw: unknown, now = new Date(), options: { all
       if (!place.providerIds[source] && !(options.allowUnresolvedProviders && place.catalog)) throw new CarError(`Select pickup and return locations for ${source}`);
     }
   }
-  const f = carRecord(r.filters ?? {});
-  const transmission = f.transmission ?? 'any';
-  if (transmission !== 'any' && transmission !== 'automatic' && transmission !== 'manual') throw new CarError('Unknown transmission');
   const extras = validateCarExtras(r.extras);
   if (extras.protection.length && sources.some(s => !extras.protection.some(p => p.source === s))) throw new CarError('Choose a protection product for every selected provider');
   if (extras.protection.some(p => !sources.includes(p.source))) throw new CarError('Protection must belong to a selected provider');
   return {
     pickup, dropoff, pickupAt, dropoffAt, driver: validateCarDriver(r.driver), currency, sources, extras,
-    filters: { transmission, minSeats: carInteger(f.minSeats ?? 4, 2, 9, 'Minimum seats'), unlimitedMileage: boolean(f.unlimitedMileage), freeCancellation: boolean(f.freeCancellation), maxTotal: f.maxTotal == null ? null : validateCarMoney(f.maxTotal, currency) },
+    filters: validateCarFilters(r.filters, currency),
   };
+}
+export function validateCarFilters(raw: unknown, currency: string): CarSearch['filters'] {
+  const f = carRecord(raw ?? {}), transmission = f.transmission ?? 'any';
+  if (transmission !== 'any' && transmission !== 'automatic' && transmission !== 'manual') throw new CarError('Unknown transmission');
+  return { transmission, minSeats: carInteger(f.minSeats ?? 4, 2, 9, 'Minimum seats'), unlimitedMileage: boolean(f.unlimitedMileage), freeCancellation: boolean(f.freeCancellation), maxTotal: f.maxTotal == null ? null : validateCarMoney(f.maxTotal, currency) };
 }
 export function validateCarOptions(raw: unknown, currency?: string): CarTrackingOptions {
   const r = carRecord(raw);
