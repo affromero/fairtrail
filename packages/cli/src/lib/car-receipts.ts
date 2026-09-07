@@ -136,13 +136,14 @@ export async function saveCarReceipt(directory: string, client: CarClient, inten
 }
 
 /** Always reauthenticate before accepting a record for replay; credentials never come from disk. */
-export async function readCarReceipt(path: string, client: CarClient, signal?: AbortSignal): Promise<CarReceipt> {
+export async function readCarReceipt(path: string, client: CarClient, signal?: AbortSignal, expectedScope?: string): Promise<CarReceipt> {
   const session = await client.getSession(signal);
+  if (expectedScope !== undefined && session.scope !== expectedScope) throw new CarScopeError();
   path = resolve(path);
   const directory = await trustedDirectory(dirname(path)), dir = await directoryHandle(directory);
   path = join(directory, basename(path));
   try {
-    const file = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+    const file = await open(path, constants.O_RDONLY | constants.O_NONBLOCK | constants.O_NOFOLLOW);
     try {
       const stat = await privateDescriptor(file, false);
       if (stat.size > MAX_BYTES) throw new Error('Car recovery record is too large');

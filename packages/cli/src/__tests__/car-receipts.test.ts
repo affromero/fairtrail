@@ -2,6 +2,8 @@ import { createServer, type Server } from 'node:http';
 import { chmod, copyFile, mkdir, mkdtemp, open, readFile, readdir, rm, stat, symlink, writeFile, type FileHandle } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CarClient } from '../lib/car-client.js';
 import { readCarReceipt, saveCarReceipt, type CarOperation } from '../lib/car-receipts.js';
@@ -31,6 +33,17 @@ afterEach(async () => {
   await rm(directory, { recursive: true, force: true });
 });
 describe('durable car CLI recovery records', () => {
+  it('rejects a FIFO receipt without waiting for a writer', async () => {
+    const path = join(directory, 'pipe.json');
+    await promisify(execFile)('mkfifo', ['-m', '600', path]);
+    await expect(readCarReceipt(path, client)).rejects.toThrow(/private/);
+    expect((await stat(path)).isFIFO()).toBe(true);
+  });
+  it('rejects a directory in place of a receipt before reading its contents', async () => {
+    const path = join(directory, 'directory.json'); await mkdir(path, { mode: 0o700 });
+    await expect(readCarReceipt(path, client)).rejects.toThrow(/private/);
+    expect(await readdir(path)).toEqual([]);
+  });
   it('rejects storage whose parent allows replacement by other users', async () => {
     const parent = join(directory, 'shared'), storage = join(parent, 'receipts');
     await mkdir(parent, { mode: 0o700 }); await chmod(parent, 0o777);

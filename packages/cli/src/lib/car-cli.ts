@@ -66,10 +66,13 @@ export function registerCarCommands(program: Command): () => boolean {
     const [{ render }, { createElement }, { CarBrowser }, { CarBrowser: Browser }] = await Promise.all([
       import('ink'), import('react'), import('../screens/CarBrowser.js'), import('./car-browser.js'),
     ]);
-    const browser = new Browser(client, options.admin);
+    const browser = new Browser(client, options.admin, options.receiptDir);
     const instance = render(createElement(CarBrowser, { browser, signal }), { alternateScreen: true, exitOnCtrlC: false });
     try { await instance.waitUntilExit(); }
-    finally { browser.close(); instance.cleanup(); }
+    finally {
+      browser.close(); await browser.settle(); instance.cleanup();
+      for (const path of browser.getReceiptPaths()) console.error(`Recovery receipt retained: ${message(path)}`);
+    }
   });
   action(cars.command('locations <query>').description('Find catalog IDs and versions for pickup or return'), async ({ client, args: [query], signal }) => {
     const raw = await client.request<unknown>(`/api/cars/locations?q=${encodeURIComponent(carText(query, 100, 'location query'))}`, { signal });

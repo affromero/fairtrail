@@ -1,5 +1,6 @@
 import { setTimeout as delay } from 'node:timers/promises';
-import { CarClient } from './car-client.js';
+import { isDeepStrictEqual } from 'node:util';
+import { CarClient, CarScopeError } from './car-client.js';
 import { readCarReceipt, saveCarReceipt, type CarOperation, type CarReceipt } from './car-receipts.js';
 import { TravelResponseError } from '../../../../apps/web/src/components/travel/client.js';
 import { carRecord, carText } from '../../../../apps/web/src/lib/cars/validation.js';
@@ -45,10 +46,11 @@ function acknowledgement(raw: unknown, receipt: CarReceipt) {
 }
 
 /** A retry reads its original identity from disk and never substitutes a new request or revision. */
-export async function replayCarMutation(path: string, client: CarClient, signal?: AbortSignal) {
+export async function replayCarMutation(path: string, client: CarClient, signal?: AbortSignal, expectedReceipt?: CarReceipt) {
   let receipt: CarReceipt | undefined;
   try {
-    receipt = await readCarReceipt(path, client, signal);
+    receipt = await readCarReceipt(path, client, signal, expectedReceipt?.scope);
+    if (expectedReceipt && !isDeepStrictEqual(receipt, expectedReceipt)) throw new Error('Recovery receipt changed after review; review it again before retrying');
     const { kind, id, body, revision } = receipt.operation;
     const endpoint = kind === 'search' ? '/api/cars/search' : kind === 'track' ? '/api/cars' : kind === 'cancel' ? `/api/cars/search/${id}` : `/api/cars/${id}${kind === 'refresh' ? '/scrape' : ''}`;
     const raw = await client.request<unknown>(endpoint, {
@@ -60,7 +62,7 @@ export async function replayCarMutation(path: string, client: CarClient, signal?
   } catch (error) {
     const response = error instanceof TravelResponseError ? error : null;
     const status = response?.status, definitive = response?.definitive && !signal?.aborted;
-    const outcome = definitive && status === 410 ? 'removed' : [401, 403, 404].includes(status ?? 0) ? 'inaccessible'
+    const outcome = definitive && status === 410 ? 'removed' : error instanceof CarScopeError || [401, 403, 404].includes(status ?? 0) ? 'inaccessible'
       : definitive && status === 412 ? 'stale' : definitive && [400, 409, 413, 415, 428, 429].includes(status ?? 0) ? 'rejected' : 'unconfirmed';
     let current: unknown, reconciliationError = '';
     if (outcome === 'stale' && receipt?.operation.id && receipt.operation.kind !== 'cancel') {
@@ -77,7 +79,7 @@ export async function replayCarMutation(path: string, client: CarClient, signal?
 export async function performCarMutation(directory: string, client: CarClient, intent: CarOperation, prepared: (path: string) => void, signal?: AbortSignal, expectedScope?: string) {
   const saved = await saveCarReceipt(directory, client, intent, signal, expectedScope);
   prepared(saved.path);
-  return replayCarMutation(saved.path, client, signal);
+  return replayCarMutation(saved.path, client, signal, saved.receipt);
 }
 
 /** Polling is read-only. Interrupting it leaves the server job available for results or explicit cancellation. */

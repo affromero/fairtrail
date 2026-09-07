@@ -416,6 +416,7 @@ flight-finder cars locations "London Heathrow" --json
 flight-finder cars parse "A London rental for next weekend" --json
 flight-finder cars search --file rental.json --wait --json
 flight-finder cars track <searchId> <offerId> --mode best --target 300 --currency GBP
+flight-finder cars browse
 flight-finder cars view <id> --json
 flight-finder cars alerts <id> --revision 7 --target 280 --currency GBP
 flight-finder cars refresh <id> --revision 8
@@ -427,6 +428,22 @@ start a search. Use the public search shape in [API.md](API.md), with catalog
 `id` and `version` values from `locations`. Input files and stdin (`--file -`)
 are limited to 64 KiB. Amounts use decimal major units with an explicit currency;
 the client converts them to exact integer minor units.
+
+`browse` opens a keyboard-driven tracker list with paged results and price
+evidence. Enter opens history; arrow keys scroll, and `r` reloads server state.
+In a tracker, `p` pauses or resumes, `c` checks prices, and `x` deletes it.
+Each change shows the account, target, and saved revision and requires typing
+`yes`. Escape dismisses the confirmation without sending anything.
+
+Press `t` to select a recovery receipt by path or by its displayed number.
+Review the saved request, then confirm to replay it unchanged. An uncertain
+refresh still allows pause or delete, while another refresh requires recovery
+first. Uncertain edits block conflicting changes until their receipts are
+recovered. If recovery reports a stale revision, reload and review the current
+settings before confirming a new change. The earlier outcome remains unproven.
+Account changes hide private data. Exiting stops local requests and prints the
+retained receipt paths; server work continues. Use `list` and `view` with
+`--json` when an interactive terminal is unavailable.
 
 Before changing tracking state, the CLI prints a private recovery receipt path.
 After a timeout or lost response, use `cars retry <receipt>` with the
