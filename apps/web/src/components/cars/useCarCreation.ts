@@ -7,7 +7,7 @@ import { travelRequest, TravelResponseError } from '../travel/client';
 
 interface CreationBody extends CarTrackingOptions { searchId: string; offerId: string; label?: string }
 interface PendingCreation { key: string; body: CreationBody }
-type Phase = 'loading' | 'ready' | 'sending' | 'uncertain' | 'rejected' | 'created' | 'storage_error';
+type Phase = 'loading' | 'ready' | 'sending' | 'uncertain' | 'rejected' | 'created' | 'storage_error' | 'removed';
 interface CreationState { phase: Phase; pending: PendingCreation | null; error: string; trackerId: string | null }
 const initial: CreationState = { phase: 'loading', pending: null, error: '', trackerId: null };
 export const CAR_CREATION_TIMEOUT_MS = 15_000;
@@ -45,7 +45,12 @@ export function useCarCreation(actorScope: string, searchId: string) {
     const active = generation.current, aborter = new AbortController();
     controller.current = aborter;
     update({ ...initial, phase: 'sending', pending });
-    const timeout = setTimeout(() => aborter.abort(), CAR_CREATION_TIMEOUT_MS);
+    const timeout = setTimeout(() => {
+      if (active !== generation.current) return;
+      generation.current++;
+      aborter.abort();
+      update({ ...initial, phase: 'uncertain', pending });
+    }, CAR_CREATION_TIMEOUT_MS);
     try {
       // A storage failure must prevent a mutation whose retry identity could be lost.
       sessionStorage.setItem(storageKey, JSON.stringify(pending));
@@ -66,6 +71,10 @@ export function useCarCreation(actorScope: string, searchId: string) {
     } catch (error) {
       if (active !== generation.current) return;
       const rejected = !aborter.signal.aborted && error instanceof TravelResponseError && error.definitive && [400, 401, 403, 404, 409, 410, 413, 415, 429].includes(error.status);
+      if (rejected && error.status === 410) {
+        // Keep the receipt so a remount cannot silently create a replacement.
+        update({ ...initial, phase: 'removed', pending, error: error.message }); return;
+      }
       if (!rejected || recovering) { update({ ...initial, phase: 'uncertain', pending, error: rejected ? error.message : '' }); return; }
       try { sessionStorage.removeItem(storageKey); }
       catch { update({ ...initial, phase: 'storage_error', pending }); return; }
@@ -86,5 +95,14 @@ export function useCarCreation(actorScope: string, searchId: string) {
     if (current.current.phase !== 'uncertain' || !current.current.pending) return;
     await send(current.current.pending, true);
   }
-  return { ...state, create, retry, locked: !['ready', 'rejected'].includes(state.phase) };
+  async function recoverStorage() {
+    if (current.current.phase !== 'storage_error') return;
+    if (current.current.pending) { await send(current.current.pending, true); return; }
+    try {
+      const saved = sessionStorage.getItem(storageKey);
+      const pending = saved === null ? null : restore(saved, searchId);
+      update({ ...initial, phase: pending ? 'uncertain' : 'ready', pending });
+    } catch { update({ ...initial, phase: 'storage_error' }); }
+  }
+  return { ...state, create, retry, recoverStorage, locked: !['ready', 'rejected'].includes(state.phase) };
 }

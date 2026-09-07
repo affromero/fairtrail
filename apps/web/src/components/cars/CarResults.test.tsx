@@ -25,6 +25,16 @@ beforeEach(() => { sessionStorage.clear(); });
 afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
 describe('rental results and honest tracking controls', () => {
+  it('offers storage recovery without allowing a corrupt receipt to start another tracker', async () => {
+    sessionStorage.setItem('ff-car-creation:alice:search-one', '{');
+    const fetcher = vi.fn(); vi.stubGlobal('fetch', fetcher);
+    render(<Results />);
+    fireEvent.click(screen.getByRole('button', { name: 'Retry browser recovery storage' }));
+    expect(screen.getByRole('button', { name: 'Track this rental' })).toBeDisabled();
+    expect(screen.getByRole('link', { name: 'Rental car tracking' })).toHaveAttribute('href', '/cars');
+    expect(fetcher).not.toHaveBeenCalled();
+    expect(sessionStorage.getItem('ff-car-creation:alice:search-one')).toBe('{');
+  });
   it('preserves draft settings while stale results are read-only and restores controls on recovery', () => {
     const view = render(<Results />);
     fireEvent.change(screen.getByLabelText('Alert at or below total (GBP)'), { target: { value: '85.75' } });

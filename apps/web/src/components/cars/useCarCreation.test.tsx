@@ -10,7 +10,8 @@ function Harness({ actor = 'alice', searchId = 'search-one' }: { actor?: string;
   return <><output aria-label="Creation phase">{creation.phase}</output><output aria-label="Tracker">{creation.trackerId}</output><p role="alert">{creation.error}</p>
     <button disabled={creation.locked} onClick={() => void creation.create('offer-one', options)}>Create</button>
     <button disabled={creation.locked} onClick={() => void creation.create('offer-one', { ...options, mode: 'contract' })}>Create contract</button>
-    <button disabled={creation.phase !== 'uncertain'} onClick={() => void creation.retry()}>Retry same creation</button></>;
+    <button disabled={creation.phase !== 'uncertain'} onClick={() => void creation.retry()}>Retry same creation</button>
+    <button disabled={creation.phase !== 'storage_error'} onClick={() => void creation.recoverStorage()}>Recover storage</button></>;
 }
 function acknowledge(init: RequestInit, data: unknown = { id: 'saved-tracker' }) {
   return new Response(JSON.stringify({ ok: true, data: { tracker: data, creationKey: new Headers(init.headers).get('Idempotency-Key') } }));
@@ -19,6 +20,42 @@ beforeEach(() => { sessionStorage.clear(); });
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 describe('safe rental creation lifecycle', () => {
+  it('releases a stalled UI even when the transport ignores abort and ignores its late acknowledgement', async () => {
+    vi.useFakeTimers(); let resolveResponse!: (response: Response) => void; let sent!: RequestInit;
+    vi.stubGlobal('fetch', vi.fn().mockImplementation((url: string, init: RequestInit) => {
+      sent = init; return new Promise<Response>(resolve => { resolveResponse = resolve; });
+    }));
+    render(<Harness />); fireEvent.click(screen.getByRole('button', { name: /^Create$/ }));
+    await act(async () => { await vi.advanceTimersByTimeAsync(CAR_CREATION_TIMEOUT_MS); });
+    expect(screen.getByLabelText('Creation phase')).toHaveTextContent('uncertain');
+    expect(sent.signal!.aborted).toBe(true);
+    await act(async () => { resolveResponse(acknowledge(sent)); });
+    expect(screen.getByLabelText('Creation phase')).toHaveTextContent('uncertain');
+    expect(screen.getByLabelText('Tracker')).toBeEmptyDOMElement();
+    expect(sessionStorage.length).toBe(1);
+  });
+  it('ends recovery when the server confirms deletion without enabling a replacement tracker', async () => {
+    const key = crypto.randomUUID();
+    sessionStorage.setItem('ff-car-creation:alice:search-one', JSON.stringify({ key, body: { searchId: 'search-one', offerId: 'offer-one', ...options } }));
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ ok: false, error: 'This tracker was deleted' }), { status: 410 })));
+    render(<Harness />); fireEvent.click(screen.getByRole('button', { name: 'Retry same creation' }));
+    await waitFor(() => expect(screen.getByLabelText('Creation phase')).toHaveTextContent('removed'));
+    expect(screen.getByRole('alert')).toHaveTextContent('deleted');
+    expect(screen.getByRole('button', { name: /^Create$/ })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Retry same creation' })).toBeDisabled();
+    expect(JSON.parse(sessionStorage.getItem('ff-car-creation:alice:search-one')!).key).toBe(key);
+  });
+  it('recovers a transient storage failure with the original settings', async () => {
+    const storage = vi.spyOn(Object.getPrototypeOf(sessionStorage), 'setItem').mockImplementationOnce(() => { throw new DOMException('Quota exceeded'); });
+    let submitted: unknown;
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(async (url: string, init: RequestInit) => { submitted = JSON.parse(init.body as string); return acknowledge(init); }));
+    render(<Harness />); fireEvent.click(screen.getByRole('button', { name: 'Create contract' }));
+    expect(screen.getByLabelText('Creation phase')).toHaveTextContent('storage_error');
+    storage.mockRestore();
+    fireEvent.click(screen.getByRole('button', { name: 'Recover storage' }));
+    await waitFor(() => expect(screen.getByLabelText('Tracker')).toHaveTextContent('saved-tracker'));
+    expect(submitted).toEqual({ searchId: 'search-one', offerId: 'offer-one', ...options, mode: 'contract' });
+  });
   it('persists before sending and confirms a matching acknowledgement without another mutation', async () => {
     const fetcher = vi.fn().mockImplementation(async (url: string, init: RequestInit) => {
       expect(url).toBe('/api/cars');
