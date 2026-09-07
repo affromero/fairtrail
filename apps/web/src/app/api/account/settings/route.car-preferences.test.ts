@@ -3,7 +3,11 @@ import { NextRequest } from 'next/server';
 import { createUserSessionToken } from '@/lib/user-auth';
 import { GET, PATCH } from './route';
 
-const boundary = vi.hoisted(() => ({ multiUser: true, token: '', row: {} as Record<string, unknown> }));
+const boundary = vi.hoisted(() => {
+  // Redis is initialized during imports, before per-test environment setup.
+  vi.stubEnv('REDIS_URL', '');
+  return { multiUser: true, token: '', row: {} as Record<string, unknown> };
+});
 vi.mock('next/headers', () => ({ cookies: async () => ({ get: () => boundary.token ? { value: boundary.token } : undefined }) }));
 vi.mock('@/lib/prisma', () => ({ prisma: {
   extractionConfig: { findUnique: async () => ({ multiUserMode: boundary.multiUser }) },
@@ -19,7 +23,7 @@ const patch = (body: unknown) => PATCH(new NextRequest('http://localhost/api/acc
 
 describe('authenticated car preferences without changing flight settings', () => {
   beforeEach(() => {
-    vi.stubEnv('SELF_HOSTED', 'true'); vi.stubEnv('REDIS_URL', ''); boundary.multiUser = true;
+    vi.stubEnv('SELF_HOSTED', 'true'); boundary.multiUser = true;
     boundary.row = { id: 'owner', username: 'owner', sessionsValidFrom: null, preferredCarProviders: [], preferredAggregators: ['google_flights'], preferredAirlines: ['Example Air'], cabinClass: 'business' };
     boundary.token = createUserSessionToken('owner');
   });
