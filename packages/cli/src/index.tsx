@@ -9,8 +9,10 @@ import React from 'react';
 import { App } from './app.js';
 import { launchTmuxView } from './lib/tmux-view.js';
 import { registerHotelCommands } from './lib/hotel-cli.js';
+import { registerCarCommands } from './lib/car-cli.js';
 
 const hotelCommandHandled = registerHotelCommands(program);
+const carCommandHandled = registerCarCommands(program);
 
 program
   .name('flightfinder')
@@ -27,7 +29,7 @@ program
   .option('--disable-accounts', 'Disable multi user mode and clear stored credentials (self hosted)');
 
 await program.parseAsync();
-if (hotelCommandHandled()) process.exit(process.exitCode ?? 0);
+if (hotelCommandHandled() || carCommandHandled()) process.exit(process.exitCode ?? 0);
 
 const opts = program.opts() as { headless?: boolean; list?: boolean; view?: string; tmux?: boolean; json?: boolean; backend?: string; model?: string; resetPassword?: string; newPassword?: string; disableAccounts?: boolean };
 

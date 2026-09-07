@@ -538,6 +538,7 @@ cmd_help() {
   echo ""
   echo "  Terminal UI flags (forwarded to flight-finder-tui inside the container):"
   echo "    hotels <command>        Search, track, and manage hotels (hotels --help)"
+  echo "    cars <command>          Search, track, and manage rental cars (cars --help)"
   echo "    --headless              Render the Ink terminal UI"
   echo "    --list                  List tracked queries (with --headless)"
   echo "    --view <id>             View a tracker (with --headless)"
@@ -565,35 +566,45 @@ cmd_tui() {
   # `exec` cannot run shell functions, so call $_DC directly instead of dc().
   # $exec_flags is intentionally unquoted: empty string must word-split to
   # nothing, otherwise podman-compose receives an empty arg and rejects it.
-  if [ "${1:-}" = "hotels" ]; then
-    local hotel_env=(-e FLIGHT_FINDER_URL=http://localhost:3003)
-    [ -n "${FLIGHT_FINDER_URL:-}" ] && hotel_env=(-e FLIGHT_FINDER_URL)
-    [ -n "${FLIGHT_FINDER_SESSION:-}" ] && hotel_env+=(-e FLIGHT_FINDER_SESSION)
-    [ -n "${FLIGHT_FINDER_TOKEN:-}" ] && hotel_env+=(-e FLIGHT_FINDER_TOKEN)
-    exec $_DC $COMPOSE_FILES exec $exec_flags "${hotel_env[@]}" web flight-finder-tui "$@"
+  if [ "${1:-}" = "hotels" ] || [ "${1:-}" = "cars" ]; then
+    local travel_env=(-e FLIGHT_FINDER_URL=http://localhost:3003)
+    [ -n "${FLIGHT_FINDER_URL:-}" ] && travel_env=(-e FLIGHT_FINDER_URL)
+    [ -n "${FLIGHT_FINDER_SESSION:-}" ] && travel_env+=(-e FLIGHT_FINDER_SESSION)
+    [ -n "${FLIGHT_FINDER_TOKEN:-}" ] && travel_env+=(-e FLIGHT_FINDER_TOKEN)
+    if [ "${1:-}" = "cars" ]; then
+      travel_env+=(-e FLIGHT_FINDER_CAR_RECEIPTS=/app/data/car-receipts -e FLIGHT_FINDER_CAR_REQUIRE_MOUNT=1)
+    fi
+    exec $_DC $COMPOSE_FILES exec $exec_flags "${travel_env[@]}" web flight-finder-tui "$@"
   fi
   exec $_DC $COMPOSE_FILES exec $exec_flags web flight-finder-tui "$@"
 }
 
-cmd_hotels() {
-  local hotel_args=(hotels) hotel_file=""
+cmd_travel() {
+  local travel_kind="$1" travel_args=("$1") travel_file=""
   shift
   while [ "$#" -gt 0 ]; do
     if [ "$1" = "--file" ]; then
-      if [ "$#" -lt 2 ]; then printf 'Error: --file requires a path\n' >&2; exit 1; fi
-      hotel_file="$2"
-      hotel_args+=(--file -)
+      if [ "$#" -lt 2 ] || [ -z "$2" ]; then printf 'Error: --file requires a path\n' >&2; exit 1; fi
+      if [ -n "$travel_file" ]; then printf 'Error: supply --file only once\n' >&2; exit 1; fi
+      travel_file="$2"
+      travel_args+=(--file -)
       shift 2
+    elif [[ "$1" == --file=* ]]; then
+      if [ -n "$travel_file" ]; then printf 'Error: supply --file only once\n' >&2; exit 1; fi
+      travel_file="${1#--file=}"
+      if [ -z "$travel_file" ]; then printf 'Error: --file requires a path\n' >&2; exit 1; fi
+      travel_args+=(--file -)
+      shift
     else
-      hotel_args+=("$1")
+      travel_args+=("$1")
       shift
     fi
   done
-  if [ -n "$hotel_file" ] && [ "$hotel_file" != "-" ]; then
-    if [ ! -r "$hotel_file" ]; then printf 'Error: cannot read hotel search file: %s\n' "$hotel_file" >&2; exit 1; fi
-    cmd_tui "${hotel_args[@]}" < "$hotel_file"
+  if [ -n "$travel_file" ] && [ "$travel_file" != "-" ]; then
+    if [ ! -f "$travel_file" ] || [ ! -r "$travel_file" ]; then printf 'Error: cannot read %s search file: %s\n' "$travel_kind" "$travel_file" >&2; exit 1; fi
+    cmd_tui "${travel_args[@]}" < "$travel_file"
   else
-    cmd_tui "${hotel_args[@]}"
+    cmd_tui "${travel_args[@]}"
   fi
 }
 
@@ -653,7 +664,7 @@ cmd_migrate() {
 }
 
 case "${1:-}" in
-  hotels) cmd_hotels "$@" ;;
+  hotels|cars) cmd_travel "$@" ;;
   --headless|--list|--view|--backend|--model)
     cmd_tui "$@" ;;
   --tmux)

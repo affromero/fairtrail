@@ -405,6 +405,49 @@ Hotel searches with `--wait` allow up to 120 minutes by default. Use
 cancels the server search. Flexible dates can take longer because each stay
 requires separate provider visits.
 
+### Car commands
+
+Car commands use the account-scoped HTTP API and leave flight configuration
+unchanged. They accept the same server and credential environment variables as
+hotel commands. Start with catalog locations and a reviewed search file:
+
+```bash
+flight-finder cars locations "London Heathrow" --json
+flight-finder cars parse "A London rental for next weekend" --json
+flight-finder cars search --file rental.json --wait --json
+flight-finder cars track <searchId> <offerId> --mode best --target 300 --currency GBP
+flight-finder cars view <id> --json
+flight-finder cars alerts <id> --revision 7 --target 280 --currency GBP
+flight-finder cars refresh <id> --revision 8
+flight-finder cars retry /app/data/car-receipts/<requestId>.json --json
+```
+
+`parse` produces a draft for review. It does not select a catalog location or
+start a search. Use the public search shape in [API.md](API.md), with catalog
+`id` and `version` values from `locations`. Input files and stdin (`--file -`)
+are limited to 64 KiB. Amounts use decimal major units with an explicit currency;
+the client converts them to exact integer minor units.
+
+Before changing tracking state, the CLI prints a private recovery receipt path.
+After a timeout or lost response, use `cars retry <receipt>` with the
+original server and account. Repeating `search`, `track`, or `refresh` starts a
+new request. Receipts contain request data, never cookies or access tokens.
+The installed CLI stores them under `/app/data/car-receipts` and refuses
+mutations if that persistent volume is missing. Direct Node CLI use defaults
+to `~/.flight-finder-car-receipts`; `--receipt-dir` selects another private
+directory whose parent already exists.
+
+Use the revision returned by `view` for changes to existing trackers. A stale
+revision reports the current state when it can be read, without claiming that
+an earlier request succeeded. A 404 means access is unavailable; it does not
+prove deletion. A 410 means the original resource was removed and its receipt
+cannot create a replacement. Receipts remain available after successful replay.
+
+`--wait` polls for up to 120 minutes. Ctrl-C or timeout stops local polling and
+leaves the server search running. Use `cars results <searchId>` to return to it,
+or `cars cancel <searchId>` to cancel it explicitly. `cars --help` lists paging,
+pause/resume, deletion, renaming, and administrator reassignment commands.
+
 **Features:**
 - Natural language search, same as the web
 - Braille chart with per-airline colored trend lines
