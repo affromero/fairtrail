@@ -3,6 +3,20 @@ import { travelRequest } from './client';
 import { hotelRequest } from '../hotels/client';
 
 afterEach(() => { vi.unstubAllGlobals(); });
+describe('bounded travel responses', () => {
+  it('accepts an exact byte boundary including multibyte text', async () => {
+    const body = JSON.stringify({ ok: true, data: 'Bogotá 🚗' });
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(body)));
+    await expect(travelRequest('/api/example', undefined, { maxResponseBytes: new TextEncoder().encode(body).length })).resolves.toBe('Bogotá 🚗');
+  });
+  it('rejects oversized streamed responses without treating them as definitive mutation rejection', async () => {
+    let cancelled = false;
+    const stream = new ReadableStream<Uint8Array>({ start(controller) { controller.enqueue(new TextEncoder().encode('x'.repeat(64))); }, cancel() { cancelled = true; } });
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(stream, { status: 401 })));
+    await expect(travelRequest('/api/example', undefined, { maxResponseBytes: 32 })).rejects.toMatchObject({ status: 401, definitive: false, message: expect.stringContaining('size') });
+    expect(cancelled).toBe(true);
+  });
+});
 describe.each([{ label: 'travel', request: travelRequest }, { label: 'hotel compatibility', request: hotelRequest }])('$label JSON requests', ({ request }) => {
   it('returns response data and preserves request headers, body and cancellation', async () => {
     const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify({ ok: true, data: { id: 'saved-tracker' } })));
