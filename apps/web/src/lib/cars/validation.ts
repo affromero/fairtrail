@@ -55,10 +55,13 @@ function location(raw: unknown): CarLocation {
   const r = carRecord(raw);
   const ids = carRecord(r.providerIds);
   const providerIds: CarLocation['providerIds'] = {};
+  const names = r.providerNames === undefined ? {} : carRecord(r.providerNames);
+  const providerNames: CarLocation['providerNames'] = {};
   for (const source of CAR_SOURCES) {
     if (ids[source] !== undefined) providerIds[source] = carText(ids[source], 200, 'provider location');
+    if (names[source] !== undefined) providerNames[source] = carText(names[source], 250, 'provider location name');
   }
-  return { name: carText(r.name, 250, 'location'), country: country(r.country), timeZone: timeZone(r.timeZone), providerIds };
+  return { name: carText(r.name, 250, 'location'), country: country(r.country), timeZone: timeZone(r.timeZone), providerIds, providerNames };
 }
 export function validateCarExtras(raw: unknown): CarExtras {
   const r = carRecord(raw ?? {});

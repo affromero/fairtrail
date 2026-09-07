@@ -29,7 +29,7 @@ const context = await browser.newContext({ locale: 'en-US', viewport: { width: 1
 const page = await context.newPage();
 console.log(`Private Auto Europe evidence: ${output}`);
 try {
-  const offers = await navigateAutoEuropeSearch(page, search);
+  const { links: offers } = await navigateAutoEuropeSearch(page, search);
   assert.ok(offers.length);
   await page.screenshot({ path: join(output, 'search.png'), fullPage: true });
   const detail = await context.newPage();
@@ -45,7 +45,7 @@ try {
   assert.match(terms, /Mandatory Taxes & Fees/);
   await writeFile(join(output, 'terms.txt'), terms);
   await detail.screenshot({ path: join(output, 'terms.png'), fullPage: true });
-  const freshOffers = await navigateAutoEuropeSearch(page, search);
+  const { links: freshOffers } = await navigateAutoEuropeSearch(page, search);
   assert.ok(freshOffers.length);
   assert.notEqual(freshOffers[0], offers[0], 'Fresh discovery must create a new quote session');
   const refreshed = extractAutoEuropeOffer(await captureAutoEuropeDetail(detail, freshOffers[0]!, search), search);

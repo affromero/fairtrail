@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Browser } from 'playwright';
-import { currentTravelExecution, TravelExecution, travelDelay, withTravelExecution } from './execution';
+import { currentTravelExecution, TravelCleanupError, TravelExecution, travelDelay, withTravelExecution } from './execution';
 import { travelNetworkResource } from './resources';
 
 const execution = (jobId: string) => new TravelExecution({ jobId, generation: 1, resource: 'browser' });
@@ -43,7 +43,7 @@ describe('travel execution lifetime', () => {
     await expect(withTravelExecution(scope, async () => {
       await scope.launch(async () => browser);
       return 'result';
-    })).rejects.toThrow(/cleanup failed/);
+    })).rejects.toBeInstanceOf(TravelCleanupError);
   });
   it('retains both the provider failure and a subsequent unsafe cleanup failure', async () => {
     const scope = execution('two-failures');
@@ -58,6 +58,12 @@ describe('travel execution lifetime', () => {
     await expect(result).rejects.toMatchObject({
       errors: [expect.objectContaining({ message: 'Provider unavailable' }), expect.objectContaining({ message: expect.stringMatching(/cleanup failed/) })],
     });
+  });
+  it('keeps an aggregate cancellation reason distinct from a browser cleanup failure', async () => {
+    const scope = execution('aggregate-cancellation');
+    const reason = new AggregateError([new Error('Lease replaced')], 'Cancelled by coordinator');
+    scope.abort(reason);
+    await expect(withTravelExecution(scope, async () => 'unexpected')).rejects.toBe(reason);
   });
 });
 

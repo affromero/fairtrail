@@ -12,6 +12,12 @@ const request = () => ({
 });
 
 describe('rental search validation', () => {
+  it('keeps distinct provider labels bound to the same selected location IDs', () => {
+    const providerNames = { discovercars: 'London Airport Heathrow (LHR)', autoeurope: 'London Heathrow Airport' };
+    const result = validateCarSearch({ ...request(), pickup: { ...location, providerNames } }, now);
+    expect(result.pickup).toMatchObject({ providerIds: location.providerIds, providerNames });
+    expect(() => validateCarSearch({ ...request(), pickup: { ...location, providerNames: { discovercars: 'x'.repeat(251) } } }, now)).toThrow(/location name/);
+  });
   it('preserves provider preference order and resolves station-local time without trusting a supplied instant', () => {
     const search = validateCarSearch({ ...request(), pickupAt: { ...request().pickupAt, instant: '2000-01-01T00:00:00Z' } }, now);
     expect(search.sources).toEqual(['autoeurope', 'discovercars']);

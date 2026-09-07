@@ -9,6 +9,13 @@ export interface TravelExecutionIdentity {
 
 const executions = new AsyncLocalStorage<TravelExecution>();
 
+export class TravelCleanupError extends AggregateError {
+  constructor(errors: Iterable<unknown>, message: string, options?: ErrorOptions) {
+    super(errors, message, options);
+    this.name = 'TravelCleanupError';
+  }
+}
+
 /** Owns browser lifetime, not VPN authority: remote mutations need fencing too. */
 export class TravelExecution {
   readonly signal: AbortSignal;
@@ -59,7 +66,7 @@ export class TravelExecution {
   async dispose(): Promise<void> {
     this.abort(new Error('Travel execution finished'));
     while (this.pending.size) await Promise.allSettled([...this.pending]);
-    if (this.failures.length) throw new AggregateError(this.failures, 'Travel browser cleanup failed');
+    if (this.failures.length) throw new TravelCleanupError(this.failures, 'Travel browser cleanup failed');
   }
 }
 
@@ -77,7 +84,7 @@ export async function withTravelExecution<T>(execution: TravelExecution, work: (
     catch (error) { outcome = { ok: false, error }; }
     try { await execution.dispose(); }
     catch (cleanupError) {
-      if (!outcome.ok) throw new AggregateError([outcome.error, cleanupError], 'Travel operation and browser cleanup failed', { cause: cleanupError });
+      if (!outcome.ok) throw new TravelCleanupError([outcome.error, cleanupError], 'Travel operation and browser cleanup failed', { cause: cleanupError });
       throw cleanupError;
     }
     if (!outcome.ok) throw outcome.error;

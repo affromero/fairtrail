@@ -1,23 +1,25 @@
 import type { Page } from 'playwright';
 import { carProviderUrl } from './offer-validation';
 import { verifyCarProviderContext } from './provider-context';
-import { CarError, type CarLocation, type CarSearch } from './types';
+import { CarError, type CarDiscovery, type CarLocation, type CarSearch } from './types';
 import { navigateCarPage, prepareCarPage } from './navigation';
+import { openCarControl } from './controls';
 
 export async function navigateAutoEuropeLocation(page: Page, location: CarLocation, field: 'pickup' | 'dropoff'): Promise<void> {
   const id = location.providerIds.autoeurope;
+  const name = location.providerNames?.autoeurope ?? location.name;
   if (!id) throw new CarError('Select an Auto Europe location before searching');
   const input = page.locator(`#${field}_location`);
   if (await page.locator(`form [name="${field}_location"]`).inputValue() === id) return;
   await input.fill('');
-  await input.fill(location.name);
+  await input.fill(name);
   const suggestions = page.locator('.list-group-item-action[data-cy]:visible');
   await suggestions.first().waitFor();
   const names = await suggestions.evaluateAll(elements => elements.map(e => e.getAttribute('data-cy')).filter((name): name is string => Boolean(name)));
-  for (const name of names.slice(0, 8)) {
-    await page.locator('.list-group-item-action[data-cy]:visible').filter({ hasText: name }).first().click();
+  for (const suggestion of names.slice(0, 8)) {
+    await page.locator('.list-group-item-action[data-cy]:visible').filter({ hasText: suggestion }).first().click();
     if (await page.locator(`form [name="${field}_location"]`).inputValue() === id) return;
-    await input.fill(location.name);
+    await input.fill(name);
     await suggestions.first().waitFor();
   }
   throw new CarError(`Auto Europe could not resolve the selected ${field} location`);
@@ -40,14 +42,14 @@ async function selectTime(page: Page, field: 'pickup' | 'dropoff', time: string)
   await option.click();
 }
 
-export async function navigateAutoEuropeSearch(page: Page, search: CarSearch): Promise<string[]> {
+export async function navigateAutoEuropeSearch(page: Page, search: CarSearch): Promise<CarDiscovery> {
   await navigateCarPage(page, 'https://book.autoeurope.com/en-us/', 'autoeurope');
   carProviderUrl(page.url(), 'autoeurope');
   const reject = page.getByRole('button', { name: 'Reject', exact: true });
   await reject.waitFor({ state: 'visible', timeout: 5000 }).catch(() => undefined);
   if (await reject.isVisible()) await reject.click();
   if ((await page.locator('form [name="residence_country"]').inputValue()).toUpperCase() !== search.driver.residenceCountry) {
-    await page.locator('[data-cy="country_dropdown_toggle"]:visible').click();
+    await openCarControl(page.locator('[data-cy="country_dropdown_toggle"]:visible'), page.locator('[data-cy="country_option"]:visible').first());
     await page.locator(`[data-cy="country_option"][data-country-code="${search.driver.residenceCountry}"]:visible`).click();
     await page.waitForFunction(country => (document.querySelector('form [name="residence_country"]') as HTMLInputElement | null)?.value === country, search.driver.residenceCountry);
     // Residence choice may change language. The explicit English page preserves
@@ -55,8 +57,8 @@ export async function navigateAutoEuropeSearch(page: Page, search: CarSearch): P
     await navigateCarPage(page, 'https://book.autoeurope.com/en-us/', 'autoeurope');
   }
   if (await page.locator('form [name="currency"]').inputValue() !== search.currency) {
-    await page.locator('[data-cy="currency_dropdown_toggle"]:visible').click();
-    await page.locator('[data-cy="currency_option"]:visible').filter({ hasText: new RegExp(`${search.currency}$`) }).first().click();
+    await openCarControl(page.locator('[data-cy="currency_dropdown_toggle"]:visible'), page.locator('[data-cy="currency_option"]:visible').first());
+    await page.locator(`[data-cy="currency_option"][data-currency-code="${search.currency}"]:visible`).first().click();
     await page.waitForFunction(currency => (document.querySelector('form [name="currency"]') as HTMLInputElement | null)?.value === currency, search.currency);
   }
   if ((await page.locator('form [name="residence_country"]').inputValue()).toUpperCase() !== search.driver.residenceCountry) {
@@ -79,8 +81,13 @@ export async function navigateAutoEuropeSearch(page: Page, search: CarSearch): P
   await page.waitForURL(url => url.pathname === '/en-us/results');
   await guard.settle();
   verifyCarProviderContext(page.url(), 'autoeurope', search);
-  const offers = page.locator('a[href*="/options?rate_reference="]');
+  const offers = page.locator('a[href*="/options?rate_reference="]:visible');
   await offers.first().waitFor({ timeout: 90_000 });
   const hrefs = await offers.evaluateAll(elements => elements.map(e => (e as HTMLAnchorElement).href));
-  return [...new Set(hrefs)].slice(0, 8).map(url => carProviderUrl(url, 'autoeurope'));
+  const unique = [...new Set(hrefs)];
+  const links = unique.slice(0, 8).map(url => {
+    verifyCarProviderContext(url, 'autoeurope', search);
+    return carProviderUrl(url, 'autoeurope');
+  });
+  return { links, discoveredVisible: unique.length, limit: 8, truncated: unique.length > 8 };
 }

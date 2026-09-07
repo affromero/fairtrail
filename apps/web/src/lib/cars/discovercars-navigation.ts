@@ -1,22 +1,12 @@
 import type { Locator, Page } from 'playwright';
-import { CarError, type CarLocation, type CarSearch } from './types';
+import { CarError, type CarDiscovery, type CarLocation, type CarSearch } from './types';
 import { navigateCarPage, prepareCarPage } from './navigation';
 import { carProviderUrl } from './offer-validation';
 import { verifyCarProviderContext } from './provider-context';
-
-/** Wait for an observable interaction, not a delay after server-rendered markup. */
-async function openControl(trigger: Locator, content: Locator): Promise<void> {
-  for (let attempt = 0; attempt < 5; attempt++) {
-    if (await content.isVisible()) return;
-    await trigger.click();
-    try { await content.waitFor({ state: 'visible', timeout: 1000 }); return; }
-    catch { /* A pre-hydration click has no effect; only retry while closed. */ }
-  }
-  throw new CarError('DiscoverCars search controls did not become interactive');
-}
+import { openCarControl } from './controls';
 
 async function selectOption(control: Locator, label: string): Promise<void> {
-  await openControl(control.locator('.CustomSelect-SelectHandler'), control.locator('.CustomSelect-SelectOption:visible').first());
+  await openCarControl(control.locator('.CustomSelect-SelectHandler'), control.locator('.CustomSelect-SelectOption:visible').first());
   const option = control.locator('.CustomSelect-SelectOption:visible').filter({ hasText: new RegExp(`^${label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`) });
   if (await option.count() !== 1) throw new CarError(`DiscoverCars does not offer the requested option: ${label}`);
   await option.click();
@@ -29,13 +19,14 @@ function residenceName(code: string): string {
 
 async function selectLocation(page: Page, location: CarLocation, field: 'PickupLocation' | 'DropoffLocation'): Promise<void> {
   if (!location.providerIds.discovercars) throw new CarError('Select a DiscoverCars location before searching');
+  const name = location.providerNames?.discovercars ?? location.name;
   const input = page.locator(`input[name="${field}"]`);
   await input.fill('');
-  await input.fill(location.name);
+  await input.fill(name);
   const control = input.locator('xpath=ancestor::div[contains(@class,"SearchModifier-LocationAutocomplete")][1]');
   const options = control.locator('.Autocomplete-AutocompleteItem:visible');
   await options.first().waitFor();
-  const exact = options.filter({ has: page.locator('.Autocomplete-AutocompletePlace', { hasText: new RegExp(`^${location.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`) }) });
+  const exact = options.filter({ has: page.locator('.Autocomplete-AutocompletePlace', { hasText: new RegExp(`^${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`) }) });
   if (await exact.count() !== 1) throw new CarError(`DiscoverCars could not unambiguously select ${location.name}`);
   await exact.click();
 }
@@ -72,7 +63,7 @@ export async function fillDiscoverCarsSearch(page: Page, search: CarSearch): Pro
   const currencyTrigger = page.getByRole('button', { name: /^[A-Z]{3}$/ }).filter({ visible: true }).first();
   if ((await currencyTrigger.innerText()).trim() !== search.currency) {
     const currencies = page.locator('[data-testid="currency-switcher"]:visible');
-    await openControl(currencyTrigger, currencies.first());
+    await openCarControl(currencyTrigger, currencies.first());
     const currency = currencies.filter({ has: page.getByText(search.currency, { exact: true }) });
     if (!(await currency.count())) throw new CarError('DiscoverCars does not offer the requested currency');
     // Currency selection reloads the form, so set it before any rental fields.
@@ -90,7 +81,7 @@ export async function fillDiscoverCarsSearch(page: Page, search: CarSearch): Pro
   if (await same.isChecked() !== sameLocation) await page.getByText('Return car in same location', { exact: true }).click();
   await selectLocation(page, search.pickup, 'PickupLocation');
   if (!sameLocation) await selectLocation(page, search.dropoff, 'DropoffLocation');
-  await openControl(page.locator('.DatePicker-CalendarField').first(), page.locator('.Calendar-ThisMonth'));
+  await openCarControl(page.locator('.DatePicker-CalendarField').first(), page.locator('.Calendar-ThisMonth'));
   await selectDay(page, search.pickupAt.date);
   await selectDay(page, search.dropoffAt.date);
   for (const [index, time] of [search.pickupAt.time, search.dropoffAt.time].entries()) {
@@ -99,7 +90,7 @@ export async function fillDiscoverCarsSearch(page: Page, search: CarSearch): Pro
   }
 }
 
-export async function submitDiscoverCarsSearch(page: Page, search: CarSearch): Promise<string[]> {
+export async function submitDiscoverCarsSearch(page: Page, search: CarSearch): Promise<CarDiscovery> {
   const guard = await prepareCarPage(page, 'discovercars');
   guard.reset();
   const previousPath = new URL(page.url()).pathname;
@@ -109,21 +100,23 @@ export async function submitDiscoverCarsSearch(page: Page, search: CarSearch): P
   return collectDiscoverCarsOffers(page, search);
 }
 
-export async function collectDiscoverCarsOffers(page: Page, search: CarSearch): Promise<string[]> {
+export async function collectDiscoverCarsOffers(page: Page, search: CarSearch): Promise<CarDiscovery> {
   verifyCarProviderContext(page.url(), 'discovercars', search);
   await page.getByRole('button', { name: search.currency, exact: true }).waitFor();
   const offers = page.locator('a.SearchCar-CtaBtn:visible');
   await offers.first().waitFor({ timeout: 90_000 });
   const links = await offers.evaluateAll(elements => elements.map(element => (element as HTMLAnchorElement).href));
-  return [...new Set(links)].slice(0, 8).map(raw => {
+  const unique = [...new Set(links)];
+  const verified = unique.slice(0, 8).map(raw => {
     const url = new URL(carProviderUrl(raw, 'discovercars'));
     if (!/^\/offer\/[0-9a-f-]{36}-[A-Za-z0-9]+$/i.test(url.pathname)) throw new CarError('DiscoverCars returned an unexpected offer link');
     verifyCarProviderContext(url.href, 'discovercars', search);
     return url.href;
   });
+  return { links: verified, discoveredVisible: unique.length, limit: 8, truncated: unique.length > 8 };
 }
 
-export async function navigateDiscoverCarsSearch(page: Page, search: CarSearch): Promise<string[]> {
+export async function navigateDiscoverCarsSearch(page: Page, search: CarSearch): Promise<CarDiscovery> {
   await navigateCarPage(page, 'https://www.discovercars.com/', 'discovercars');
   await fillDiscoverCarsSearch(page, search);
   return submitDiscoverCarsSearch(page, search);

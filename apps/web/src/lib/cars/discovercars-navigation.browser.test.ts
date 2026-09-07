@@ -92,7 +92,7 @@ describe.skipIf(process.env.TRAVEL_BROWSER_TESTS !== '1')('DiscoverCars request 
       expect(await page.locator('[name=PickupLocationId]').inputValue()).toBe('1712');
       expect(await page.locator('#pickup-date').textContent()).toBe('2026-12-30');
       expect(await page.locator('#dropoff-date').textContent()).toBe('2027-01-03');
-      expect(await submitDiscoverCarsSearch(page, search)).toEqual([offerUrl()]);
+      expect(await submitDiscoverCarsSearch(page, search)).toEqual({ links: [offerUrl()], discoveredVisible: 1, limit: 8, truncated: false });
       expect(new URL(page.url()).searchParams.get('sq')).toBe(new URLSearchParams(query()).get('sq'));
     } finally { await page.close(); }
   });

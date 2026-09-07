@@ -62,6 +62,13 @@ describe('Auto Europe scoped quote extraction', () => {
     capture.cart.items = [{ id: 'ZR.USD', name: 'Excess refund', quantity: 1, attributes: { payment_type: 'Now', description: 'Refund excludes glass and tyres', payments: payment(44) } }];
     expect(carContractIdentity(offer(capture, criteria).contract)).not.toBe(carContractIdentity(result.contract));
   });
+  it('keeps a converted display price out of confirmed alerts when the actual payment currency differs', () => {
+    const capture = fixture();
+    capture.vehicle.package.payments.payNow.total.payment = { amount: 36.66, currency: 'GBP' };
+    const result = extractAutoEuropeOffer(capture, search);
+    expect(result).not.toHaveProperty('contract');
+    expect(result).toMatchObject({ advertisedTotal: { status: 'estimated', value: { currency: 'USD', minor: 4965 } }, reasons: [expect.stringMatching(/different currencies/)] });
+  });
   it('itemizes an included young-driver fee exactly once', () => {
     const capture = fixture(); capture.visibleTotal = 'USD $214.65'; capture.visiblePayNow = 'USD $214.65';
     capture.vehicle.package.payments.payNow.total = payment(214.65);

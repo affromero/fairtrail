@@ -54,7 +54,7 @@ async function main() {
     const request = verifyCarProviderContext(page.url(), 'discovercars', baseCriteria);
     await page.getByRole('button', { name: 'USD', exact: true }).waitFor();
     await capture(page, 'search');
-    const href = links[0];
+    const href = links.links[0];
     assert.ok(href);
     const detailUrl = new URL(href, page.url());
     assert.equal(detailUrl.origin, 'https://www.discovercars.com');
@@ -119,7 +119,7 @@ async function main() {
     const freshLinks = await submitDiscoverCarsSearch(page, criteria);
     assert.equal(verifyCarProviderContext(page.url(), 'discovercars', criteria), request, 'Fresh discovery preserves its pricing context');
     await capture(page, 'fresh-search');
-    const freshLink = freshLinks[0];
+    const freshLink = freshLinks.links[0];
     assert.ok(freshLink);
     const freshCapture = await captureDiscoverCarsDetail(detail, new URL(freshLink, page.url()).href, criteria, page);
     const fresh = extractDiscoverCarsOffer(freshCapture, criteria);

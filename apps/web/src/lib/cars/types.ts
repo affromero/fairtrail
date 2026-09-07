@@ -17,6 +17,7 @@ export interface CarLocation {
   country: string;
   timeZone: string;
   providerIds: Partial<Record<CarSource, string>>;
+  providerNames?: Partial<Record<CarSource, string>>;
 }
 export interface CarDriver { age: number; licenceYears: number; residenceCountry: string }
 export interface CarExtras {
@@ -140,6 +141,30 @@ export interface CarSearchResult {
   errors: { source: CarSource; message: string }[];
   completed: number;
   total: number;
+}
+export interface CarProviderProgress {
+  source: CarSource;
+  status: 'running' | 'complete' | 'partial' | 'failed' | 'timed_out' | 'blocked' | 'cancelled';
+  checked: number;
+  discoveredVisible: number;
+  limit: number;
+  truncated: boolean;
+}
+export interface CarDiscovery {
+  links: string[];
+  discoveredVisible: number;
+  limit: number;
+  truncated: boolean;
+}
+export interface CarSearchReport extends CarSearchResult {
+  /** Even a completed scan covers observed provider results, not the whole market. */
+  scope: 'checked_provider_offers';
+  providers: CarProviderProgress[];
+  successfulProviders: number;
+}
+export interface CarContractSelection {
+  source: CarSource;
+  contractHash: string;
 }
 export interface CarTrackingOptions {
   mode: 'best' | 'contract';
