@@ -8,8 +8,7 @@ import { captureAutoEuropeDetail } from '../apps/web/src/lib/cars/autoeurope-cap
 import { extractAutoEuropeOffer } from '../apps/web/src/lib/cars/autoeurope-extraction';
 import { assessCarPrice } from '../apps/web/src/lib/cars/pricing';
 import { carContractIdentity } from '../apps/web/src/lib/cars/identity';
-import { navigateCarPage } from '../apps/web/src/lib/cars/navigation';
-import { verifyCarProviderContext } from '../apps/web/src/lib/cars/provider-context';
+import { captureAutoEuropeProtectionChoices, extractAutoEuropeProtectionChoices } from '../apps/web/src/lib/cars/autoeurope-protection';
 
 async function main() {
 process.umask(0o077);
@@ -35,18 +34,12 @@ try {
   await page.screenshot({ path: join(output, 'search.png'), fullPage: true });
   const detail = await context.newPage();
   if (process.env.CAR_SMOKE_PROTECTION === 'true') {
-    await navigateCarPage(detail, offers[0]!, 'autoeurope');
-    verifyCarProviderContext(detail.url(), 'autoeurope', search);
-    const buttons = detail.locator('[data-cy^="go_to_checkout_button_"]:visible');
-    await buttons.first().waitFor();
-    const choices = await buttons.evaluateAll(elements => elements.map(element => ({
-      productId: element.getAttribute('data-cy')?.replace(/^go_to_checkout_button_/, ''),
-      label: element.textContent?.replace(/\s+/g, ' ').trim(),
-    })));
+    const discovery = await captureAutoEuropeProtectionChoices(detail, offers[0]!, search);
+    const choices = extractAutoEuropeProtectionChoices(discovery, search);
+    await writeFile(join(output, 'protection-capture.json'), JSON.stringify(discovery, null, 2));
     await writeFile(join(output, 'protection-choices.json'), JSON.stringify(choices, null, 2));
-    assert.ok(choices.length <= 8, 'Protection choices must remain bounded');
-    const selected = choices.find(choice => choice.productId !== 'basic' && choice.productId && /^[A-Za-z0-9.]+$/.test(choice.productId));
-    assert.ok(selected?.productId && selected.label, 'Current quote must offer an identified protection product');
+    const selected = choices[0];
+    assert.ok(selected, 'Current quote must offer an identified protection product');
     search = validateCarSearch({ ...search, extras: { ...search.extras, protection: [{ source: 'autoeurope', productId: selected.productId }] } });
   }
   const capture = await captureAutoEuropeDetail(detail, offers[0]!, search);
