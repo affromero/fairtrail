@@ -427,7 +427,7 @@ five-second read deadline. The browser pages `/cars`, `/cars/:id`, and
 | `GET /api/cars/:id` | `{ tracker, snapshots, runs, latestObservation, notificationsConfigured, canReassign }` |
 | `PATCH /api/cars/:id` | `{ tracker }` after saving supported settings |
 | `DELETE /api/cars/:id` | `{ id, deleted: true }` after deleting the tracker and its history |
-| `POST /api/cars/:id/scrape` | HTTP 202 with `{ id, status }` for a queued or already-active check |
+| `POST /api/cars/:id/scrape` | HTTP 202 with `{ id, trackerId, status, refreshKey }`; requires `Idempotency-Key` and `X-Car-Revision` |
 | `GET /api/cars/locations?q=LHR` | Up to 12 catalog suggestions with `id`, `version`, country, region and timezone; no provider requests |
 | `POST /api/cars/parse` | `{ draft }` from `{ text, locale? }`; editable suggestions only, no provider search or tracker creation |
 | `POST /api/cars/search` | HTTP 202 with `{ id, status, creationKey }`; requires a UUID v4 `Idempotency-Key` |
@@ -443,6 +443,24 @@ Do not reuse a cursor for a different account or listing mode. Administrators
 request all accounts with `admin=true` on every page; other accounts receive 403.
 Malformed cursors and page sizes return 400. Ownership is checked independently
 of the cursor.
+
+#### Manually refresh a saved rental
+
+Send a bodyless `POST /api/cars/:id/scrape` with a UUID v4 `Idempotency-Key`
+and the current `X-Car-Revision` from the tracker response. Missing revision
+returns 428; a fresh request for an older revision returns 412. Reusing a key
+for different settings or another tracker returns 409.
+
+Persist the key and revision before sending. On a lost response, reuse both.
+The receipt returns the original run even after completion, cancellation, or
+a later settings change. An already-active check is reused and recorded in
+the receipt. Deleted checks retain a receipt and return 410 rather than being
+recreated. Current tracker ownership is checked on every replay.
+
+The browser labels this action “Check saved rental prices.” “Refresh status”
+only reloads stored history. An uncertain refresh does not prevent pausing or
+deleting the tracker. Recovery after a pause reports the original cancelled
+run without starting another check.
 
 #### Start an independent rental search
 

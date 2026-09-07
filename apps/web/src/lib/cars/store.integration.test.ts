@@ -2,7 +2,8 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import { prisma } from '@/lib/prisma';
 import { acquireTravelLease, claimTravelJob, completeTravelJob, releaseTravelLease, type TravelLeaseToken } from '../travel/jobs';
 import { cancelCarSearch, carJson, carMinorNumber, carTrackerDto, createCarSearch, createCarCatalogSearch, createCarTracker, deleteCarTracker, editCarTracker, getCarSearch, getCarTracker, listCarTrackers, refreshCarTracker } from './store';
-import { carOfferFixture as offer, carSearchFixture as criteria } from '@/test/car-fixtures';
+import { carOfferFixture as offer, carSearchFixture as criteria, carReportFixture } from '@/test/car-fixtures';
+import { finishCarRun } from './persistence';
 import { carContractHash } from './selection';
 import type { CarActor } from './access';
 import { searchCarLocations } from './locations';
@@ -96,6 +97,58 @@ describe.skipIf(process.env.CAR_STORE_INTEGRATION_TESTS !== '1')('car ownership 
     expect(carTrackerDto(row)).toMatchObject({ selection: null, options: { mode: 'best' }, search: { sources: ['discovercars', 'autoeurope'], filters: { maxTotal: null } } });
     const queued = await prisma.carSearchRun.findFirstOrThrow({ where: { trackerId: row.id }, include: { travelJob: true } });
     expect(queued).toMatchObject({ trackerRevision: 0, status: 'queued', travelJob: { kind: 'car_search', userId: owner.userId } });
+  });
+
+  it('records concurrent refresh identities against one active run and replays them after completion', async () => {
+    const row = await tracker(), key = crypto.randomUUID(), another = crypto.randomUUID();
+    const runs = await Promise.all([key, key, another].map(key => refreshCarTracker(row.id, owner, false, { key, revision: 0 })));
+    expect(new Set(runs.map(run => run!.id)).size).toBe(1);
+    expect(await prisma.carRefreshRequest.count({ where: { userId: owner.userId } })).toBe(2);
+    const active = await running(row.id);
+    await finishCarRun(active.job.id, active.lease, carReportFixture());
+    for (const receiptKey of [key, another]) expect(await refreshCarTracker(row.id, owner, false, { key: receiptKey, revision: 0 })).toMatchObject({ id: runs[0]!.id, status: 'success' });
+    expect(await prisma.carSearchRun.count({ where: { trackerId: row.id } })).toBe(1);
+    expect(await prisma.travelJob.count({ where: { userId: owner.userId } })).toBe(1);
+  });
+
+  it('replays a lost refresh acknowledgement after pause without restarting cancelled work', async () => {
+    const row = await tracker(), key = crypto.randomUUID();
+    const run = await refreshCarTracker(row.id, owner, false, { key, revision: 0 });
+    await editCarTracker(row.id, { active: false }, owner, 0);
+    expect(await refreshCarTracker(row.id, owner, false, { key, revision: 0 })).toMatchObject({ id: run!.id, status: 'cancelled' });
+    await expect(refreshCarTracker(row.id, owner, false, { key: crypto.randomUUID(), revision: 0 })).rejects.toMatchObject({ status: 412 });
+    await expect(refreshCarTracker(row.id, owner, false, { key: crypto.randomUUID(), revision: 1 })).rejects.toMatchObject({ status: 409 });
+    expect(await prisma.carSearchRun.count({ where: { trackerId: row.id } })).toBe(1);
+  });
+
+  it('rejects refresh key reuse for different settings or trackers', async () => {
+    const row = await tracker(), second = await tracker(), key = crypto.randomUUID();
+    await refreshCarTracker(row.id, owner, false, { key, revision: 0 });
+    await expect(refreshCarTracker(row.id, owner, false, { key, revision: 1 })).rejects.toMatchObject({ status: 409 });
+    await expect(refreshCarTracker(second.id, owner, false, { key, revision: 0 })).rejects.toMatchObject({ status: 409 });
+    expect(await prisma.carRefreshRequest.count({ where: { userId: owner.userId } })).toBe(1);
+  });
+
+  it('retains refresh tombstones after pruning a run and deleting its tracker', async () => {
+    const row = await tracker(), key = crypto.randomUUID();
+    const run = await refreshCarTracker(row.id, owner, false, { key, revision: 0 });
+    await cancelCarSearch(run!.id, owner);
+    await prisma.travelJob.deleteMany({ where: { carRunId: run!.id } });
+    await prisma.carSearchRun.delete({ where: { id: run!.id } });
+    await expect(refreshCarTracker(row.id, owner, false, { key, revision: 0 })).rejects.toMatchObject({ status: 410 });
+    await deleteCarTracker(row.id, owner);
+    await expect(refreshCarTracker(row.id, owner, false, { key, revision: 0 })).rejects.toMatchObject({ status: 410 });
+    expect(await prisma.carRefreshRequest.findFirst({ where: { userId: owner.userId } })).toMatchObject({ trackerId: row.id, runId: null });
+    expect(await prisma.carSearchRun.count({ where: { trackerId: row.id } })).toBe(0);
+  });
+
+  it('checks current ownership before replaying a refresh receipt after reassignment', async () => {
+    const row = await tracker(), key = crypto.randomUUID();
+    await refreshCarTracker(row.id, owner, false, { key, revision: 0 });
+    await editCarTracker(row.id, { userId: other.userId }, { ...owner, isAdmin: true });
+    await expect(refreshCarTracker(row.id, owner, false, { key, revision: 0 })).rejects.toMatchObject({ status: 404 });
+    const next = await refreshCarTracker(row.id, other, false, { key, revision: 1 });
+    expect(next).toMatchObject({ userId: other.userId, trackerRevision: 1, status: 'queued' });
   });
 
   it('derives exact contract identity from the owned result rather than client prices or hashes', async () => {

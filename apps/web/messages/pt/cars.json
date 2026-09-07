@@ -1,5 +1,20 @@
 {
   "Cars": {
+    "Refresh": {
+      "title": "Consultar preços agora",
+      "help": "Inicia uma consulta ao provedor com os dados salvos. Atualizar o status apenas recarrega o histórico. Você pode pausar ou excluir o acompanhamento enquanto recupera uma solicitação.",
+      "start": "Consultar preços do aluguel salvo",
+      "sending": "Solicitando consulta de preços…",
+      "uncertain": "A consulta pode já ter começado. Recupere esta solicitação antes de iniciar outra. A recuperação não reinicia consultas concluídas ou canceladas.",
+      "recover": "Recuperar consulta de preços",
+      "storageError": "O armazenamento de recuperação está indisponível ou ilegível. Uma nova consulta não pode ser enviada com segurança.",
+      "retryStorage": "Tentar armazenamento novamente",
+      "discardHelp": "Se o registro continuar ilegível, pause o acompanhamento primeiro. Após a confirmação da pausa, você pode apagar o registro sem permitir que uma solicitação anterior inicie outra consulta.",
+      "discard": "Apagar registro de consulta ilegível",
+      "accepted": "Solicitação de consulta confirmada. Veja o resultado nas consultas recentes.",
+      "removed": "O acompanhamento ou a consulta original foi removido. Esta tentativa não o recriou.",
+      "rejected": "A solicitação não foi aceita com os dados atuais. Atualize o status antes de iniciar outra consulta."
+    },
     "Draft": {
       "title": "Descreva o aluguel",
       "help": "Opcional. A IA configurada pode preparar um rascunho editável. Dados ausentes ficam sem confirmação; os preços só serão consultados quando você enviar o formulário.",

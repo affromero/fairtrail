@@ -4,7 +4,7 @@ import { validateCarDetailView, type CarDetailView } from '@/lib/cars/detail-vie
 import { validateCarTrackerView } from '@/lib/cars/tracker-view';
 import { carRunIsActive } from '@/lib/cars/run-view';
 import { carRecord } from '@/lib/cars/validation';
-import { travelRequest, TravelResponseError } from '../travel/client';
+import { travelRequest, TravelResponseError, TRAVEL_ACCESS_LOST_EVENT } from '../travel/client';
 import { carManagementAction, carManagementBody, carManagementMatches, restoreCarManagement, type CarManagementAction, type CarManagementIntent } from './management';
 
 type Phase = 'loading' | 'ready' | 'uncertain' | 'conflict' | 'inaccessible' | 'deleted' | 'storage_error';
@@ -17,6 +17,14 @@ export function useCarTracker(initial: CarDetailView, actorScope: string) {
   const storageKey = `ff-car-management:${encodeURIComponent(actorScope)}:${encodeURIComponent(initial.tracker.id)}`;
   const url = `/api/cars/${encodeURIComponent(initial.tracker.id)}`;
   const update = useCallback((patch: Partial<State>) => { current.current = { ...current.current, ...patch }; setState(current.current); }, []);
+  const loseAccess = useCallback(() => {
+    generation.current++; controller.current?.abort(); controller.current = null;
+    update({ busy: false, hidden: true, interrupted: true, phase: 'inaccessible' });
+  }, [update]);
+  useEffect(() => {
+    window.addEventListener(TRAVEL_ACCESS_LOST_EVENT, loseAccess);
+    return () => window.removeEventListener(TRAVEL_ACCESS_LOST_EVENT, loseAccess);
+  }, [loseAccess]);
   const removePending = useCallback(() => {
     try { sessionStorage.removeItem(storageKey); return true; }
     catch { return false; }
@@ -140,5 +148,5 @@ export function useCarTracker(initial: CarDetailView, actorScope: string) {
     update({ pending, phase: 'uncertain' });
     await request(pending, true);
   }
-  return { ...state, read, mutate, retry, acceptCurrent, recoverStorage, locked: state.phase !== 'ready' || state.interrupted || state.hidden };
+  return { ...state, read, mutate, retry, acceptCurrent, recoverStorage, loseAccess, locked: state.phase !== 'ready' || state.interrupted || state.hidden };
 }

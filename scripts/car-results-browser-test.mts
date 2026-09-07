@@ -235,6 +235,30 @@ try {
     await page.screenshot({ path: resolve(output, `tracker-history-${width}.png`), fullPage: true });
   }
   passed.push('Tracker history preserves evidence timestamps through failed checks and supports keyboard disclosure');
+  let refreshKey = '', refreshRun = '';
+  await page.route('**/api/cars/car-browser-tracker/scrape', async route => {
+    refreshKey = route.request().headers()['idempotency-key']!;
+    const accepted = await route.fetch(); assert.equal(accepted.status(), 202, await accepted.text());
+    refreshRun = (await accepted.json()).data.id;
+    await route.abort();
+  });
+  await page.getByRole('button', { name: 'Check saved rental prices', exact: true }).click();
+  await page.getByRole('button', { name: 'Recover price check', exact: true }).waitFor();
+  assert.ok(await page.getByRole('button', { name: 'Pause tracking', exact: true }).isEnabled());
+  await page.getByRole('region', { name: 'Check prices now', exact: true }).scrollIntoViewIfNeeded();
+  await page.screenshot({ path: resolve(output, 'refresh-lost-ack-390.png') });
+  assert.equal((await alice.request.delete(`/api/cars/search/${refreshRun}`)).status(), 200);
+  await page.unroute('**/api/cars/car-browser-tracker/scrape');
+  await page.reload();
+  await page.getByRole('button', { name: 'Recover price check', exact: true }).click();
+  await page.getByText('Check request confirmed. Review recent checks for its outcome.', { exact: true }).waitFor();
+  assert.equal(Number((await db.query(`SELECT count(*) FROM "CarRefreshRequest" WHERE "trackerId"='car-browser-tracker'`)).rows[0].count), 1);
+  assert.equal((await db.query(`SELECT status FROM "CarSearchRun" WHERE id=$1`, [refreshRun])).rows[0].status, 'cancelled');
+  const replay = await alice.request.post('/api/cars/car-browser-tracker/scrape', { headers: { 'Idempotency-Key': refreshKey, 'X-Car-Revision': '0' } });
+  assert.equal((await replay.json()).data.id, refreshRun);
+  await page.getByRole('region', { name: 'Check prices now', exact: true }).scrollIntoViewIfNeeded();
+  await page.screenshot({ path: resolve(output, 'refresh-recovered-390.png') });
+  passed.push('Durable manual refresh: accepted response lost, original run cancelled, browser remount and same-key replay recover without another check');
   for (const locale of ['es', 'fr', 'de', 'pt']) {
     const copy = JSON.parse(await readFile(resolve(`apps/web/messages/${locale}/cars.json`), 'utf8')).Cars;
     const localized = await context(privateUrl, locale); await login(localized, 'car-browser-alice');
@@ -260,14 +284,14 @@ try {
   await page.unroute('**/api/cars/car-browser-tracker');
   await page.getByRole('button', { name: 'Retry status updates' }).click();
   await page.getByRole('button', { name: 'Refresh status' }).waitFor();
-  await alice.clearCookies(); await page.getByRole('button', { name: 'Refresh status' }).click();
+  await alice.clearCookies(); await page.getByRole('button', { name: 'Check saved rental prices', exact: true }).click();
   await page.getByRole('link', { name: 'Sign in', exact: true }).waitFor();
   assert.equal(await page.getByRole('heading', { name: 'London weekend' }).count(), 0);
   await page.screenshot({ path: resolve(output, 'tracker-session-expired-390.png'), fullPage: true });
   await login(alice, 'car-browser-alice');
   await page.getByRole('button', { name: 'Retry status updates' }).click();
   await page.getByRole('heading', { name: 'London weekend' }).waitFor();
-  passed.push('Tracker history survives transport failure and remains private after session expiry');
+  passed.push('Tracker history survives transport failure and manual refresh hides all private content after session expiry');
   await db.query(`INSERT INTO "CarSearchRun" (id,"userId","trackerId","trackerRevision",request,status,"createdAt") VALUES ('car-browser-tracker-queued','car-browser-alice','car-browser-tracker',0,$1,'queued',$2)`, [search, now]);
   await page.reload();
   await page.getByRole('region', { name: 'Recent checks' }).getByText('Waiting', { exact: true }).waitFor();

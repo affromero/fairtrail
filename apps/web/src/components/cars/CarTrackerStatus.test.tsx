@@ -28,6 +28,127 @@ beforeEach(() => { sessionStorage.clear(); });
 afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
 describe('private rental history and status recovery', () => {
+  it.each([401, 403, 404])('hides all private tracker content when a refresh returns an unreadable %s', async status => {
+    const initial = fixture();
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('<html>Access unavailable</html>', { status })));
+    render(<View initial={initial} />);
+    fireEvent.click(screen.getByRole('button', { name: en.Cars.Refresh.start }));
+    await screen.findByRole('link', { name: en.Cars.signIn });
+    expect(screen.queryByRole('heading', { name: initial.tracker.label })).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: en.Cars.manageTracker })).not.toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: en.Cars.verifiedHistory })).not.toBeInTheDocument();
+    expect(sessionStorage.getItem('ff-car-refresh:alice:tracker-one')).not.toBeNull();
+  });
+  it('cannot restore private content from a late history response after refresh access loss', async () => {
+    const initial = fixture(); let finishRefresh!: (value: Response) => void, finishRead!: (value: Response) => void;
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => new Promise<Response>(resolve => {
+      if (url.endsWith('/scrape')) finishRefresh = resolve;
+      else finishRead = resolve;
+    })));
+    render(<View initial={initial} />);
+    fireEvent.click(screen.getByRole('button', { name: en.Cars.Refresh.start }));
+    fireEvent.click(screen.getByRole('button', { name: en.Cars.refreshStatus }));
+    await act(async () => { finishRefresh(new Response('<html>Expired</html>', { status: 401 })); });
+    expect(screen.getByRole('link', { name: en.Cars.signIn })).toBeInTheDocument();
+    await act(async () => { finishRead(response(initial)); });
+    expect(screen.queryByRole('heading', { name: initial.tracker.label })).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: en.Cars.manageTracker })).not.toBeInTheDocument();
+  });
+  it('recovers the original refresh after a lost response and pause across a remount', async () => {
+    const initial = fixture(), saved = structuredClone(initial), posts: RequestInit[] = [];
+    let lost = true;
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      if (url.endsWith('/scrape')) {
+        posts.push(init!);
+        if (lost) throw new TypeError('Lost acknowledgement');
+        return response({ id: 'refresh-original', trackerId: initial.tracker.id, status: 'cancelled', refreshKey: new Headers(init?.headers).get('Idempotency-Key') });
+      }
+      if (init?.method === 'PATCH') {
+        saved.tracker.active = false; saved.tracker.revision++;
+        return response({ tracker: saved.tracker });
+      }
+      return response(saved);
+    }));
+    const mounted = render(<View initial={initial} />);
+    fireEvent.click(screen.getByRole('button', { name: en.Cars.Refresh.start }));
+    await screen.findByRole('button', { name: en.Cars.Refresh.recover });
+    expect(screen.getByRole('button', { name: en.Cars.pauseTracker })).toBeEnabled();
+    fireEvent.click(screen.getByRole('button', { name: en.Cars.pauseTracker }));
+    await screen.findByRole('button', { name: en.Cars.resumeTracker });
+    mounted.unmount(); lost = false;
+    render(<View initial={saved} />);
+    expect(screen.getByRole('button', { name: en.Cars.Refresh.start })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: en.Cars.Refresh.recover }));
+    await screen.findByText(en.Cars.Refresh.accepted);
+    expect(posts.map(post => new Headers(post.headers).get('Idempotency-Key'))).toEqual([expect.any(String), new Headers(posts[0]!.headers).get('Idempotency-Key')]);
+    expect(posts.map(post => new Headers(post.headers).get('X-Car-Revision'))).toEqual(['0', '0']);
+    expect(sessionStorage.getItem('ff-car-refresh:alice:tracker-one')).toBeNull();
+    expect(screen.getByRole('button', { name: en.Cars.Refresh.start })).toBeDisabled();
+  });
+  it('retains the refresh identity when the server acknowledges another request', async () => {
+    const initial = fixture();
+    vi.stubGlobal('fetch', vi.fn(async () => response({ id: 'wrong-run', trackerId: initial.tracker.id, status: 'queued', refreshKey: crypto.randomUUID() })));
+    render(<View initial={initial} />);
+    fireEvent.click(screen.getByRole('button', { name: en.Cars.Refresh.start }));
+    await screen.findByRole('button', { name: en.Cars.Refresh.recover });
+    expect(sessionStorage.getItem('ff-car-refresh:alice:tracker-one')).not.toBeNull();
+    expect(screen.queryByText(en.Cars.Refresh.accepted)).not.toBeInTheDocument();
+  });
+  it('ends a stalled refresh at its deadline and ignores a late acknowledgement', async () => {
+    vi.useFakeTimers();
+    const initial = fixture(); let finish!: (response: Response) => void, headers: Headers, signal: AbortSignal;
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      expect(url).toContain('/scrape'); headers = new Headers(init?.headers); signal = init!.signal!;
+      return new Promise<Response>(resolve => { finish = resolve; });
+    }));
+    render(<View initial={initial} />);
+    fireEvent.click(screen.getByRole('button', { name: en.Cars.Refresh.start }));
+    await act(async () => { await vi.advanceTimersByTimeAsync(15_000); });
+    expect(signal!.aborted).toBe(true);
+    expect(screen.getByRole('button', { name: en.Cars.Refresh.recover })).toBeEnabled();
+    await act(async () => { finish(response({ id: 'late-check', trackerId: initial.tracker.id, status: 'queued', refreshKey: headers!.get('Idempotency-Key') })); });
+    expect(screen.queryByText(en.Cars.Refresh.accepted)).not.toBeInTheDocument();
+    expect(sessionStorage.getItem('ff-car-refresh:alice:tracker-one')).not.toBeNull();
+    expect(screen.getByRole('button', { name: en.Cars.pauseTracker })).toBeEnabled();
+  });
+  it('reuses the original refresh identity after a pre-send storage failure', async () => {
+    const initial = fixture(), writes: string[] = [], posts: RequestInit[] = [];
+    const prototype = Object.getPrototypeOf(sessionStorage) as Storage, original = prototype.setItem; let blocked = true;
+    vi.spyOn(prototype, 'setItem').mockImplementation(function (this: Storage, key, value) {
+      if (key.startsWith('ff-car-refresh:')) { writes.push(value); if (blocked) throw new DOMException('Storage denied'); }
+      original.call(this, key, value);
+    });
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      if (!url.endsWith('/scrape')) return response(initial);
+      posts.push(init!);
+      return response({ id: 'stored-check', trackerId: initial.tracker.id, status: 'queued', refreshKey: new Headers(init?.headers).get('Idempotency-Key') });
+    }));
+    render(<View initial={initial} />);
+    fireEvent.click(screen.getByRole('button', { name: en.Cars.Refresh.start }));
+    expect(await screen.findByRole('button', { name: en.Cars.Refresh.retryStorage })).toBeEnabled();
+    expect(posts).toEqual([]); blocked = false;
+    fireEvent.click(screen.getByRole('button', { name: en.Cars.Refresh.retryStorage }));
+    fireEvent.click(screen.getByRole('button', { name: en.Cars.Refresh.recover }));
+    await screen.findByText(en.Cars.Refresh.accepted);
+    expect(new Set(writes).size).toBe(1);
+    expect(new Headers(posts[0]!.headers).get('Idempotency-Key')).toBe(JSON.parse(writes[0]!).key);
+  });
+  it('allows unreadable refresh storage to be cleared only after tracking is paused', async () => {
+    const initial = fixture(), saved = structuredClone(initial), key = 'ff-car-refresh:alice:tracker-one';
+    sessionStorage.setItem(key, '{unreadable');
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      if (init?.method === 'PATCH') { saved.tracker.active = false; saved.tracker.revision++; return response({ tracker: saved.tracker }); }
+      expect(url).not.toContain('/scrape'); return response(saved);
+    }));
+    render(<View initial={initial} />);
+    expect(screen.getByRole('button', { name: en.Cars.Refresh.discard })).toBeDisabled();
+    expect(screen.getByRole('button', { name: en.Cars.Refresh.start })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: en.Cars.pauseTracker }));
+    await waitFor(() => expect(screen.getByRole('button', { name: en.Cars.Refresh.discard })).toBeEnabled());
+    fireEvent.click(screen.getByRole('button', { name: en.Cars.Refresh.discard }));
+    expect(sessionStorage.getItem(key)).toBeNull();
+    expect(screen.getByRole('button', { name: en.Cars.Refresh.start })).toBeDisabled();
+  });
   it('separates a failed attempt from the timestamp of the retained verified price', () => {
     const initial = fixture(); initial.tracker.lastError = 'Provider blocked this check';
     render(<View initial={initial} />);

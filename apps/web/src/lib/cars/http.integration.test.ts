@@ -17,6 +17,7 @@ vi.mock('next/headers', () => ({ cookies: async () => ({ get: () => boundary.tok
 vi.mock('next/server', async original => ({ ...await original<typeof import('next/server')>(), after: vi.fn() }));
 const request = (body?: unknown, method = 'GET', key = crypto.randomUUID()) => new Request('http://localhost/api/cars', { method, ...(body === undefined ? {} : { headers: { 'Content-Type': 'application/json', 'Idempotency-Key': key }, body: JSON.stringify(body) }) });
 const context = (id: string) => ({ params: Promise.resolve({ id }) });
+const refreshRequest = (revision = 0, key = crypto.randomUUID()) => new Request('http://localhost/api/cars/refresh', { method: 'POST', headers: { 'Idempotency-Key': key, 'X-Car-Revision': String(revision) } });
 
 describe.skipIf(process.env.CAR_HTTP_INTEGRATION_TESTS !== '1')('car HTTP ownership, history and request bounds against PostgreSQL', () => {
   let owner = '', other = '';
@@ -57,16 +58,32 @@ describe.skipIf(process.env.CAR_HTTP_INTEGRATION_TESTS !== '1')('car HTTP owners
     expect(response.status).toBe(201);
     expect(response.headers.get('cache-control')).toBe('private, no-store');
     const row = (await response.json()).data.tracker;
-    const first = await refresh(request(), context(row.id)), second = await refresh(request(), context(row.id));
+    const key = crypto.randomUUID();
+    const first = await refresh(refreshRequest(0, key), context(row.id)), second = await refresh(refreshRequest(0, key), context(row.id));
     expect(first.status).toBe(202);
     expect((await first.json()).data).toEqual((await second.json()).data);
     expect(await prisma.travelJob.findMany({ where: { carRun: { trackerId: row.id } } })).toMatchObject([{ status: 'queued', attempts: 0 }]);
     expect((await (await list(request())).json()).data.trackers).toMatchObject([{ id: row.id, latestPriceMinor: null }]);
   });
+  it('requires refresh identity and revision and correlates a recovered cancelled check', async () => {
+    const row = await tracker(), key = crypto.randomUUID();
+    expect((await refresh(request(undefined, 'POST'), context(row.id))).status).toBe(428);
+    const missingKey = refreshRequest(); missingKey.headers.delete('Idempotency-Key');
+    expect((await refresh(missingKey, context(row.id))).status).toBe(400);
+    const first = await refresh(refreshRequest(0, key), context(row.id));
+    const accepted = (await first.json()).data;
+    expect(accepted).toMatchObject({ trackerId: row.id, refreshKey: key, status: 'queued' });
+    await edit(request({ active: false }, 'PATCH'), context(row.id));
+    const replay = await refresh(refreshRequest(0, key), context(row.id));
+    expect(replay.status).toBe(202);
+    expect((await replay.json()).data).toEqual({ ...accepted, status: 'cancelled' });
+    expect((await refresh(refreshRequest(0), context(row.id))).status).toBe(412);
+    expect(await prisma.carSearchRun.count({ where: { trackerId: row.id } })).toBe(1);
+  });
   it('hides every foreign tracker and search operation without changing its state', async () => {
     const row = await tracker(), run = await prisma.carSearchRun.findFirstOrThrow({ where: { trackerId: row.id } });
     boundary.token = createUserSessionToken(other);
-    for (const response of [await detail(request(), context(row.id)), await edit(request({ active: false }, 'PATCH'), context(row.id)), await remove(request(), context(row.id)), await refresh(request(), context(row.id)), await status(request(), context(run.id)), await cancel(request(), context(run.id))]) expect(response.status).toBe(404);
+    for (const response of [await detail(request(), context(row.id)), await edit(request({ active: false }, 'PATCH'), context(row.id)), await remove(request(), context(row.id)), await refresh(refreshRequest(), context(row.id)), await status(request(), context(run.id)), await cancel(request(), context(run.id))]) expect(response.status).toBe(404);
     expect((await (await list(request())).json()).data.trackers).toEqual([]);
     expect((await prisma.carTracker.findUniqueOrThrow({ where: { id: row.id } })).active).toBe(true);
     expect((await prisma.carSearchRun.findUniqueOrThrow({ where: { id: run.id } })).status).toBe('queued');
@@ -211,7 +228,7 @@ describe.skipIf(process.env.CAR_HTTP_INTEGRATION_TESTS !== '1')('car HTTP owners
     const editAt = (revision: number, label: string) => { const r = request({ label }, 'PATCH'); r.headers.set('X-Car-Revision', String(revision)); return edit(r, context(row.id)); };
     expect((await editAt(0, 'First acknowledged state')).status).toBe(200);
     expect((await editAt(1, 'Newer intentional state')).status).toBe(200);
-    await refresh(request(), context(row.id));
+    expect((await refresh(refreshRequest(2), context(row.id))).status).toBe(202);
     const queued = await prisma.travelJob.findMany({ where: { carRun: { trackerId: row.id }, status: 'queued' } });
     const alert = await prisma.travelAlertDelivery.create({ data: { carTrackerId: row.id, eventKey: `revision-test-${row.id}`, message: { title: 'Test notification' } } });
     expect((await editAt(0, 'Late retry')).status).toBe(412);
@@ -244,7 +261,7 @@ describe.skipIf(process.env.CAR_HTTP_INTEGRATION_TESTS !== '1')('car HTTP owners
   it('pauses and cancels queued work and refuses refresh until resumed', async () => {
     const row = await tracker();
     expect((await edit(request({ active: false }, 'PATCH'), context(row.id))).status).toBe(200);
-    expect((await refresh(request(), context(row.id))).status).toBe(409);
+    expect((await refresh(refreshRequest(1), context(row.id))).status).toBe(409);
     const run = await createCarSearch(carSearchFixture(), { userId: owner, isAdmin: false });
     expect((await (await cancel(request(), context(run.id))).json()).data.status).toBe('cancelled');
     expect((await (await cancel(request(), context(run.id))).json()).data.status).toBe('cancelled');

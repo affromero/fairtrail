@@ -8,7 +8,7 @@ import { validateCarOffer } from './offer-validation';
 import { assessCarPrice } from './pricing';
 import { carContractHash, carTrackerSearch } from './selection';
 import { CarError, type CarSearch } from './types';
-import { carCreationIntent } from './creation';
+import { carCreationIntent, carRefreshIntent } from './creation';
 import { validateCarTrackerView } from './tracker-view';
 import { carSearchIntent, carSearchReceipt } from './search-input';
 
@@ -135,15 +135,26 @@ export async function createCarTracker(raw: unknown, actor: CarActor, requestKey
   });
 }
 
-export async function refreshCarTracker(id: string, actor: CarActor, dueOnly = false) {
+export async function refreshCarTracker(id: string, actor: CarActor, dueOnly = false, manual?: { key: unknown; revision: number }) {
+  const intent = manual ? carRefreshIntent(id, manual.revision, actor, manual.key) : null;
   return prisma.$transaction(async tx => {
+    await lockTravelResource(tx, 'car_search');
+    const receipt = intent ? await tx.carRefreshRequest.findUnique({ where: { id: intent.id }, include: { run: true } }) : null;
+    if (receipt && receipt.requestHash !== intent!.requestHash) throw new CarError('This refresh key was already used for another tracker or revision', 409);
+    if (receipt && !(await tx.carTracker.findUnique({ where: { id } }))) throw new CarError('This tracker was deleted; retrying will not recreate its check', 410);
     const tracker = await lockCarTracker(tx, id, actor);
+    if (receipt) {
+      if (!receipt.run) throw new CarError('This check was removed; retrying will not recreate it', 410);
+      if (receipt.run.trackerId !== tracker.id) throw new CarError('Stored refresh receipt does not match this tracker', 500);
+      return receipt.run;
+    }
+    if (manual) assertCarRevision(tracker, manual.revision);
     if (dueOnly && (!tracker.active || tracker.nextCheckAt > new Date())) return null;
     if (!tracker.active) throw new CarError('Resume this car tracker before refreshing', 409);
     const existing = await tx.carSearchRun.findFirst({ where: { trackerId: id, status: { in: ['queued', 'running'] } } });
-    if (existing) return existing;
-    const search = carTrackerSearch(validateCarSearch(tracker.search, new Date(), { allowUnresolvedProviders: true }));
-    return queueSearch(tx, search, tracker.userId, tracker);
+    const run = existing ?? await queueSearch(tx, carTrackerSearch(validateCarSearch(tracker.search, new Date(), { allowUnresolvedProviders: true })), tracker.userId, tracker);
+    if (intent) await tx.carRefreshRequest.create({ data: { ...intent, userId: actor.userId, runId: run.id } });
+    return run;
   });
 }
 

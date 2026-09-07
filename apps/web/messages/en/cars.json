@@ -1,5 +1,20 @@
 {
   "Cars": {
+    "Refresh": {
+      "title": "Check prices now",
+      "help": "Start a provider check using the saved rental details. Refresh status only reloads saved history. You can still pause or delete a tracker while recovering a check request.",
+      "start": "Check saved rental prices",
+      "sending": "Requesting a price check…",
+      "uncertain": "The check may already have started. Recover this request before starting another check. Recovery does not restart completed or cancelled work.",
+      "recover": "Recover price check",
+      "storageError": "Browser recovery storage is unavailable or unreadable. No new refresh can be sent safely.",
+      "retryStorage": "Retry refresh storage",
+      "discardHelp": "If the record stays unreadable, pause this tracker first. Once the pause is confirmed, you can clear the unreadable record without allowing an older request to start new work.",
+      "discard": "Clear unreadable refresh record",
+      "accepted": "Check request confirmed. Review recent checks for its outcome.",
+      "removed": "The original tracker or check was removed. This retry did not recreate it.",
+      "rejected": "This request was not accepted for the current rental settings. Refresh status before starting a new check."
+    },
     "Draft": {
       "title": "Describe your rental",
       "help": "Optional. Your configured AI can prepare an editable draft. Missing details stay unconfirmed; no prices are checked until you submit the form.",

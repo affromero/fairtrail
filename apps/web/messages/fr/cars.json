@@ -1,5 +1,20 @@
 {
   "Cars": {
+    "Refresh": {
+      "title": "Vérifier les prix maintenant",
+      "help": "Lance une vérification auprès du fournisseur avec les informations enregistrées. Actualiser le statut recharge uniquement l’historique. Vous pouvez suspendre ou supprimer le suivi pendant la récupération d’une demande.",
+      "start": "Vérifier les prix de la location enregistrée",
+      "sending": "Demande de vérification des prix…",
+      "uncertain": "La vérification a peut-être commencé. Récupérez cette demande avant d’en lancer une autre. La récupération ne relance pas les vérifications terminées ou annulées.",
+      "recover": "Récupérer la vérification",
+      "storageError": "Le stockage de récupération est indisponible ou illisible. Aucune nouvelle vérification ne peut être envoyée en toute sécurité.",
+      "retryStorage": "Réessayer le stockage de récupération",
+      "discardHelp": "Si le registre reste illisible, suspendez d’abord le suivi. Une fois la suspension confirmée, vous pouvez effacer le registre sans permettre à une ancienne demande de lancer une nouvelle vérification.",
+      "discard": "Effacer le registre de vérification illisible",
+      "accepted": "Demande de vérification confirmée. Consultez les vérifications récentes pour connaître le résultat.",
+      "removed": "Le suivi ou la vérification d’origine a été supprimé. Cette tentative ne l’a pas recréé.",
+      "rejected": "La demande n’a pas été acceptée avec les informations actuelles. Actualisez le statut avant de lancer une nouvelle vérification."
+    },
     "Draft": {
       "title": "Décrivez votre location",
       "help": "Facultatif. L’IA configurée peut préparer un brouillon modifiable. Les informations manquantes restent à confirmer ; aucun prix n’est recherché avant l’envoi du formulaire.",

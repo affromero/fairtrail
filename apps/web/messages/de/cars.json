@@ -1,5 +1,20 @@
 {
   "Cars": {
+    "Refresh": {
+      "title": "Preise jetzt prüfen",
+      "help": "Startet eine Anbieterprüfung mit den gespeicherten Mietangaben. Status aktualisieren lädt nur den Verlauf neu. Du kannst das Tracking während der Wiederherstellung einer Anfrage pausieren oder löschen.",
+      "start": "Preise der gespeicherten Miete prüfen",
+      "sending": "Preisprüfung wird angefordert…",
+      "uncertain": "Die Prüfung könnte bereits laufen. Stelle diese Anfrage wieder her, bevor du eine neue startest. Abgeschlossene oder abgebrochene Prüfungen werden dabei nicht neu gestartet.",
+      "recover": "Preisprüfung wiederherstellen",
+      "storageError": "Der Wiederherstellungsspeicher ist nicht verfügbar oder unlesbar. Eine neue Prüfung kann nicht sicher gesendet werden.",
+      "retryStorage": "Wiederherstellungsspeicher erneut prüfen",
+      "discardHelp": "Falls der Eintrag unlesbar bleibt, pausiere zuerst das Tracking. Nach bestätigter Pause kannst du den Eintrag löschen, ohne dass eine ältere Anfrage neue Arbeit startet.",
+      "discard": "Unlesbaren Prüfungseintrag löschen",
+      "accepted": "Prüfungsanfrage bestätigt. Das Ergebnis findest du in den letzten Prüfungen.",
+      "removed": "Das ursprüngliche Tracking oder die Prüfung wurde entfernt. Dieser Versuch hat nichts neu erstellt.",
+      "rejected": "Die Anfrage wurde mit den aktuellen Mietangaben nicht angenommen. Aktualisiere den Status, bevor du eine neue Prüfung startest."
+    },
     "Draft": {
       "title": "Beschreibe deine Anmietung",
       "help": "Optional. Die konfigurierte KI kann einen bearbeitbaren Entwurf vorbereiten. Fehlende Angaben bleiben unbestätigt. Preise werden erst nach dem Absenden des Formulars geprüft.",

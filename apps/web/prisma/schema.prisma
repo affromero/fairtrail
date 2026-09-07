@@ -191,6 +191,7 @@ model User {
   carSearches CarSearchRun[]
   carCreations CarTrackerCreation[]
   carSearchCreations CarSearchCreation[]
+  carRefreshRequests CarRefreshRequest[]
   carParseGate CarParseGate?
   travelJobs TravelJob[]
   channels NotificationChannel[]
@@ -355,6 +356,7 @@ model CarSearchRun {
   snapshots       CarSnapshot[]
   travelJob       TravelJob?
   creation        CarSearchCreation?
+  refreshRequests CarRefreshRequest[]
 
   @@unique([id, trackerId])
   @@index([status, createdAt])
@@ -381,6 +383,21 @@ model CarParseGate {
   expiresAt     DateTime @default(now())
   nextAllowedAt DateTime @default(now())
   user          User? @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model CarRefreshRequest {
+  id          String @id @db.Char(64)
+  requestHash String @db.Char(64)
+  trackerId   String
+  revision    Int
+  userId      String?
+  runId       String?
+  createdAt   DateTime @default(now())
+  user        User? @relation(fields: [userId], references: [id], onDelete: Cascade)
+  run         CarSearchRun? @relation(fields: [runId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([runId])
 }
 
 model CarSnapshot {
