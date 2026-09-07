@@ -55,11 +55,10 @@ export async function saveCarProgress(jobId: string, lease: TravelLeaseToken, ra
   }, { maxWait: 1000, timeout: 3000 });
 }
 
-async function persistTracker(tx: Prisma.TransactionClient, current: CarRunContext, report: CarSearchReport, jobId: string): Promise<void> {
+async function persistTracker(tx: Prisma.TransactionClient, current: CarRunContext, report: CarSearchReport, jobId: string, now: Date): Promise<void> {
   const tracker = current.tracker;
   if (!tracker) return;
   const search = carTrackerSearch(validateCarSearch(current.run.request, current.run.createdAt));
-  const now = new Date();
   const snapshots = report.offers.map(offer => {
     const assessment = assessCarPrice(offer, search, now), contractHash = carContractHash(offer.contract);
     const matches = !current.selection || (offer.contract.source === current.selection.source && contractHash === current.selection.contractHash);
@@ -89,12 +88,13 @@ export async function finishCarRun(jobId: string, lease: TravelLeaseToken, raw: 
   await completeTravelJob(jobId, lease, async (tx, job) => {
     const current = await context(tx, job);
     if (current.run.status !== 'running') throw new TravelJobError('Car search has not started');
-    const report = validateCarReport(raw, current.sources);
+    const evaluatedAt = new Date();
+    const report = validateCarReport(raw, current.sources, evaluatedAt);
     if (report.completed !== report.total || report.providers.some(provider => provider.status === 'running')) throw new CarError('Car search has unfinished providers');
-    await persistTracker(tx, current, report, jobId);
+    await persistTracker(tx, current, report, jobId, evaluatedAt);
     const incomplete = report.errors.length > 0 || report.candidates.length > 0 || report.providers.some(provider => provider.status !== 'complete');
     const status = incomplete ? report.offers.length || report.candidates.length ? 'partial' : 'failed' : report.offers.length ? 'success' : 'partial';
-    await tx.carSearchRun.update({ where: { id: current.run.id }, data: { status, result: carJson(report), error: report.errors.map(error => error.message).join('; ') || (report.offers.length ? null : 'No complete rental contracts were verified among the checked offers'), completedAt: new Date() } });
+    await tx.carSearchRun.update({ where: { id: current.run.id }, data: { status, result: carJson(report), error: report.errors.map(error => error.message).join('; ') || (report.offers.length ? null : 'No complete rental contracts were verified among the checked offers'), completedAt: evaluatedAt } });
   });
 }
 

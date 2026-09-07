@@ -61,6 +61,9 @@ jobs:
       - run: npm run test --workspace=@flight-finder/web -- src/lib/cars/persistence.integration.test.ts
         env:
           CAR_PERSISTENCE_INTEGRATION_TESTS: '1'
+      - run: npm run test --workspace=@flight-finder/web -- src/lib/cars/http.integration.test.ts
+        env:
+          CAR_HTTP_INTEGRATION_TESTS: '1'
       - run: npx playwright install chromium --with-deps
       - run: npm run test --workspace=@flight-finder/web -- src/lib/cars/search.browser.test.ts
         env:

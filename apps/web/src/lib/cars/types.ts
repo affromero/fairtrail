@@ -4,8 +4,8 @@ export const CHILD_SEAT_CATEGORIES = ['infant', 'child', 'booster'] as const;
 export type ChildSeatCategory = typeof CHILD_SEAT_CATEGORIES[number];
 
 export class CarError extends Error {
-  constructor(message: string, public readonly status = 400) {
-    super(message);
+  constructor(message: string, public readonly status = 400, options?: ErrorOptions) {
+    super(message, options);
     this.name = 'CarError';
   }
 }

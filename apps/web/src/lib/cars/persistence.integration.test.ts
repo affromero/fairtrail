@@ -5,6 +5,7 @@ import { acquireTravelLease, claimTravelJob, releaseTravelLease, type TravelLeas
 import { carJson, createCarSearch, createCarTracker, editCarTracker, refreshCarTracker } from './store';
 import { failCarRun, finishCarRun, saveCarProgress, startCarRun } from './persistence';
 import type { CarActor } from './access';
+import { getCarDetail } from './views';
 
 describe.skipIf(process.env.CAR_PERSISTENCE_INTEGRATION_TESTS !== '1')('fenced car observation transactions against PostgreSQL', () => {
   let owner: CarActor, other: CarActor;
@@ -199,5 +200,22 @@ describe.skipIf(process.env.CAR_PERSISTENCE_INTEGRATION_TESTS !== '1')('fenced c
     await expect(finishCarRun(active.job.id, lease!, report)).rejects.toThrow(/seats/);
     expect(await prisma.carSnapshot.count({ where: { trackerId: row.id } })).toBe(0);
     expect((await prisma.travelJob.findUniqueOrThrow({ where: { id: active.job.id } })).status).toBe('running');
+  });
+
+  it('keeps historical eligibility consistent when a quote expires during the completion transaction', async () => {
+    const row = await tracker(), active = await start(row.id);
+    await prisma.$executeRawUnsafe('CREATE FUNCTION car_history_test_pause() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN PERFORM pg_sleep(2); RETURN NEW; END $$');
+    try {
+      await prisma.$executeRawUnsafe('CREATE TRIGGER car_history_test_pause AFTER INSERT ON "CarSnapshot" FOR EACH ROW EXECUTE FUNCTION car_history_test_pause()');
+      const observedAt = new Date(Date.now() - 15 * 60_000 + 1500);
+      await finishCarRun(active.job.id, lease!, carReportFixture([carOfferFixture(observedAt.toISOString())]));
+      expect(Date.now() - observedAt.getTime()).toBeGreaterThan(15 * 60_000);
+      const detail = await getCarDetail(row.id, owner);
+      expect(detail.snapshots).toMatchObject([{ eligible: true, totalMinor: 10000 }]);
+      expect(detail.tracker.latestPriceMinor).toBe(10000);
+    } finally {
+      await prisma.$executeRawUnsafe('DROP TRIGGER IF EXISTS car_history_test_pause ON "CarSnapshot"');
+      await prisma.$executeRawUnsafe('DROP FUNCTION car_history_test_pause()');
+    }
   });
 });
