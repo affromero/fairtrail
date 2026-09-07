@@ -146,5 +146,6 @@ export function useCarCreation(actorScope: string, searchId: string, onAccessLos
       if (controller.current === aborter) controller.current = null;
     }
   }
-  return { ...state, create, retry, recoverStorage, closeTracking, locked: trackingClosed || closed.current || !['ready', 'rejected'].includes(state.phase) };
+  return { ...state, create, retry, recoverStorage, closeTracking, locked: trackingClosed || closed.current || !['ready', 'rejected'].includes(state.phase),
+    isLocked: () => closed.current || !['ready', 'rejected'].includes(current.current.phase) };
 }

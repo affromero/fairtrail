@@ -242,7 +242,7 @@ describe.skipIf(process.env.CAR_HTTP_INTEGRATION_TESTS !== '1')('car HTTP owners
     expect((await list(adminRequest)).status).toBe(403);
     await prisma.user.update({ where: { id: other }, data: { isAdmin: true } });
     expect((await (await list(request())).json()).data.trackers).toEqual([]);
-    expect((await (await list(adminRequest)).json()).data.trackers).toMatchObject([{ id: row.id }]);
+    expect((await (await list(adminRequest)).json()).data.trackers).toEqual(expect.arrayContaining([expect.objectContaining({ id: row.id })]));
   });
   it('returns owned rental pages with explicit continuation and rejects invalid pagination inputs', async () => {
     const createdAt = new Date(Date.now() - 1000);

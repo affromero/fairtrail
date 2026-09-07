@@ -13,7 +13,7 @@ import { validateCarTrackerView } from './tracker-view';
 import { carSearchIntent, carSearchReceipt } from './search-input';
 import { assertCarProtectionRecheck } from './protection-recheck';
 import { validateCarReport } from './report';
-import { carInputFields } from './public-input';
+import { carProtectionInput } from './creation-input';
 
 export const carJson = (value: unknown): Prisma.InputJsonValue => JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
 
@@ -88,9 +88,7 @@ export async function createCarCatalogSearch(raw: unknown, actor: CarActor, requ
 }
 
 export async function createCarProtectionRecheck(searchId: string, raw: unknown, actor: CarActor, requestKey: unknown) {
-  const input = carInputFields(raw, ['offerId', 'choiceId']);
-  const offerId = carText(input.offerId, 200, 'rental offer');
-  const choiceId = carText(input.choiceId, 36, 'protection choice');
+  const { offerId, choiceId } = carProtectionInput(raw);
   const receipt = carSearchReceipt({ operation: 'protection-recheck-v1', searchId, offerId, choiceId }, actor, requestKey);
   receipt.requestHash = createHash('sha256').update('protection-recheck-v1\0').update(receipt.requestHash).digest('hex');
   const owner = { ...actor, isAdmin: false };

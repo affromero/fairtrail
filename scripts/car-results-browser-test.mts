@@ -7,6 +7,7 @@ import { chromium, type Browser, type BrowserContext } from 'playwright';
 import pg from 'pg';
 import { carOfferFixture, carReportFixture, carSearchFixture } from '../apps/web/src/test/car-fixtures';
 import { carContractHash } from '../apps/web/src/lib/cars/selection';
+import { carProtectionBrowserScenarios } from './car-protection-browser-scenarios.mts';
 
 // Disposable stored observations exercise real pages and authentication. No
 // provider browser is started and all scheduled background work is disabled.
@@ -178,6 +179,8 @@ try {
     await localizedPage.screenshot({ path: resolve(output, `verified-${locale}-390.png`), fullPage: true });
   }
   passed.push('Five locale result controls and keyboard evidence disclosure');
+  await carProtectionBrowserScenarios(db, alice, output);
+  passed.push('Protection options in both themes and responsive layouts, explicit terms review, lost real acknowledgement recovery, fresh protected tracker and permanent parent closure preserving accepted child searches');
   await page.route('**/api/cars/search/car-browser-search', route => route.abort());
   await page.getByRole('button', { name: 'Refresh status' }).click();
   await page.getByRole('alert').filter({ hasText: 'Status updates interrupted' }).waitFor();

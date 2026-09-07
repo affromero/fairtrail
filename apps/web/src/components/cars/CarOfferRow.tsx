@@ -1,5 +1,5 @@
 'use client';
-import { useId } from 'react';
+import { useId, type ReactNode } from 'react';
 import { useLocale, useTranslations } from 'next-intl';
 import { formatCarMoney } from '@/lib/cars/money';
 import { CAR_PROVIDER_LABELS } from '@/lib/cars/preferences';
@@ -9,7 +9,7 @@ import { CarEvidenceDetails } from './CarEvidenceDetails';
 import { carLocalDate, safeCarLink } from './presentation';
 import styles from './Cars.module.css';
 
-export function CarOfferRow({ offer, search, assessment, disabled, onTrack }: { offer: CarOffer; search: CarSearch; assessment: CarPriceAssessment; disabled: boolean; onTrack: () => void }) {
+export function CarOfferRow({ offer, search, assessment, disabled, onTrack, children }: { offer: CarOffer; search: CarSearch; assessment: CarPriceAssessment; disabled: boolean; onTrack: () => void; children?: ReactNode }) {
   const t = useTranslations('Cars'), locale = useLocale(), id = useId(), booking = safeCarLink(offer.bookingUrl, offer.contract.source);
   return <article className={styles.offer} aria-labelledby={`${id}-title`}>
     <div className={styles.offerMain}><div><p className={styles.eyebrow}>{CAR_PROVIDER_LABELS[offer.contract.source]} · {offer.supplier}</p><h3 id={`${id}-title`}>{offer.contract.model}{!offer.contract.modelGuaranteed && <> <span className={styles.similar}>{t('similar')}</span></>}</h3>
@@ -22,6 +22,7 @@ export function CarOfferRow({ offer, search, assessment, disabled, onTrack }: { 
       {booking && <a className={styles.secondary} href={booking} target="_blank" rel="noopener noreferrer">{t('viewProvider')}</a>}
     </div></div>
     {!assessment.eligible && <div id={`${id}-reasons`} className={styles.notice}><strong>{t('notEligible')}</strong><ul>{assessment.reasons.map(reason => <li key={reason}>{reason}</li>)}</ul></div>}
+    {children}
     <CarEvidenceDetails offer={offer} />
   </article>;
 }

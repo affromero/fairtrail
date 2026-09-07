@@ -33,7 +33,7 @@ describe.skipIf(process.env.CAR_STORE_INTEGRATION_TESTS !== '1')('car ownership 
   afterAll(async () => { await prisma.$disconnect(); });
 
   async function completedSearch(value = offer()) {
-    return prisma.carSearchRun.create({ data: { userId: owner.userId, request: carJson(criteria()), result: carJson(carReportFixture([value])), status: 'success', completedAt: new Date() } });
+    return prisma.carSearchRun.create({ data: { userId: owner.userId, request: carJson(criteria()), result: carJson(carReportFixture([value])), status: 'success', createdAt: new Date(value.observedAt), completedAt: new Date() } });
   }
   async function tracker(mode: 'best' | 'contract' = 'best') {
     const run = await completedSearch();
@@ -44,7 +44,7 @@ describe.skipIf(process.env.CAR_STORE_INTEGRATION_TESTS !== '1')('car ownership 
     const result = { ...carReportFixture([base]), protection: [{ offerId: base.id, status: 'complete', error: null,
       choices: [{ id: choiceId, source: 'discovercars', productId: '35', name: 'Full Coverage', termsSummary: 'Reimbursement with exclusions', policyLinks: [],
         observedExtraPrice: { currency: 'GBP', minor: 1800 }, sourceUrl: 'https://www.discovercars.com/offer/coverage/example', observedAt: base.observedAt }] }] };
-    const run = await prisma.carSearchRun.create({ data: { userId: owner.userId, request: carJson(criteria()), result: carJson(result), status: 'success', completedAt: new Date() } });
+    const run = await prisma.carSearchRun.create({ data: { userId: owner.userId, request: carJson(criteria()), result: carJson(result), status: 'success', createdAt: new Date(base.observedAt), completedAt: new Date() } });
     return { run, body: { offerId: base.id, choiceId } };
   }
 
@@ -78,7 +78,7 @@ describe.skipIf(process.env.CAR_STORE_INTEGRATION_TESTS !== '1')('car ownership 
     const report = run.result as unknown as ReturnType<typeof carReportFixture>;
     const old = new Date(Date.now() - 60 * 60_000);
     const result = JSON.parse(JSON.stringify(run.result).replaceAll(report.offers[0]!.observedAt, old.toISOString()));
-    await prisma.carSearchRun.update({ where: { id: run.id }, data: { result, completedAt: old } });
+    await prisma.carSearchRun.update({ where: { id: run.id }, data: { result, createdAt: old, completedAt: old } });
     const child = await createCarProtectionRecheck(run.id, body, owner, crypto.randomUUID());
     expect(child).toMatchObject({ status: 'queued', result: null, completedAt: null });
     expect(await prisma.carTracker.count({ where: { userId: owner.userId } })).toBe(0);

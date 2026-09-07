@@ -62,6 +62,14 @@
 .terms dt { color: var(--text-secondary); }
 .terms dd { margin: 0; overflow-wrap: anywhere; white-space: pre-wrap; }
 .extra h5 { margin: 1rem 0 .25rem; font-size: 1rem; }
+.protection { margin-block: 1rem; padding: 1.1rem 1.25rem; background: var(--surface); border-left: 3px solid var(--accent); }
+.protection h4, .protection h5 { margin: .5rem 0; font-family: var(--font-display); }
+.protectionOptions { border: 0; padding: 0; margin: 1rem 0; min-width: 0; }
+.protectionOptions legend { font: 600 .9rem var(--font-display); margin-bottom: .5rem; }
+.protectionOption { display: flex; align-items: baseline; gap: .75rem; padding: .75rem 0; min-height: 44px; border-bottom: 1px solid var(--border); cursor: pointer; }
+.protectionOption input { accent-color: var(--accent); flex: 0 0 auto; }
+.protectionOption span { display: block; overflow-wrap: anywhere; }
+.protectionTerms { padding: .5rem 0; }
 .requirements { margin-block: 1rem; }
 .candidates { margin-top: 2rem; }
 .candidate { padding: 1.25rem 0; border-top: 1px dashed var(--border); }

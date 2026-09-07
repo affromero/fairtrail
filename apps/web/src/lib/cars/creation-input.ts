@@ -17,3 +17,12 @@ export function carCreationInput(raw: unknown) {
     options: validateCarOptions(input),
   };
 }
+
+export function carProtectionInput(raw: unknown) {
+  const input = carRecord(raw);
+  if (Object.keys(input).some(key => !['offerId', 'choiceId'].includes(key))) throw new CarError('Choose a saved protection option without extra fields');
+  let choiceId: string;
+  try { choiceId = validateCarCreationKey(input.choiceId); }
+  catch { throw new CarError('Choose a valid saved protection option'); }
+  return { offerId: carText(input.offerId, 200, 'rental offer'), choiceId };
+}
