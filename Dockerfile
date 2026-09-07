@@ -40,25 +40,26 @@ RUN set -e; cd /app; mkdir -p /ext; \
 # Prisma CLI as a self-contained toolchain for the entrypoint schema push.
 # The CLI is a devDependency, so it is absent from the lean runtime
 # node_modules, and fetching it with npx at container start round-trips the
-# registry and fails in restricted networks. Install it in isolation here so
-# the full dependency closure is bundled, then copy the whole tree into the
-# runner. Pinned to the v7 major that matches the schema. The entrypoint invokes
+# registry and fails in restricted networks. Install its locked dependency tree
+# in isolation, then copy the whole tree into the runner. Its exact version is
+# checked against the project's CLI and client. The entrypoint invokes
 # this CLI with explicit --schema/--url flags (no prisma.config.ts at runtime),
 # and v7's client is Rust-free (WASM query compiler), so there is no engine
 # binary to match the alpine target.
 FROM docker.io/library/node:26-alpine AS prismacli
 RUN apk add --no-cache openssl
 WORKDIR /pcli
-RUN npm install --no-save --no-package-lock prisma@7
+COPY scripts/prisma-cli/package.json scripts/prisma-cli/package-lock.json ./
+RUN npm ci --loglevel=error
 
 FROM docker.io/library/node:26-alpine AS builder
 RUN apk add --no-cache libc6-compat openssl python3 make g++
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
-# npm hoists most deps to root, but tsup lands in packages/cli/node_modules
-# (workspace local). Without this, the CLI build fails with `tsup: not found`.
+# Keep workspace-local dependency versions alongside the hoisted shared tools.
 COPY --from=deps /app/packages/cli/node_modules ./packages/cli/node_modules
 COPY . .
+RUN node scripts/check-prisma-toolchain.mjs
 # Prisma 7 generates its client into apps/web/src/generated (gitignored), so
 # regenerate it from the copied source before the builds compile it into the
 # Next standalone output and the CLI bundle. prisma.config.ts is present here and

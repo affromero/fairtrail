@@ -1,0 +1,15 @@
+{
+  "name": "flight-finder-prisma-toolchain",
+  "private": true,
+  "dependencies": {
+    "prisma": "7.10.0"
+  },
+  "overrides": {
+    "@prisma/config": {
+      "deepmerge-ts": "8.0.2"
+    },
+    "prisma": {
+      "mysql2": "3.24.2"
+    }
+  }
+}
