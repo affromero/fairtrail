@@ -13,6 +13,7 @@
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
+    "@js-temporal/polyfill": "^0.5.1",
     "@anthropic-ai/sdk": "^0.122.0",
     "@google/generative-ai": "^0.24.1",
     "@prisma/adapter-pg": "^7.10.0",
