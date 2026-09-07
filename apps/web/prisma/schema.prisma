@@ -189,6 +189,7 @@ model User {
   hotelSearches HotelSearchRun[]
   carTrackers CarTracker[]
   carSearches CarSearchRun[]
+  carCreations CarTrackerCreation[]
   travelJobs TravelJob[]
   channels NotificationChannel[]
 
@@ -318,9 +319,22 @@ model CarTracker {
   runs               CarSearchRun[]
   snapshots          CarSnapshot[]
   alerts             TravelAlertDelivery[]
+  creation           CarTrackerCreation?
 
   @@index([userId])
   @@index([active, nextCheckAt])
+}
+
+model CarTrackerCreation {
+  id          String @id @db.Char(64)
+  requestHash String @db.Char(64)
+  userId      String?
+  trackerId   String? @unique
+  createdAt   DateTime @default(now())
+  user        User? @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tracker     CarTracker? @relation(fields: [trackerId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
 }
 
 model CarSearchRun {

@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { prisma } from '@/lib/prisma';
 import { Prisma, type CarTracker } from '@/generated/prisma/client';
 import { cancelTravelJob, enqueueTravelJob, lockTravelResource } from '../travel/jobs';
@@ -7,6 +8,7 @@ import { validateCarOffer } from './offer-validation';
 import { assessCarPrice } from './pricing';
 import { carContractHash, carTrackerSearch, validateCarSelection } from './selection';
 import { CarError, type CarContractSelection, type CarSearch } from './types';
+import { carCreationIntent } from './creation';
 
 export const carJson = (value: unknown): Prisma.InputJsonValue => JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
 
@@ -71,11 +73,18 @@ export async function getCarSearch(id: string, actor: CarActor) {
   return row;
 }
 
-export async function createCarTracker(raw: unknown, actor: CarActor) {
-  const input = carRecord(raw);
-  const searchId = carText(input.searchId, 200, 'completed search'), offerId = carText(input.offerId, 200, 'selected offer');
+export async function createCarTracker(raw: unknown, actor: CarActor, requestKey: unknown = randomUUID()) {
+  const intent = carCreationIntent(raw, actor, requestKey);
+  const { searchId, offerId } = intent;
   return prisma.$transaction(async tx => {
     await lockTravelResource(tx, 'car_search');
+    const receipt = await tx.carTrackerCreation.findUnique({ where: { id: intent.id }, include: { tracker: true } });
+    if (receipt) {
+      if (receipt.requestHash !== intent.requestHash) throw new CarError('This creation key was already used for different rental settings', 409);
+      if (!receipt.tracker) throw new CarError('This tracker was deleted; retrying will not recreate it', 410);
+      assertCarOwner(actor, receipt.tracker);
+      return receipt.tracker;
+    }
     await tx.$queryRaw`SELECT id FROM "CarSearchRun" WHERE id = ${searchId} FOR UPDATE`;
     const run = await tx.carSearchRun.findUnique({ where: { id: searchId } });
     assertCarOwner(actor, run);
@@ -88,15 +97,16 @@ export async function createCarTracker(raw: unknown, actor: CarActor) {
     const offer = offers[0]!;
     const assessment = assessCarPrice(offer, search);
     if (!assessment.eligible) throw new CarError(`This quote cannot be tracked: ${assessment.reasons.join('; ')}`, 409);
-    const options = validateCarOptions(input, search.currency);
+    const options = validateCarOptions(intent.options, search.currency);
     const selection = options.mode === 'contract' ? { source: offer.contract.source, contractHash: carContractHash(offer.contract) } : null;
     const trackingSearch = carTrackerSearch(search);
     const tracker = await tx.carTracker.create({ data: {
-      userId: run.userId, label: input.label === undefined ? `${search.pickup.name} → ${search.dropoff.name}` : carText(input.label, 250, 'tracker label'),
+      userId: run.userId, label: intent.label ?? `${search.pickup.name} → ${search.dropoff.name}`,
       search: carJson(trackingSearch), selection: selection ? carJson(selection) : Prisma.DbNull, mode: options.mode, currency: search.currency,
       targetMinor: options.target?.minor ?? null, notifyLows: options.notifyLows, scrapeInterval: options.scrapeInterval,
     } });
     await queueSearch(tx, trackingSearch, tracker.userId, tracker);
+    await tx.carTrackerCreation.create({ data: { id: intent.id, requestHash: intent.requestHash, userId: actor.userId, trackerId: tracker.id } });
     return tracker;
   });
 }

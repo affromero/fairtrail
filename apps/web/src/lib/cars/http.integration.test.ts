@@ -12,7 +12,7 @@ import { GET as status, DELETE as cancel } from '@/app/api/cars/search/[id]/rout
 
 const boundary = vi.hoisted(() => ({ token: '' }));
 vi.mock('next/headers', () => ({ cookies: async () => ({ get: () => boundary.token ? { value: boundary.token } : undefined }) }));
-const request = (body?: unknown, method = 'GET') => new Request('http://localhost/api/cars', { method, ...(body === undefined ? {} : { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }) });
+const request = (body?: unknown, method = 'GET', key = crypto.randomUUID()) => new Request('http://localhost/api/cars', { method, ...(body === undefined ? {} : { headers: { 'Content-Type': 'application/json', 'Idempotency-Key': key }, body: JSON.stringify(body) }) });
 const context = (id: string) => ({ params: Promise.resolve({ id }) });
 
 describe.skipIf(process.env.CAR_HTTP_INTEGRATION_TESTS !== '1')('car HTTP ownership, history and request bounds against PostgreSQL', () => {
@@ -67,6 +67,22 @@ describe.skipIf(process.env.CAR_HTTP_INTEGRATION_TESTS !== '1')('car HTTP owners
     expect((await (await list(request())).json()).data.trackers).toEqual([]);
     expect((await prisma.carTracker.findUniqueOrThrow({ where: { id: row.id } })).active).toBe(true);
     expect((await prisma.carSearchRun.findUniqueOrThrow({ where: { id: run.id } })).status).toBe('queued');
+  });
+  it('requires a valid creation key and safely replays an accepted HTTP request', async () => {
+    const run = await completed(), input = { searchId: run.id, offerId: 'verified-quote' }, key = crypto.randomUUID();
+    for (const invalid of [undefined, '', 'not-a-uuid', `${key}junk`]) {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (invalid !== undefined) headers['Idempotency-Key'] = invalid;
+      expect((await create(new Request('http://localhost/api/cars', { method: 'POST', headers, body: JSON.stringify(input) }))).status).toBe(400);
+    }
+    expect(await prisma.carTracker.count({ where: { userId: owner } })).toBe(0);
+    const first = await create(request(input, 'POST', key)), retry = await create(request(input, 'POST', key));
+    expect(first.status).toBe(201); expect(retry.status).toBe(201);
+    const row = (await first.json()).data.tracker;
+    expect((await retry.json()).data.tracker).toEqual(row);
+    expect((await create(request({ ...input, label: 'Changed intent' }, 'POST', key))).status).toBe(409);
+    await remove(request(), context(row.id));
+    expect((await create(request(input, 'POST', key))).status).toBe(410);
   });
   it.each(['public', 'missing', 'revoked'])('rejects %s access before reading data', async mode => {
     if (mode === 'public') vi.stubEnv('SELF_HOSTED', 'false');

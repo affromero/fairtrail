@@ -90,6 +90,7 @@ try {
   assert.equal(await snapshot(tables), before, 'Idempotent upgrade must preserve every existing column and row');
   await client.query(`
     INSERT INTO "CarTracker" (id, label, search, currency, "latestPriceMinor", "updatedAt") VALUES ('migration-car', 'New car data survives rollback', '{}', 'USD', 9365, now());
+    INSERT INTO "CarTrackerCreation" (id, "requestHash", "trackerId") VALUES (repeat('b',64), repeat('c',64), 'migration-car');
     INSERT INTO "CarSearchRun" (id, "trackerId", request, status, "completedAt") VALUES ('migration-car-run', 'migration-car', '{}', 'success', now());
     INSERT INTO "CarSnapshot" (id, "trackerId", "runId", source, offer, currency, "totalMinor", eligible, "contractHash", "observedAt")
       VALUES ('migration-car-price', 'migration-car', 'migration-car-run', 'autoeurope', '{"totalMinor":9365}', 'USD', 9365, true, repeat('a',64), now());
@@ -98,7 +99,7 @@ try {
       VALUES ('migration-car-alert', 'migration-car', 'migration-alert', '{"title":"Pending car alert"}', ARRAY['delivered-test-channel']);
   `);
   const newTables = {};
-  for (const table of ['CarTracker', 'CarSearchRun', 'CarSnapshot', 'TravelJob', 'TravelAlertDelivery']) {
+  for (const table of ['CarTracker', 'CarTrackerCreation', 'CarSearchRun', 'CarSnapshot', 'TravelJob', 'TravelAlertDelivery']) {
     newTables[table] = (await client.query('SELECT column_name FROM information_schema.columns WHERE table_schema = \'public\' AND table_name = $1 ORDER BY ordinal_position', [table])).rows.map(row => row.column_name);
   }
   const newBefore = await snapshot(newTables);

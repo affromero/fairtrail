@@ -109,7 +109,7 @@ export function validateCarSearch(raw: unknown, now = new Date()): CarSearch {
     filters: { transmission, minSeats: carInteger(f.minSeats ?? 4, 2, 9, 'Minimum seats'), unlimitedMileage: boolean(f.unlimitedMileage), freeCancellation: boolean(f.freeCancellation), maxTotal: f.maxTotal == null ? null : validateCarMoney(f.maxTotal, currency) },
   };
 }
-export function validateCarOptions(raw: unknown, currency: string): CarTrackingOptions {
+export function validateCarOptions(raw: unknown, currency?: string): CarTrackingOptions {
   const r = carRecord(raw);
   const mode = r.mode ?? 'best';
   if (mode !== 'best' && mode !== 'contract') throw new CarError('Unknown tracking mode');
