@@ -49,7 +49,7 @@ export async function getCarRunView(id: string, actor: CarActor) {
       const selection = tracker ? carTrackerDto(tracker).selection : null;
       const sources = selection ? [selection.source] : search.sources;
       const executionSearch = { ...search, sources, extras: { ...search.extras, protection: search.extras.protection.filter(product => sources.includes(product.source)) } };
-      return validateCarRunView({ ...summary(row), search: executionSearch, result: row.result }, id);
+      return validateCarRunView({ ...summary(row), search: executionSearch, result: row.result, trackingClosed: row.trackingClosed }, id);
     } catch (error) { throw new CarError('Stored rental result is invalid; check the server logs', 500, { cause: error }); }
   }, { isolationLevel: 'RepeatableRead', maxWait: 1000, timeout: 3000 });
 }

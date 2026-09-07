@@ -96,6 +96,20 @@ export async function getCarSearch(id: string, actor: CarActor) {
   return row;
 }
 
+export async function closeCarSearchTracking(id: string, actor: CarActor) {
+  return prisma.$transaction(async tx => {
+    await lockTravelResource(tx, 'car_search');
+    await tx.$queryRaw`SELECT id FROM "CarSearchRun" WHERE id = ${id} FOR UPDATE`;
+    const run = await tx.carSearchRun.findUnique({ where: { id } });
+    assertCarOwner(actor, run);
+    if (run.trackerId !== null || !['success', 'partial'].includes(run.status) || !run.completedAt) {
+      throw new CarError('Only completed standalone rental searches can close tracking', 409);
+    }
+    if (run.trackingClosed) return run;
+    return tx.carSearchRun.update({ where: { id }, data: { trackingClosed: true } });
+  });
+}
+
 export async function createCarTracker(raw: unknown, actor: CarActor, requestKey: unknown = randomUUID()) {
   const intent = carCreationIntent(raw, actor, requestKey);
   const { searchId, offerId } = intent;
@@ -111,6 +125,7 @@ export async function createCarTracker(raw: unknown, actor: CarActor, requestKey
     await tx.$queryRaw`SELECT id FROM "CarSearchRun" WHERE id = ${searchId} FOR UPDATE`;
     const run = await tx.carSearchRun.findUnique({ where: { id: searchId } });
     assertCarOwner(actor, run);
+    if (run.trackingClosed) throw new CarError('New tracking from this search is permanently closed; existing trackers are unchanged', 410);
     if (!['success', 'partial'].includes(run.status) || !run.completedAt) throw new CarError('Choose a quote from a completed car search', 409);
     const search = validateCarSearch(run.request, new Date(), { allowUnresolvedProviders: true });
     const result = carRecord(run.result);

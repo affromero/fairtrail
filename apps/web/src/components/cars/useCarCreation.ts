@@ -7,7 +7,7 @@ import { travelRequest, TravelResponseError } from '../travel/client';
 
 interface CreationBody extends CarTrackingOptions { searchId: string; offerId: string; label?: string }
 interface PendingCreation { key: string; body: CreationBody }
-type Phase = 'loading' | 'ready' | 'sending' | 'uncertain' | 'rejected' | 'created' | 'storage_error' | 'removed';
+type Phase = 'loading' | 'ready' | 'sending' | 'uncertain' | 'rejected' | 'created' | 'storage_error' | 'removed' | 'closing' | 'close_uncertain' | 'closed';
 interface CreationState { phase: Phase; pending: PendingCreation | null; error: string; trackerId: string | null }
 const initial: CreationState = { phase: 'loading', pending: null, error: '', trackerId: null };
 export const CAR_CREATION_TIMEOUT_MS = 15_000;
@@ -23,24 +23,34 @@ function restore(raw: string, searchId: string): PendingCreation {
 }
 
 /** Persist before sending; aborting a request never implies that creation was undone. */
-export function useCarCreation(actorScope: string, searchId: string, onAccessLost?: () => void) {
+export function useCarCreation(actorScope: string, searchId: string, onAccessLost?: () => void, trackingClosed = false) {
   const storageKey = `ff-car-creation:${encodeURIComponent(actorScope)}:${encodeURIComponent(searchId)}`;
   const [state, setState] = useState<CreationState>(initial);
   const current = useRef(initial), generation = useRef(0), controller = useRef<AbortController | null>(null);
   const accessLost = useRef(onAccessLost); accessLost.current = onAccessLost;
+  const closed = useRef(trackingClosed), serverClosed = useRef(trackingClosed); serverClosed.current = trackingClosed;
   const update = (next: CreationState) => { current.current = next; setState(next); };
   useEffect(() => {
     generation.current++;
+    closed.current = serverClosed.current;
     try {
       const saved = sessionStorage.getItem(storageKey), pending = saved === null ? null : restore(saved, searchId);
-      const next: CreationState = { ...initial, phase: pending ? 'uncertain' : 'ready', pending };
+      const next: CreationState = { ...initial, phase: pending ? 'uncertain' : closed.current ? 'closed' : 'ready', pending };
       current.current = next; setState(next);
     } catch {
-      const next: CreationState = { ...initial, phase: 'storage_error' };
+      const next: CreationState = { ...initial, phase: closed.current ? 'closed' : 'storage_error' };
       current.current = next; setState(next);
     }
     return () => { generation.current++; controller.current?.abort(); controller.current = null; };
   }, [storageKey, searchId]);
+  useEffect(() => {
+    if (!trackingClosed) return;
+    closed.current = true;
+    if (!current.current.pending && !['created', 'closing'].includes(current.current.phase)) {
+      const next: CreationState = { ...initial, phase: 'closed' };
+      current.current = next; setState(next);
+    }
+  }, [trackingClosed]);
 
   async function send(pending: PendingCreation, recovering = false) {
     const active = generation.current, aborter = new AbortController();
@@ -90,7 +100,7 @@ export function useCarCreation(actorScope: string, searchId: string, onAccessLos
     }
   }
   async function create(offerId: string, options: CarTrackingOptions, label?: string) {
-    if (!['ready', 'rejected'].includes(current.current.phase)) return;
+    if (closed.current || !['ready', 'rejected'].includes(current.current.phase)) return;
     let body: CreationBody;
     try { body = bodyFrom({ searchId, offerId, ...options, ...(label === undefined ? {} : { label }) }); }
     catch (error) { update({ ...initial, phase: 'rejected', error: error instanceof Error ? error.message : 'Invalid rental settings' }); return; }
@@ -106,8 +116,35 @@ export function useCarCreation(actorScope: string, searchId: string, onAccessLos
     try {
       const saved = sessionStorage.getItem(storageKey);
       const pending = saved === null ? null : restore(saved, searchId);
-      update({ ...initial, phase: pending ? 'uncertain' : 'ready', pending });
+      update({ ...initial, phase: pending ? 'uncertain' : closed.current ? 'closed' : 'ready', pending });
     } catch { update({ ...initial, phase: 'storage_error' }); }
   }
-  return { ...state, create, retry, recoverStorage, locked: !['ready', 'rejected'].includes(state.phase) };
+  async function closeTracking() {
+    if (current.current.pending || !['storage_error', 'close_uncertain'].includes(current.current.phase)) return;
+    const active = ++generation.current, aborter = new AbortController();
+    controller.current?.abort(); controller.current = aborter;
+    update({ ...initial, phase: 'closing' });
+    const timeout = setTimeout(() => {
+      if (active !== generation.current) return;
+      generation.current++; aborter.abort();
+      update({ ...initial, phase: 'close_uncertain' });
+    }, CAR_CREATION_TIMEOUT_MS);
+    try {
+      const result = carRecord(await travelRequest<unknown>(`/api/cars/search/${encodeURIComponent(searchId)}/close-tracking`, { method: 'POST', signal: aborter.signal }));
+      if (active !== generation.current) return;
+      aborter.signal.throwIfAborted();
+      if (result.id !== searchId || result.trackingClosed !== true) throw new Error('Search closure is not confirmed');
+      closed.current = true;
+      try { sessionStorage.removeItem(storageKey); } catch { /* The permanent server fence remains authoritative. */ }
+      update({ ...initial, phase: 'closed' });
+    } catch (error) {
+      if (active !== generation.current) return;
+      update({ ...initial, phase: 'close_uncertain' });
+      if (error instanceof TravelResponseError && [401, 403, 404].includes(error.status)) accessLost.current?.();
+    } finally {
+      clearTimeout(timeout);
+      if (controller.current === aborter) controller.current = null;
+    }
+  }
+  return { ...state, create, retry, recoverStorage, closeTracking, locked: trackingClosed || closed.current || !['ready', 'rejected'].includes(state.phase) };
 }

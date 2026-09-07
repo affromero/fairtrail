@@ -1,5 +1,13 @@
 {
   "Cars": {
+    "closeTrackingTitle": "Cerrar el seguimiento desde esta búsqueda",
+    "closeTrackingHelp": "No se puede leer el comprobante de creación guardado. Cierra permanentemente la creación de nuevos seguimientos desde esta búsqueda antes de iniciar otra. Cualquier seguimiento ya creado sigue activo y debes revisarlo en tu panel de coches. Esta acción no lo identifica, pausa ni elimina.",
+    "closeTrackingConfirm": "Confirmar cierre permanente",
+    "closingTracking": "Cerrando la creación de seguimientos…",
+    "closeTrackingUncertain": "El cierre no está confirmado. La creación de nuevos seguimientos sigue desactivada. Reintenta el mismo cierre para confirmar el estado del servidor.",
+    "closeTrackingRetry": "Reintentar cierre",
+    "trackingClosed": "Seguimiento cerrado para esta búsqueda",
+    "trackingClosedHelp": "Puedes seguir consultando estos resultados. Los seguimientos existentes no cambian. Revisa tu panel de coches antes de iniciar otra búsqueda.",
     "Refresh": {
       "title": "Consultar precios ahora",
       "help": "Inicia una consulta al proveedor con los datos guardados. Actualizar el estado solo recarga el historial. Puedes pausar o eliminar el seguimiento mientras recuperas una solicitud.",

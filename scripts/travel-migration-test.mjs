@@ -93,12 +93,14 @@ try {
     INSERT INTO "CarTracker" (id, label, search, currency, "latestPriceMinor", "updatedAt") VALUES ('migration-car', 'New car data survives rollback', '{}', 'USD', 9365, now());
     INSERT INTO "CarTrackerCreation" (id, "requestHash", "trackerId") VALUES (repeat('b',64), repeat('c',64), 'migration-car');
     INSERT INTO "CarSearchRun" (id, "trackerId", request, status, "completedAt") VALUES ('migration-car-run', 'migration-car', '{}', 'success', now());
+    INSERT INTO "CarSearchRun" (id, request, status, "completedAt", "trackingClosed") VALUES ('migration-car-closed', '{}', 'success', now(), true);
     INSERT INTO "CarSnapshot" (id, "trackerId", "runId", source, offer, currency, "totalMinor", eligible, "contractHash", "observedAt")
       VALUES ('migration-car-price', 'migration-car', 'migration-car-run', 'autoeurope', '{"totalMinor":9365}', 'USD', 9365, true, repeat('a',64), now());
     INSERT INTO "TravelJob" (id, kind, status, "carRunId", "completedAt") VALUES ('migration-job', 'car_search', 'succeeded', 'migration-car-run', now());
     INSERT INTO "TravelAlertDelivery" (id, "carTrackerId", "eventKey", message, "deliveredIds")
       VALUES ('migration-car-alert', 'migration-car', 'migration-alert', '{"title":"Pending car alert"}', ARRAY['delivered-test-channel']);
   `);
+  assert.equal((await client.query('SELECT "trackingClosed" FROM "CarSearchRun" WHERE id = $1', ['migration-car-run'])).rows[0].trackingClosed, false, 'New searches start open for tracking');
   const newTables = {};
   await client.query('UPDATE "User" SET "preferredCarProviders" = ARRAY[\'autoeurope\']::"CarProvider"[], "carPreferencesRevision" = 2 WHERE id = $1', ['migration-owner']);
   newTables.User = ['id', 'preferredCarProviders', 'carPreferencesRevision'];

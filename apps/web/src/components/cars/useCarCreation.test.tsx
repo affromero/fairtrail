@@ -5,13 +5,14 @@ import { useCarCreation, CAR_CREATION_TIMEOUT_MS } from './useCarCreation';
 import type { CarTrackingOptions } from '@/lib/cars/types';
 
 const options: CarTrackingOptions = { mode: 'best', target: null, notifyLows: true, scrapeInterval: 3 };
-function Harness({ actor = 'alice', searchId = 'search-one' }: { actor?: string; searchId?: string }) {
-  const creation = useCarCreation(actor, searchId);
+function Harness({ actor = 'alice', searchId = 'search-one', closed = false }: { actor?: string; searchId?: string; closed?: boolean }) {
+  const creation = useCarCreation(actor, searchId, undefined, closed);
   return <><output aria-label="Creation phase">{creation.phase}</output><output aria-label="Tracker">{creation.trackerId}</output><p role="alert">{creation.error}</p>
     <button disabled={creation.locked} onClick={() => void creation.create('offer-one', options)}>Create</button>
     <button disabled={creation.locked} onClick={() => void creation.create('offer-one', { ...options, mode: 'contract' })}>Create contract</button>
     <button disabled={creation.phase !== 'uncertain'} onClick={() => void creation.retry()}>Retry same creation</button>
-    <button disabled={creation.phase !== 'storage_error'} onClick={() => void creation.recoverStorage()}>Recover storage</button></>;
+    <button disabled={creation.phase !== 'storage_error'} onClick={() => void creation.recoverStorage()}>Recover storage</button>
+    <button onClick={() => void creation.closeTracking()}>Close tracking</button></>;
 }
 function acknowledge(init: RequestInit, data: unknown = { id: 'saved-tracker' }) {
   return new Response(JSON.stringify({ ok: true, data: { tracker: data, creationKey: new Headers(init.headers).get('Idempotency-Key') } }));
@@ -20,6 +21,82 @@ beforeEach(() => { sessionStorage.clear(); });
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 describe('safe rental creation lifecycle', () => {
+  it('retries a lost closure acknowledgement against the same search and stays closed if storage removal fails', async () => {
+    sessionStorage.setItem('ff-car-creation:alice:search-one', '{');
+    const urls: string[] = [];
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(async (url: string) => {
+      urls.push(url); if (urls.length === 1) throw new TypeError('Lost acknowledgement');
+      return new Response(JSON.stringify({ ok: true, data: { id: 'search-one', trackingClosed: true } }));
+    }));
+    const first = render(<Harness />); fireEvent.click(screen.getByText('Close tracking'));
+    await waitFor(() => expect(screen.getByLabelText('Creation phase')).toHaveTextContent('close_uncertain'));
+    vi.spyOn(Object.getPrototypeOf(sessionStorage), 'removeItem').mockImplementation(() => { throw new DOMException('Storage unavailable'); });
+    fireEvent.click(screen.getByText('Close tracking'));
+    await waitFor(() => expect(screen.getByLabelText('Creation phase')).toHaveTextContent('closed'));
+    expect(urls).toEqual(['/api/cars/search/search-one/close-tracking', '/api/cars/search/search-one/close-tracking']);
+    expect(sessionStorage.getItem('ff-car-creation:alice:search-one')).toBe('{');
+    first.unmount(); render(<Harness closed />);
+    expect(screen.getByLabelText('Creation phase')).toHaveTextContent('closed');
+    expect(screen.getByRole('button', { name: /^Create$/ })).toBeDisabled();
+  });
+  it('ignores a closure acknowledgement after switching account and preserves the original recovery record', async () => {
+    sessionStorage.setItem('ff-car-creation:alice:search-one', '{');
+    let resolveResponse!: (response: Response) => void;
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(() => new Promise<Response>(resolve => { resolveResponse = resolve; })));
+    const view = render(<Harness />); fireEvent.click(screen.getByText('Close tracking'));
+    view.rerender(<Harness actor="bob" />);
+    await act(async () => { resolveResponse(new Response(JSON.stringify({ ok: true, data: { id: 'search-one', trackingClosed: true } }))); });
+    expect(screen.getByLabelText('Creation phase')).toHaveTextContent('ready');
+    expect(sessionStorage.getItem('ff-car-creation:alice:search-one')).toBe('{');
+  });
+  it('removes a corrupt receipt only after matching closure and never reopens on a stale server flag', async () => {
+    sessionStorage.setItem('ff-car-creation:alice:search-one', '{');
+    const fetcher = vi.fn().mockImplementation(async (url: string) => {
+      expect(url).toBe('/api/cars/search/search-one/close-tracking');
+      expect(sessionStorage.getItem('ff-car-creation:alice:search-one')).toBe('{');
+      return new Response(JSON.stringify({ ok: true, data: { id: 'search-one', trackingClosed: true } }));
+    }); vi.stubGlobal('fetch', fetcher);
+    const view = render(<Harness />); fireEvent.click(screen.getByText('Close tracking'));
+    await waitFor(() => expect(screen.getByLabelText('Creation phase')).toHaveTextContent('closed'));
+    expect(sessionStorage.length).toBe(0);
+    view.rerender(<Harness closed />); view.rerender(<Harness closed={false} />);
+    expect(screen.getByRole('button', { name: /^Create$/ })).toBeDisabled();
+    view.unmount(); render(<Harness closed />);
+    expect(screen.getByLabelText('Creation phase')).toHaveTextContent('closed');
+    expect(fetcher.mock.calls).toHaveLength(1);
+  });
+  it.each([{ id: 'other', trackingClosed: true }, { id: 'search-one', trackingClosed: false }, { id: 'search-one' }])('keeps a corrupt receipt and permits only closure retry after an invalid acknowledgement: %j', async data => {
+    sessionStorage.setItem('ff-car-creation:alice:search-one', '{');
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ ok: true, data }))));
+    render(<Harness />); fireEvent.click(screen.getByText('Close tracking'));
+    await waitFor(() => expect(screen.getByLabelText('Creation phase')).toHaveTextContent('close_uncertain'));
+    expect(sessionStorage.getItem('ff-car-creation:alice:search-one')).toBe('{');
+    expect(screen.getByRole('button', { name: /^Create$/ })).toBeDisabled();
+    expect(screen.getByText('Recover storage')).toBeDisabled();
+  });
+  it('recovers an existing receipt on a closed search without submitting a fresh creation', async () => {
+    const key = crypto.randomUUID();
+    sessionStorage.setItem('ff-car-creation:alice:search-one', JSON.stringify({ key, body: { searchId: 'search-one', offerId: 'offer-one', ...options } }));
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(async (url: string, init: RequestInit) => {
+      expect(url).toBe('/api/cars'); expect(new Headers(init.headers).get('Idempotency-Key')).toBe(key);
+      return acknowledge(init);
+    }));
+    render(<Harness closed />);
+    expect(screen.getByRole('button', { name: /^Create$/ })).toBeDisabled();
+    fireEvent.click(screen.getByText('Retry same creation'));
+    await waitFor(() => expect(screen.getByLabelText('Tracker')).toHaveTextContent('saved-tracker'));
+  });
+  it('bounds closure even when transport ignores abort and retains the receipt after a late acknowledgement', async () => {
+    vi.useFakeTimers(); sessionStorage.setItem('ff-car-creation:alice:search-one', '{');
+    let resolveResponse!: (response: Response) => void;
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(() => new Promise<Response>(resolve => { resolveResponse = resolve; })));
+    render(<Harness />); fireEvent.click(screen.getByText('Close tracking'));
+    await act(async () => { await vi.advanceTimersByTimeAsync(CAR_CREATION_TIMEOUT_MS); });
+    expect(screen.getByLabelText('Creation phase')).toHaveTextContent('close_uncertain');
+    await act(async () => { resolveResponse(new Response(JSON.stringify({ ok: true, data: { id: 'search-one', trackingClosed: true } }))); });
+    expect(screen.getByLabelText('Creation phase')).toHaveTextContent('close_uncertain');
+    expect(sessionStorage.getItem('ff-car-creation:alice:search-one')).toBe('{');
+  });
   it('releases a stalled UI even when the transport ignores abort and ignores its late acknowledgement', async () => {
     vi.useFakeTimers(); let resolveResponse!: (response: Response) => void; let sent!: RequestInit;
     vi.stubGlobal('fetch', vi.fn().mockImplementation((url: string, init: RequestInit) => {

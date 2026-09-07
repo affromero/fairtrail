@@ -16,11 +16,13 @@ export function validateCarRunSummary(raw: unknown, expectedId?: string, now = n
 export function validateCarRunView(raw: unknown, expectedId: string, standalone = false, now = new Date()) {
   const value = carRecord(raw), summary = validateCarRunSummary(value, expectedId, now), { trackerId, createdAt, completedAt, status } = summary;
   if (standalone && trackerId !== null) throw new CarError('Open tracker checks from their rental history', 404);
+  if (typeof value.trackingClosed !== 'boolean') throw new CarError('Rental tracking closure state is missing or invalid');
+  if (value.trackingClosed && (trackerId !== null || !['success', 'partial'].includes(status))) throw new CarError('Rental tracking closure does not match its search');
   const search = validateCarSearch(value.search, new Date(createdAt), { allowUnresolvedProviders: true });
   const result = value.result === null ? null : validateCarReport(value.result, search.sources, completedAt === null ? now : new Date(completedAt));
   if ((status === 'success' || status === 'partial') && !result) throw new CarError('Completed rental search has no result');
   if ((status === 'success' || status === 'partial') && result && (result.completed !== result.total || result.providers.some(provider => provider.status === 'running'))) throw new CarError('Completed rental search has unfinished providers');
-  return { ...summary, search, result };
+  return { ...summary, search, result, trackingClosed: value.trackingClosed };
 }
 export type CarRunView = ReturnType<typeof validateCarRunView>;
 export const carRunIsActive = (run: Pick<CarRunView, 'status'>) => run.status === 'queued' || run.status === 'running';

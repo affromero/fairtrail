@@ -9,6 +9,7 @@ import type { CarActor } from './access';
 import { searchCarLocations } from './locations';
 import { getCarRunView } from './views';
 import { listCarSearchPage } from './search-list';
+import { closeCarSearchTracking } from './store';
 
 describe.skipIf(process.env.CAR_STORE_INTEGRATION_TESTS !== '1')('car ownership and persistence against isolated PostgreSQL', () => {
   let owner: CarActor, other: CarActor;
@@ -32,7 +33,7 @@ describe.skipIf(process.env.CAR_STORE_INTEGRATION_TESTS !== '1')('car ownership 
   afterAll(async () => { await prisma.$disconnect(); });
 
   async function completedSearch(value = offer()) {
-    return prisma.carSearchRun.create({ data: { userId: owner.userId, request: carJson(criteria()), result: carJson({ offers: [value], candidates: [], errors: [] }), status: 'success', completedAt: new Date() } });
+    return prisma.carSearchRun.create({ data: { userId: owner.userId, request: carJson(criteria()), result: carJson(carReportFixture([value])), status: 'success', completedAt: new Date() } });
   }
   async function tracker(mode: 'best' | 'contract' = 'best') {
     const run = await completedSearch();
@@ -97,6 +98,61 @@ describe.skipIf(process.env.CAR_STORE_INTEGRATION_TESTS !== '1')('car ownership 
     expect(carTrackerDto(row)).toMatchObject({ selection: null, options: { mode: 'best' }, search: { sources: ['discovercars', 'autoeurope'], filters: { maxTotal: null } } });
     const queued = await prisma.carSearchRun.findFirstOrThrow({ where: { trackerId: row.id }, include: { travelJob: true } });
     expect(queued).toMatchObject({ trackerRevision: 0, status: 'queued', travelJob: { kind: 'car_search', userId: owner.userId } });
+  });
+
+  it('permanently closes fresh creation while preserving results and known receipt recovery', async () => {
+    const run = await completedSearch(), key = crypto.randomUUID();
+    const body = { searchId: run.id, offerId: 'verified-quote' };
+    const created = await createCarTracker(body, owner, key);
+    expect(await closeCarSearchTracking(run.id, owner)).toMatchObject({ trackingClosed: true, result: run.result });
+    expect(await closeCarSearchTracking(run.id, owner)).toMatchObject({ trackingClosed: true });
+    expect(await getCarRunView(run.id, owner)).toMatchObject({ trackingClosed: true, result: { offers: [{ id: 'verified-quote' }] } });
+    expect(await createCarTracker(body, owner, key)).toEqual(created);
+    await expect(createCarTracker(body, owner, crypto.randomUUID())).rejects.toMatchObject({ status: 410 });
+    expect(await getCarTracker(created.id, owner)).toEqual(created);
+    expect(await prisma.carTracker.count({ where: { userId: owner.userId } })).toBe(1);
+    await deleteCarTracker(created.id, owner);
+    await expect(createCarTracker(body, owner, key)).rejects.toMatchObject({ status: 410 });
+    expect(await prisma.carTracker.count({ where: { userId: owner.userId } })).toBe(0);
+  });
+
+  it('rejects every concurrent fresh key after closure wins without creating jobs or trackers', async () => {
+    const run = await completedSearch();
+    await closeCarSearchTracking(run.id, owner);
+    const attempts = await Promise.allSettled(Array.from({ length: 4 }, () => createCarTracker({ searchId: run.id, offerId: 'verified-quote' }, owner, crypto.randomUUID())));
+    expect(attempts).toEqual(Array.from({ length: 4 }, () => ({ status: 'rejected', reason: expect.objectContaining({ status: 410 }) })));
+    expect(await prisma.carTracker.count({ where: { userId: owner.userId } })).toBe(0);
+    expect(await prisma.travelJob.count({ where: { userId: owner.userId } })).toBe(0);
+    expect(await prisma.carTrackerCreation.count({ where: { userId: owner.userId } })).toBe(0);
+  });
+
+  it('rejects foreign, active and tracker-run closure without changing their state', async () => {
+    const completed = await completedSearch(), active = await createCarSearch(criteria(), owner);
+    await expect(closeCarSearchTracking(completed.id, other)).rejects.toMatchObject({ status: 404 });
+    await expect(closeCarSearchTracking(active.id, owner)).rejects.toMatchObject({ status: 409 });
+    const created = await createCarTracker({ searchId: completed.id, offerId: 'verified-quote' }, owner);
+    const check = await prisma.carSearchRun.findFirstOrThrow({ where: { trackerId: created.id } });
+    await prisma.carSearchRun.update({ where: { id: check.id }, data: { status: 'success', completedAt: new Date() } });
+    await expect(closeCarSearchTracking(check.id, owner)).rejects.toMatchObject({ status: 409 });
+    expect(await prisma.carSearchRun.count({ where: { userId: owner.userId, trackingClosed: true } })).toBe(0);
+  });
+
+  it('fences a creation racing closure and allows only a committed receipt to replay', async () => {
+    const run = await completedSearch(), key = crypto.randomUUID();
+    const body = { searchId: run.id, offerId: 'verified-quote' };
+    const [closure, creation] = await Promise.allSettled([
+      closeCarSearchTracking(run.id, owner), createCarTracker(body, owner, key),
+    ]);
+    expect(closure.status).toBe('fulfilled');
+    expect((await getCarSearch(run.id, owner)).trackingClosed).toBe(true);
+    if (creation.status === 'fulfilled') {
+      expect(await createCarTracker(body, owner, key)).toEqual(creation.value);
+    } else {
+      expect(creation.reason).toMatchObject({ status: 410 });
+      await expect(createCarTracker(body, owner, key)).rejects.toMatchObject({ status: 410 });
+    }
+    await expect(createCarTracker(body, owner, crypto.randomUUID())).rejects.toMatchObject({ status: 410 });
+    expect(await prisma.carTracker.count({ where: { userId: owner.userId } })).toBe(creation.status === 'fulfilled' ? 1 : 0);
   });
 
   it('records concurrent refresh identities against one active run and replays them after completion', async () => {

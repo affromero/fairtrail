@@ -1,5 +1,13 @@
 {
   "Cars": {
+    "closeTrackingTitle": "Fermer le suivi depuis cette recherche",
+    "closeTrackingHelp": "Le reçu de création enregistré est illisible. Fermez définitivement la création de nouveaux suivis depuis cette recherche avant d’en lancer une autre. Tout suivi déjà créé reste actif et doit être vérifié dans votre tableau de bord voitures. Cette action ne l’identifie pas, ne le suspend pas et ne le supprime pas.",
+    "closeTrackingConfirm": "Confirmer la fermeture définitive",
+    "closingTracking": "Fermeture de la création de suivis…",
+    "closeTrackingUncertain": "La fermeture n’est pas confirmée. La création de nouveaux suivis reste désactivée. Réessayez la même fermeture pour confirmer l’état du serveur.",
+    "closeTrackingRetry": "Réessayer la fermeture",
+    "trackingClosed": "Suivi fermé pour cette recherche",
+    "trackingClosedHelp": "Ces résultats restent consultables. Les suivis existants sont inchangés. Vérifiez votre tableau de bord voitures avant de lancer une nouvelle recherche.",
     "Refresh": {
       "title": "Vérifier les prix maintenant",
       "help": "Lance une vérification auprès du fournisseur avec les informations enregistrées. Actualiser le statut recharge uniquement l’historique. Vous pouvez suspendre ou supprimer le suivi pendant la récupération d’une demande.",

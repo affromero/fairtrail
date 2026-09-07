@@ -25,6 +25,24 @@ beforeEach(() => { sessionStorage.clear(); });
 afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
 describe('rental results and honest tracking controls', () => {
+  it.each(Object.keys(locales) as (keyof typeof locales)[])('requires explicit permanent closure and keeps results inspectable in %s', async locale => {
+    sessionStorage.setItem('ff-car-creation:alice:search-one', '{');
+    const copy = locales[locale].Cars;
+    const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify({ ok: true, data: { id: 'search-one', trackingClosed: true } })));
+    vi.stubGlobal('fetch', fetcher);
+    render(<Results locale={locale} />);
+    expect(screen.getByText(copy.closeTrackingTitle).closest('details')).not.toHaveAttribute('open');
+    expect(fetcher).not.toHaveBeenCalled();
+    await userEvent.setup().click(screen.getByText(copy.closeTrackingTitle));
+    expect(screen.getByText(copy.closeTrackingHelp)).toBeVisible();
+    await userEvent.setup().click(screen.getByRole('button', { name: copy.closeTrackingConfirm }));
+    expect(await screen.findByRole('heading', { name: copy.trackingClosed })).toBeInTheDocument();
+    expect(screen.getByText(copy.trackingClosedHelp)).toBeVisible();
+    expect(screen.getByRole('button', { name: copy.track })).toBeDisabled();
+    expect(screen.queryByLabelText(copy.mode)).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: copy.viewProvider })).toBeInTheDocument();
+    expect(sessionStorage.length).toBe(0);
+  });
   it('offers storage recovery without allowing a corrupt receipt to start another tracker', async () => {
     sessionStorage.setItem('ff-car-creation:alice:search-one', '{');
     const fetcher = vi.fn(); vi.stubGlobal('fetch', fetcher);

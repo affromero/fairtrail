@@ -1,5 +1,13 @@
 {
   "Cars": {
+    "closeTrackingTitle": "Tracking für diese Suche schließen",
+    "closeTrackingHelp": "Der gespeicherte Erstellungsbeleg ist nicht lesbar. Schließe die Erstellung neuer Preisbeobachtungen aus dieser Suche dauerhaft, bevor du eine neue Suche startest. Bereits erstellte Beobachtungen bleiben aktiv und müssen in deiner Mietwagenübersicht geprüft werden. Diese Aktion identifiziert, pausiert oder löscht sie nicht.",
+    "closeTrackingConfirm": "Dauerhafte Schließung bestätigen",
+    "closingTracking": "Erstellung neuer Beobachtungen wird geschlossen…",
+    "closeTrackingUncertain": "Die Schließung ist nicht bestätigt. Neue Beobachtungen bleiben deaktiviert. Wiederhole dieselbe Schließung, um den Serverstatus zu bestätigen.",
+    "closeTrackingRetry": "Schließung erneut versuchen",
+    "trackingClosed": "Tracking für diese Suche geschlossen",
+    "trackingClosedHelp": "Diese Ergebnisse bleiben einsehbar. Bestehende Beobachtungen bleiben unverändert. Prüfe deine Mietwagenübersicht, bevor du eine neue Suche startest.",
     "Refresh": {
       "title": "Preise jetzt prüfen",
       "help": "Startet eine Anbieterprüfung mit den gespeicherten Mietangaben. Status aktualisieren lädt nur den Verlauf neu. Du kannst das Tracking während der Wiederherstellung einer Anfrage pausieren oder löschen.",

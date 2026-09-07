@@ -346,6 +346,7 @@ model CarSearchRun {
   userId          String?
   trackerId       String?
   trackerRevision Int?
+  trackingClosed  Boolean @default(false)
   request         Json
   result          Json?
   status          CarRunStatus @default(queued)

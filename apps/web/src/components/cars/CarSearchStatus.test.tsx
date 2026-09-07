@@ -11,7 +11,7 @@ import { TRAVEL_ACCESS_LOST_EVENT } from '../travel/client';
 vi.unmock('next-intl');
 function initial(status: CarRunView['status'] = 'running'): CarRunView {
   const now = new Date().toISOString();
-  return { id: 'search-one', trackerId: null, status, createdAt: now, completedAt: status === 'running' ? null : now, search: carSearchFixture(), result: status === 'running' ? null : carReportFixture(), error: null };
+  return { id: 'search-one', trackerId: null, trackingClosed: false, status, createdAt: now, completedAt: status === 'running' ? null : now, search: carSearchFixture(), result: status === 'running' ? null : carReportFixture(), error: null };
 }
 function surface(value: CarRunView) {
   return <NextIntlClientProvider locale="en" messages={en}><CarSearchStatus initial={value} actorScope="alice" /></NextIntlClientProvider>;
@@ -22,6 +22,24 @@ afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); vi.restoreAllMocks(
 const settle = async () => { await act(async () => { await vi.advanceTimersByTimeAsync(0); }); };
 
 describe('private rental result lifecycle', () => {
+  it('does not reopen tracking when a stale status response omits an acknowledged permanent closure', async () => {
+    const value = { ...initial('success'), trackingClosed: true };
+    vi.stubGlobal('fetch', vi.fn(async () => response({ ...value, trackingClosed: false })));
+    render(surface(value)); fireEvent.click(screen.getByRole('button', { name: 'Refresh status' })); await settle();
+    expect(screen.getByRole('alert')).toHaveTextContent(en.Cars.statusInterrupted);
+    expect(screen.getByRole('heading', { name: en.Cars.trackingClosed })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Track this rental' })).toBeDisabled();
+  });
+  it.each([401, 403, 404])('hides private results after closure loses access with HTTP %i and retains recovery data', async status => {
+    sessionStorage.setItem('ff-car-creation:alice:search-one', '{');
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('<html>Unavailable</html>', { status })));
+    render(surface(initial('success')));
+    fireEvent.click(screen.getByText(en.Cars.closeTrackingTitle));
+    fireEvent.click(screen.getByRole('button', { name: en.Cars.closeTrackingConfirm })); await settle();
+    expect(screen.queryByRole('heading', { name: /Example car/ })).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: en.Cars.signIn })).toBeInTheDocument();
+    expect(sessionStorage.getItem('ff-car-creation:alice:search-one')).toBe('{');
+  });
   it.each([401, 403, 404])('hides results and keeps creation recovery after a malformed HTTP %i acknowledgement', async status => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response('<html>Unavailable</html>', { status })));
     render(surface(initial('success')));

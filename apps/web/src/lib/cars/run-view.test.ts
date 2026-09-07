@@ -5,9 +5,15 @@ import { CarError } from './types';
 
 function completed() {
   const now = new Date().toISOString();
-  return { id: 'search-one', trackerId: null, status: 'success', createdAt: now, completedAt: now, search: carSearchFixture(), result: carReportFixture(), error: null };
+  return { id: 'search-one', trackerId: null, trackingClosed: false, status: 'success', createdAt: now, completedAt: now, search: carSearchFixture(), result: carReportFixture(), error: null };
 }
 describe('rental status validation', () => {
+  it('retains the permanent creation fence without hiding verified offers', () => {
+    expect(validateCarRunView({ ...completed(), trackingClosed: true }, 'search-one')).toMatchObject({ trackingClosed: true, result: { offers: [{ id: 'verified-quote' }] } });
+  });
+  it.each([undefined, null, 'false', 0])('rejects unverified tracking closure state %j', trackingClosed => {
+    expect(() => validateCarRunView({ ...completed(), trackingClosed }, 'search-one')).toThrow(CarError);
+  });
   it('returns verified completed results with station-local search identity intact', () => {
     const value = completed();
     expect(validateCarRunView(value, value.id, true)).toMatchObject({ status: 'success', search: { pickup: { timeZone: 'Europe/London' } }, result: { offers: [{ id: 'verified-quote' }] } });

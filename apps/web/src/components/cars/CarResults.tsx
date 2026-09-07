@@ -28,10 +28,11 @@ function useOfferClock(offers: CarOffer[]) {
   return now;
 }
 
-export function CarResults({ actorScope, searchId, search, report, status, mutationsDisabled = false, onAccessLost }: { actorScope: string; searchId: string; search: CarSearch; report: CarSearchReport; status: string; mutationsDisabled?: boolean; onAccessLost?: () => void }) {
-  const t = useTranslations('Cars'), locale = useLocale(), now = useOfferClock(report.offers), creation = useCarCreation(actorScope, searchId, onAccessLost);
+export function CarResults({ actorScope, searchId, search, report, status, mutationsDisabled = false, onAccessLost, trackingClosed = false }: { actorScope: string; searchId: string; search: CarSearch; report: CarSearchReport; status: string; mutationsDisabled?: boolean; onAccessLost?: () => void; trackingClosed?: boolean }) {
+  const t = useTranslations('Cars'), locale = useLocale(), now = useOfferClock(report.offers), creation = useCarCreation(actorScope, searchId, onAccessLost, trackingClosed);
   const [draft, setDraft] = useState(defaultCarOptionsDraft), [localError, setLocalError] = useState('');
   const complete = status === 'success' || status === 'partial', running = status === 'queued' || status === 'running';
+  const closingSearch = ['closing', 'close_uncertain', 'closed'].includes(creation.phase);
   let options: Options | null = null;
   try { options = carOptionsFromDraft(draft, search.currency, locale); } catch { /* The form explains invalid input below. */ }
   const assessments = report.offers.map(offer => assessCarPrice(offer, search, new Date(now)));
@@ -54,10 +55,14 @@ export function CarResults({ actorScope, searchId, search, report, status, mutat
     {creation.phase === 'sending' && <p role="status" className={styles.notice}>{t('saving')}</p>}
     {creation.phase === 'uncertain' && <div role="alert" className={styles.notice}><h3>{t('uncertainTitle')}</h3><p>{t('uncertainHelp')}</p><button type="button" className={styles.button} disabled={mutationsDisabled} onClick={() => void creation.retry()}>{t('retryCreation')}</button></div>}
     {creation.phase === 'storage_error' && <div role="alert" className={styles.notice}><p>{t('storageError')}</p><button type="button" className={styles.button} disabled={mutationsDisabled} onClick={() => void creation.recoverStorage()}>{t('Search.retryStorage')}</button><Link className={styles.secondary} href="/cars">{t('carsTitle')}</Link></div>}
+    {creation.phase === 'storage_error' && !creation.pending && complete && <details className={styles.notice}><summary>{t('closeTrackingTitle')}</summary><p>{t('closeTrackingHelp')}</p><button type="button" className={styles.secondary} disabled={mutationsDisabled} onClick={() => void creation.closeTracking()}>{t('closeTrackingConfirm')}</button></details>}
+    {creation.phase === 'closing' && <p role="status" className={styles.notice}>{t('closingTracking')}</p>}
+    {creation.phase === 'close_uncertain' && <div role="alert" className={styles.notice}><p>{t('closeTrackingUncertain')}</p><button type="button" className={styles.button} disabled={mutationsDisabled} onClick={() => void creation.closeTracking()}>{t('closeTrackingRetry')}</button></div>}
+    {creation.phase === 'closed' && <div role="status" className={styles.notice}><h3>{t('trackingClosed')}</h3><p>{t('trackingClosedHelp')}</p><Link className={styles.button} href="/cars">{t('carsTitle')}</Link></div>}
     {creation.phase === 'removed' && <Link className={styles.secondary} href="/cars">{t('carsTitle')}</Link>}
     {creation.phase === 'created' && creation.trackerId && <div role="status" className={styles.notice}><h3>{t('created')}</h3><Link className={styles.button} href={`/cars/${encodeURIComponent(creation.trackerId)}`}>{t('openTracker')}</Link></div>}
     {creation.pending && <dl className={styles.terms} aria-label={t('pendingSettings')}><div><dt>{t('selectedOffer')}</dt><dd>{pendingOffer && `${pendingOffer.supplier} · ${pendingOffer.contract.model} · `}{creation.pending.body.offerId}</dd></div><div><dt>{t('mode')}</dt><dd>{t(creation.pending.body.mode)}</dd></div><div><dt>{t('target', { currency: search.currency })}</dt><dd>{creation.pending.body.target ? formatCarMoney(creation.pending.body.target, locale) : t('noTarget')}</dd></div><div><dt>{t('interval')}</dt><dd>{creation.pending.body.scrapeInterval}</dd></div><div><dt>{t('notifyLows')}</dt><dd>{t(creation.pending.body.notifyLows ? 'yes' : 'no')}</dd></div></dl>}
-    {report.offers.length > 0 && <>{!creation.pending && <CarTrackingOptions value={draft} currency={search.currency} disabled={creation.locked || !complete || mutationsDisabled} invalid={options === null} onChange={setDraft} />}
+    {report.offers.length > 0 && <>{!creation.pending && !closingSearch && <CarTrackingOptions value={draft} currency={search.currency} disabled={creation.locked || !complete || mutationsDisabled} invalid={options === null} onChange={setDraft} />}
       <div className={styles.offers}>{report.offers.map((offer, index) => <CarOfferRow key={offer.id} offer={offer} search={search} assessment={assessments[index]!} disabled={creation.locked || !complete || options === null || mutationsDisabled} onTrack={() => void track(offer)} />)}</div></>}
     {!running && !report.offers.length && <p className={styles.notice}>{t('noVerified')}</p>}
     {report.candidates.length > 0 && <section className={styles.candidates} aria-label={t('candidates')}><h3>{t('candidates')}</h3><p className={styles.hint}>{t('candidateHelp')}</p>{report.candidates.map((candidate, index) => {

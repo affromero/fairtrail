@@ -43,6 +43,7 @@ export function CarSearchStatus({ initial, actorScope }: { initial: CarRunView; 
       if (aborter.signal.aborted) throw new Error('Status request exceeded its deadline');
       if (carSearchIdentity(next.search) !== carSearchIdentity(initial.search) || next.createdAt !== initial.createdAt) throw new Error('Search identity changed');
       if (!carRunIsActive(current.current) && current.current.status !== next.status) throw new Error('Search status regressed');
+      if (current.current.trackingClosed && !next.trackingClosed) throw new Error('Search tracking closure regressed');
       current.current = next; setJob(next); setError(''); setPaused(false); setPrivateHidden(false);
     } catch (failure) {
       if (sequence !== generation.current) return;
@@ -71,7 +72,7 @@ export function CarSearchStatus({ initial, actorScope }: { initial: CarRunView; 
     {busy && <p role="status" className={styles.notice}>{t('updatingStatus')}</p>}
     {privateHidden ? <Link className={styles.secondary} href={`/login?next=${encodeURIComponent(`/cars/search/${initial.id}`)}`}>{t('signIn')}</Link> : <>
       {job.error && <p role="alert" className={styles.error}>{job.error}</p>}
-      <CarResults actorScope={actorScope} searchId={job.id} search={job.search} report={result} status={job.status} mutationsDisabled={paused || busy} onAccessLost={loseAccess} />
+      <CarResults actorScope={actorScope} searchId={job.id} search={job.search} report={result} status={job.status} trackingClosed={job.trackingClosed} mutationsDisabled={paused || busy} onAccessLost={loseAccess} />
     </>}
   </>;
 }

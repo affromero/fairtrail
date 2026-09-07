@@ -433,8 +433,24 @@ five-second read deadline. The browser pages `/cars`, `/cars/:id`, and
 | `POST /api/cars/parse` | `{ draft }` from `{ text, locale? }`; editable suggestions only, no provider search or tracker creation |
 | `POST /api/cars/search` | HTTP 202 with `{ id, status, creationKey }`; requires a UUID v4 `Idempotency-Key` |
 | `GET /api/cars/search?cursor=...` | `{ searches, nextCursor }`; 25 caller-scoped standalone search summaries per page |
-| `GET /api/cars/search/:id` | `{ id, trackerId, status, createdAt, completedAt, error, search, result }` |
+| `GET /api/cars/search/:id` | `{ id, trackerId, status, createdAt, completedAt, error, search, result, trackingClosed }` |
 | `DELETE /api/cars/search/:id` | `{ id, status }`; completed searches retain their terminal status |
+| `POST /api/cars/search/:id/close-tracking` | `{ id, trackingClosed: true }`; permanently prevents fresh tracker creation from a completed standalone search |
+
+If a browser creation receipt is unreadable, the results page offers an explicit
+permanent closure. Closure and tracker creation are serialized: a creation that
+commits first remains intact; closure prevents every later fresh creation key
+with HTTP 410. Replaying an existing successful receipt still returns its tracker.
+Closure does not identify, pause or delete previously created trackers. Review
+the car dashboard before starting another search.
+
+The closure request is idempotent for the search ID. Retry that same endpoint
+after a lost response, and require a matching ID with literal `trackingClosed:
+true` before discarding corrupt browser recovery data. Results remain readable.
+The run response always includes the boolean closure state; clients must not
+treat missing or malformed state as open. Closure is available only for owned
+standalone searches with `success` or `partial` status. Other lifecycle states
+and tracker checks return 409; normal private-instance access rules apply.
 
 Read `/api/cars/session` before creating or replaying a local recovery record.
 Bind that record to the exact server origin and returned scope. Fetch the scope

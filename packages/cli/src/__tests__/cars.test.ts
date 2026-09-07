@@ -22,7 +22,7 @@ function reject(response: ServerResponse, status: number, error: string) {
 }
 function runView(status = 'running') {
   const now = new Date().toISOString(), active = status === 'running' || status === 'queued';
-  return { id: 'run-one', trackerId: null, status, createdAt: now, completedAt: active ? null : now, error: null, search: carSearchFixture(), result: active ? null : carReportFixture() };
+  return { id: 'run-one', trackerId: null, trackingClosed: false, status, createdAt: now, completedAt: active ? null : now, error: null, search: carSearchFixture(), result: active ? null : carReportFixture() };
 }
 beforeEach(async () => {
   directory = await mkdtemp(join(tmpdir(), 'car-commands-')); scope = 'user:alice'; requests = [];
