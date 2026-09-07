@@ -78,8 +78,9 @@ describe.skipIf(process.env.CAR_HTTP_INTEGRATION_TESTS !== '1')('car HTTP owners
     expect(await prisma.carTracker.count({ where: { userId: owner } })).toBe(0);
     const first = await create(request(input, 'POST', key)), retry = await create(request(input, 'POST', key));
     expect(first.status).toBe(201); expect(retry.status).toBe(201);
-    const row = (await first.json()).data.tracker;
-    expect((await retry.json()).data.tracker).toEqual(row);
+    const firstData = (await first.json()).data, retryData = (await retry.json()).data, row = firstData.tracker;
+    expect(firstData.creationKey).toBe(key); expect(retryData.creationKey).toBe(key);
+    expect(retryData.tracker).toEqual(row);
     expect((await create(request({ ...input, label: 'Changed intent' }, 'POST', key))).status).toBe(409);
     await remove(request(), context(row.id));
     expect((await create(request(input, 'POST', key))).status).toBe(410);
