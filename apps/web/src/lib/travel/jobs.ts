@@ -1,26 +1,16 @@
 import { randomUUID } from 'node:crypto';
 import { prisma } from '@/lib/prisma';
-import { Prisma, type TravelJob, type TravelLease } from '@/generated/prisma/client';
-
-export class TravelJobError extends Error {
-  constructor(message: string, public readonly status = 409) { super(message); this.name = 'TravelJobError'; }
-}
+import { Prisma, type TravelJob } from '@/generated/prisma/client';
+import { TravelJobError } from './errors';
+import { lockTravelAdmission, lockTravelLease, type TravelLeaseToken } from './admission';
+export { TravelJobError } from './errors';
+export { acquireTravelLease, renewTravelLease, releaseTravelLease, lockTravelAdmission, lockTravelLease, type TravelLeaseToken } from './admission';
 export type TravelJobRequest =
   | { kind: 'flight_batch'; userId: null }
   | { kind: 'flight_query'; queryId: string; userId: string | null }
   | { kind: 'hotel_search'; hotelRunId: string; userId: string | null }
   | { kind: 'car_search'; carRunId: string; userId: string | null };
-export interface TravelLeaseToken { id: string; owner: string; generation: number }
-const DEFAULT_LEASE_MS = 120_000;
 const clearClaim = { leaseResource: null, leaseOwner: null, leaseGeneration: null, activeKey: null };
-
-/** Permanent control-plane lock, independent of the current VPN topology.
- * 761932105 is reserved for travel admission (761932104 protects schema setup).
- * Hold only within short database transactions, never during provider execution.
- */
-export async function lockTravelAdmission(tx: Prisma.TransactionClient): Promise<void> {
-  await tx.$executeRaw`SELECT pg_advisory_xact_lock(761932105)`;
-}
 
 export function travelResource(kind: TravelJob['kind']): string {
   return kind === 'flight_batch' || kind === 'flight_query' ? 'vpn' : 'browser';
@@ -78,57 +68,13 @@ export async function enqueueTravelJob(request: TravelJobRequest, tx?: Prisma.Tr
   if (job.userId !== request.userId) throw new TravelJobError('Previous owner still has an active job; cancel it before reassignment');
   return job;
 }
-function duration(ms: number): number {
-  if (!Number.isSafeInteger(ms) || ms < 1000 || ms > 600_000) throw new TravelJobError('Invalid lease duration', 400);
-  return ms;
-}
-export async function acquireTravelLease(id: string, milliseconds = DEFAULT_LEASE_MS): Promise<TravelLeaseToken | null> {
-  if (id !== 'vpn' && id !== 'browser') throw new TravelJobError('Unknown travel resource', 400);
-  const owner = randomUUID();
-  duration(milliseconds);
-  return prisma.$transaction(async tx => {
-    await lockTravelAdmission(tx);
-    await tx.$executeRaw`
-      INSERT INTO "TravelLease" (id, owner, "expiresAt") VALUES (${id}, ${owner}, ${new Date(0)})
-      ON CONFLICT (id) DO NOTHING`;
-    const leases = await tx.$queryRaw<TravelLease[]>`
-      UPDATE "TravelLease" SET "owner" = ${owner}, "generation" = "generation" + 1,
-        "expiresAt" = clock_timestamp() + ${milliseconds} * interval '1 millisecond'
-      WHERE "id" = ${id} AND "expiresAt" <= clock_timestamp() RETURNING *`;
-    return leases[0] ? { id, owner, generation: leases[0].generation } : null;
-  });
-}
-export async function renewTravelLease(lease: TravelLeaseToken, milliseconds = DEFAULT_LEASE_MS): Promise<boolean> {
-  duration(milliseconds);
-  return prisma.$transaction(async tx => {
-    await lockTravelAdmission(tx);
-    const count = await tx.$executeRaw`
-      UPDATE "TravelLease" SET "expiresAt" = clock_timestamp() + ${milliseconds} * interval '1 millisecond'
-      WHERE "id" = ${lease.id} AND "owner" = ${lease.owner} AND "generation" = ${lease.generation}
-        AND "expiresAt" > clock_timestamp()`;
-    return count === 1;
-  });
-}
-export async function releaseTravelLease(lease: TravelLeaseToken): Promise<void> {
-  await prisma.$transaction(async tx => {
-    await lockTravelAdmission(tx);
-    await tx.travelLease.updateMany({ where: { id: lease.id, owner: lease.owner, generation: lease.generation }, data: { expiresAt: new Date(0) } });
-  });
-}
-export async function lockTravelLease(tx: Prisma.TransactionClient, lease: TravelLeaseToken): Promise<void> {
-  await lockTravelAdmission(tx);
-  const current = await tx.$queryRaw<{ id: string }[]>`
-    SELECT "id" FROM "TravelLease" WHERE "id" = ${lease.id} AND "owner" = ${lease.owner}
-      AND "generation" = ${lease.generation} AND "expiresAt" > clock_timestamp() FOR UPDATE`;
-  if (!current.length) throw new TravelJobError('Travel worker lease was lost');
-}
 export async function claimTravelJob(id: string, lease: TravelLeaseToken): Promise<TravelJob | null> {
   return prisma.$transaction(async tx => {
     await lockTravelLease(tx, lease);
     const rows = await tx.$queryRaw<TravelJob[]>`SELECT * FROM "TravelJob" WHERE id = ${id} AND status = 'queued' FOR UPDATE`;
     const job = rows[0];
     if (!job) return null;
-    if (travelResource(job.kind) !== lease.id) throw new TravelJobError('Worker does not hold the required resource');
+    if (lease.id !== 'network' && travelResource(job.kind) !== lease.id) throw new TravelJobError('Worker does not hold the required resource');
     return tx.travelJob.update({ where: { id }, data: { status: 'running', attempts: { increment: 1 }, claimedAt: new Date(), leaseResource: lease.id, leaseOwner: lease.owner, leaseGeneration: lease.generation } });
   });
 }

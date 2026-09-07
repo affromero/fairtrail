@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { prisma } from '@/lib/prisma';
-import { acquireTravelLease, cancelTravelJob, claimTravelJob, completeTravelJob, enqueueTravelJob, failTravelJob, lockTravelAdmission, lockTravelResource, recoverTravelJobs, releaseTravelLease, renewTravelLease } from './jobs';
+import { acquireTravelLease, cancelTravelJob, claimTravelJob, completeTravelJob, enqueueTravelJob, failTravelJob, lockTravelAdmission, lockTravelResource, releaseTravelLease, renewTravelLease } from './jobs';
+import { getTravelAdmission, recoverTravelAdmission } from './admission';
 import type { TravelLeaseToken } from './jobs';
 
 const enabled = process.env.TRAVEL_INTEGRATION_TESTS === '1';
@@ -30,6 +31,7 @@ describe.skipIf(!enabled)('shared travel jobs against isolated PostgreSQL', () =
   beforeEach(async () => {
     await prisma.travelJob.deleteMany();
     await prisma.travelLease.deleteMany();
+    await prisma.travelAdmission.deleteMany();
     await prisma.carTracker.deleteMany();
     await prisma.carSearchRun.deleteMany();
     await prisma.hotelSearchRun.deleteMany();
@@ -39,6 +41,7 @@ describe.skipIf(!enabled)('shared travel jobs against isolated PostgreSQL', () =
     if (!queryId) return;
     await prisma.travelJob.deleteMany();
     await prisma.travelLease.deleteMany();
+    await prisma.travelAdmission.deleteMany();
     await prisma.query.delete({ where: { id: queryId } });
     await prisma.user.deleteMany({ where: { id: { in: [ownerId, otherId] } } });
     await prisma.$disconnect();
@@ -145,6 +148,8 @@ describe.skipIf(!enabled)('shared travel jobs against isolated PostgreSQL', () =
     const old = await lease();
     await prisma.travelLease.update({ where: { id: old.id }, data: { expiresAt: new Date(0) } });
     expect(await renewTravelLease(old)).toBe(false);
+    await expect(acquireTravelLease('vpn')).rejects.toMatchObject({ status: 503 });
+    await recoverTravelAdmission({ userId: ownerId, isAdmin: true }, { generation: (await getTravelAdmission()).recoveryGeneration, oldWorkersStopped: true, networkVerified: true });
     const replacement = await lease();
     await releaseTravelLease(old);
     expect(await renewTravelLease(replacement)).toBe(true);
@@ -192,13 +197,12 @@ describe.skipIf(!enabled)('shared travel jobs against isolated PostgreSQL', () =
     const second = await enqueueTravelJob({ kind: 'flight_query', queryId, userId: ownerId });
     await claimTravelJob(second.id, old);
     await prisma.travelLease.update({ where: { id: old.id }, data: { expiresAt: new Date(0) } });
-    const replacement = await lease();
+    const incident = await getTravelAdmission();
+    await recoverTravelAdmission({ userId: ownerId, isAdmin: true }, { generation: incident.recoveryGeneration, oldWorkersStopped: true, networkVerified: true });
+    await lease();
     await expect(completeTravelJob(second.id, old, tx => tx.query.update({ where: { id: queryId }, data: { label: 'Replaced result' } }))).rejects.toThrow(/lease/);
-    expect(await recoverTravelJobs(replacement, async tx => {
-      await tx.query.update({ where: { id: queryId }, data: { label: 'Interrupted visibly' } });
-    })).toBe(1);
     expect(await prisma.travelJob.findUnique({ where: { id: second.id } })).toMatchObject({ status: 'failed', error: expect.stringMatching(/interrupted/) });
-    expect((await prisma.query.findUniqueOrThrow({ where: { id: queryId } })).label).toBe('Interrupted visibly');
+    expect((await prisma.query.findUniqueOrThrow({ where: { id: queryId } })).label).toBe('Unchanged');
   });
   it('enforces reference and lifecycle invariants even when callers bypass the service', async () => {
     await expect(prisma.travelJob.create({ data: { kind: 'car_search', queryId, activeKey: `car_search:${queryId}` } })).rejects.toThrow();

@@ -430,7 +430,22 @@ model TravelLease {
   owner      String
   generation Int @default(0)
   expiresAt  DateTime
+  state      String @default("idle")
+  topologyVersion Int @default(0)
   jobs       TravelJob[]
+}
+
+model TravelAdmission {
+  id                 String @id @default("singleton")
+  topologyHash       String?
+  topologyVersion    Int @default(0)
+  vpnEnabled         Boolean @default(false)
+  systemWide         Boolean @default(false)
+  quarantinedAt      DateTime?
+  quarantineReason   String?
+  recoveryGeneration Int @default(0)
+  recoveredAt        DateTime?
+  recoveredBy        String?
 }
 
 model TravelAlertDelivery {

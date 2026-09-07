@@ -3,6 +3,19 @@ BEGIN;
 -- are rewritten: an incompatible database fails visibly before serving traffic.
 SELECT pg_advisory_xact_lock(761932104);
 DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'TravelLease_state_check' AND conrelid = '"TravelLease"'::regclass) THEN
+    ALTER TABLE "TravelLease" ADD CONSTRAINT "TravelLease_state_check" CHECK (
+      state IN ('idle', 'held', 'quarantined') AND generation >= 0 AND "topologyVersion" >= 0
+    );
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'TravelAdmission_state_check' AND conrelid = '"TravelAdmission"'::regclass) THEN
+    ALTER TABLE "TravelAdmission" ADD CONSTRAINT "TravelAdmission_state_check" CHECK (
+      id = 'singleton' AND "topologyVersion" >= 0 AND "recoveryGeneration" >= 0 AND
+      (NOT "systemWide" OR "vpnEnabled") AND
+      (("quarantinedAt" IS NULL AND "quarantineReason" IS NULL) OR
+       ("quarantinedAt" IS NOT NULL AND "quarantineReason" IS NOT NULL))
+    );
+  END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'TravelJob_reference_check' AND conrelid = '"TravelJob"'::regclass) THEN
     ALTER TABLE "TravelJob" ADD CONSTRAINT "TravelJob_reference_check" CHECK (
       (kind = 'flight_batch' AND "queryId" IS NULL AND "hotelRunId" IS NULL AND "carRunId" IS NULL) OR
