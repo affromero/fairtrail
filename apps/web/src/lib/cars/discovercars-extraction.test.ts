@@ -45,6 +45,47 @@ function offer(capture = fixture()) {
   return result;
 }
 describe('verified DiscoverCars rental contracts', () => {
+  it('accepts explicit uncapped maximum age while still enforcing minimum age and licence tenure', () => {
+    const capture = fixture();
+    capture.sections.find(row => row.title === 'document')!.text = 'Minimum rental age is 23 years. There is no maximum age. Licence issued at least 2 year(s) before the rental.';
+    expect(offer(capture).driverEligible).toMatchObject({ value: true, status: 'confirmed' });
+    capture.sections.find(row => row.title === 'document')!.text = 'Minimum rental age is 23 years. There is no maximum age. Licence issued at least 4 year(s) before the rental.';
+    expect(offer(capture).driverEligible.value).toBe(false);
+    capture.sections.find(row => row.title === 'document')!.text = 'Minimum rental age is 40 years. There is no maximum age. Licence issued at least 2 year(s) before the rental.';
+    expect(offer(capture).driverEligible.value).toBe(false);
+  });
+  it('rejects contradictory maximum-age conditions', () => {
+    const capture = fixture();
+    capture.sections.find(row => row.title === 'document')!.text += ' There is no maximum age.';
+    expect(extractDiscoverCarsOffer(capture, search)).toMatchObject({ reasons: [expect.stringMatching(/age.*conflict/)] });
+  });
+  it('retains conditional mileage terms and does not certify an unlimited-mileage headline', () => {
+    const capture = fixture();
+    const terms = 'For rentals lasting from 1 days to 3 days, mileage is limited to 250 miles per day. For rentals more than 3 days mileage is unlimited.';
+    capture.sections.push({ title: 'mileage-policy', text: terms });
+    const result = offer(capture);
+    expect(result.contract.mileagePolicy).toContain(terms);
+    expect(result.unlimitedMileage).toMatchObject({ value: null, status: 'unknown', text: expect.stringContaining(terms) });
+    expect(assessCarPrice(result, { ...search, filters: { ...search.filters, unlimitedMileage: true } }, new Date('2026-09-06T12:01:00Z')).eligible).toBe(false);
+  });
+  it('normalizes office layout whitespace without changing contract identity or dropping conditions', () => {
+    const capture = fixture(), original = offer(capture);
+    capture.offer.pickup.address = '\tTerminal 2\r\nrental office\n';
+    capture.offer.pickup.instructions = 'Take the free\nshuttle\tfrom stop 7.';
+    capture.offer.dropoff.instructions = '\nReturn to\r\nthe same office.\n';
+    const result = offer(capture);
+    expect(carContractIdentity(result.contract)).toBe(carContractIdentity(original.contract));
+    expect(result.requirements.find(row => row.condition === 'Return office')?.evidence.text).toContain('Return to the same office.');
+    capture.offer.dropoff.instructions += '\nVehicles left at the terminal incur a £200 fine.';
+    expect(carContractIdentity(offer(capture).contract)).not.toBe(carContractIdentity(original.contract));
+    expect(offer(capture).contract.rentalRequirements).toContain('£200 fine');
+  });
+  it.each(['', '\n\t', '$72', 'Office\u0000conditions', 'Office\u001b[31mconditions', ' '.repeat(12001) + 'office'])('keeps absent, unresolved or unsafe office terms out of verified contracts', instructions => {
+    const capture = fixture(); capture.offer.dropoff.instructions = instructions;
+    const result = extractDiscoverCarsOffer(capture, search);
+    expect(result).not.toHaveProperty('contract');
+    expect(result).toMatchObject({ reasons: [expect.stringMatching(/Return office instructions/)] });
+  });
   it('reconciles prepaid rental while keeping an undisclosed deposit unknown', () => {
     const result = offer();
     expect(assessCarPrice(result, search, new Date('2026-09-06T12:01:00Z'))).toMatchObject({ eligible: true, total: { minor: 13494 }, payAtPickup: { minor: 0 } });
