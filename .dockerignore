@@ -19,7 +19,10 @@ dist
 
 # Analytics SQLite database and WAL sidecars must not be baked into the image
 # (INFRA-4). The runtime uses a named volume at /app/data instead.
-apps/web/data
+apps/web/data/**
+!apps/web/data/car-locations/manifest.json
+!apps/web/data/car-locations/catalog.json.gz
+!apps/web/data/car-locations/ATTRIBUTION.txt
 
 # Prisma 7 client is regenerated in the builder stage
 apps/web/src/generated
