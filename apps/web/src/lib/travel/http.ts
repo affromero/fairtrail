@@ -1,4 +1,4 @@
 import { after } from 'next/server';
-import { runTravelJobsSafely } from './schedule';
+import { runTravelBackgroundWork } from './schedule';
 
-export function wakeTravelWorker(): void { after(runTravelJobsSafely); }
+export function wakeTravelWorker(): void { after(runTravelBackgroundWork); }

@@ -130,6 +130,6 @@ export async function pumpHotelJobs(): Promise<void> {
   await deliverHotelAlerts();
 }
 export async function runHotelJobsSafely(): Promise<void> {
-  const { runTravelJobsSafely } = await import('../travel/schedule');
-  await runTravelJobsSafely();
+  const { runTravelBackgroundWork } = await import('../travel/schedule');
+  await runTravelBackgroundWork();
 }

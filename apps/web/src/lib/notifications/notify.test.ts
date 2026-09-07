@@ -1,8 +1,12 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 const mockFindMany = vi.fn();
+const mockFindUnique = vi.fn();
 vi.mock('@/lib/prisma', () => ({
-  prisma: { notificationChannel: { findMany: (...args: unknown[]) => mockFindMany(...args) } },
+  prisma: {
+    notificationChannel: { findMany: (...args: unknown[]) => mockFindMany(...args) },
+    $transaction: async (work: (tx: object) => Promise<unknown>) => work({ $executeRaw: async () => 0, notificationChannel: { findMany: mockFindMany, findUnique: mockFindUnique } }),
+  },
 }));
 
 import { dispatchNotifications } from './notify';
@@ -31,6 +35,23 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('dispatchNotifications', () => {
+  it('stops guarded delivery when persisting an accepted channel fails', async () => {
+    const channels = ['a', 'b'].map(id => ({ id, type: 'webhook', enabled: true, config: { url: `http://127.0.0.1/${id}` }, userId: null }));
+    mockFindMany.mockResolvedValue(channels);
+    mockFindUnique.mockImplementation(({ where }: { where: { id: string } }) => channels.find(channel => channel.id === where.id));
+    await expect(dispatchNotifications(null, MESSAGE, [], {
+      signal: new AbortController().signal, beforeSend: async () => undefined,
+      onDelivered: async () => { throw new Error('Acknowledgement storage unavailable'); },
+    })).rejects.toThrow(/Acknowledgement/);
+    expect(fetchMock.mock.calls.map(call => call[0])).toEqual(['http://127.0.0.1/a']);
+  });
+  it('does not contact a channel when the event guard rejects its authority', async () => {
+    mockFindMany.mockResolvedValue([{ id: 'a', type: 'webhook', config: { url: 'http://127.0.0.1/a' }, userId: null }]);
+    await expect(dispatchNotifications(null, MESSAGE, [], {
+      signal: new AbortController().signal, beforeSend: async () => { throw new Error('Tracker owner changed'); }, onDelivered: async () => undefined,
+    })).rejects.toThrow(/owner changed/);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
   it('excludes channels already delivered when retrying a hotel alert', async () => {
     mockFindMany.mockResolvedValue([{ id: 'remaining', type: 'webhook', config: { url: 'http://127.0.0.1/hook' }, userId: null }]);
     const outcomes = await dispatchNotifications(null, MESSAGE, ['delivered']);

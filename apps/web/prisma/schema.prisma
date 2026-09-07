@@ -475,6 +475,8 @@ model TravelAlertDelivery {
   pending       Boolean @default(true)
   lastError     String?
   nextAttemptAt DateTime @default(now())
+  claimToken    String? @db.Uuid
+  claimExpiresAt DateTime?
   createdAt     DateTime @default(now())
   query         Query? @relation(fields: [queryId], references: [id], onDelete: Cascade)
   hotelAlert    HotelAlert? @relation(fields: [hotelAlertId], references: [id], onDelete: Cascade)

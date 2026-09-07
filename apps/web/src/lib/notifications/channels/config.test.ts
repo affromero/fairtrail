@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { encryptSecret } from '@/lib/secret-crypto';
 import {
   validateChannelConfig,
@@ -8,9 +8,23 @@ import {
   assertPublicUrl,
   assertPublicHost,
   SECRET_FIELDS,
+  pinnedPublicDispatcher,
 } from './config';
 
+const lookup = vi.hoisted(() => vi.fn());
+vi.mock('node:dns/promises', () => ({ lookup }));
+
 // ADMIN_SESSION_SECRET is provided by src/test/setup.ts, so the AES round-trip works.
+
+it('does not create an outbound dispatcher when cancelled during DNS resolution', async () => {
+  const abort = new AbortController();
+  let finish!: (rows: { address: string; family: number }[]) => void;
+  lookup.mockReturnValue(new Promise(resolve => { finish = resolve; }));
+  const result = pinnedPublicDispatcher('https://hooks.example.test', { trusted: false, signal: abort.signal });
+  abort.abort(new Error('Delivery cancelled'));
+  finish([{ address: '93.184.216.34', family: 4 }]);
+  await expect(result).rejects.toThrow(/cancelled/);
+});
 
 describe('validateChannelConfig', () => {
   it('accepts a complete telegram config', () => {

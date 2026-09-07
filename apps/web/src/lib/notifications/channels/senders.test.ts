@@ -3,7 +3,7 @@ import crypto from 'crypto';
 
 const mockSendMail = vi.fn();
 vi.mock('nodemailer', () => ({
-  default: { createTransport: vi.fn(() => ({ sendMail: mockSendMail })) },
+  default: { createTransport: vi.fn(() => ({ sendMail: mockSendMail, close: vi.fn() })) },
 }));
 
 // DNS boundary: lets tests drive what a hostname resolves to, so the resolve-and-
@@ -136,6 +136,26 @@ describe('sendNtfy', () => {
 });
 
 describe('sendWebhook', () => {
+  it('automatically expires a DNS lookup that never finishes', async () => {
+    vi.useFakeTimers();
+    try {
+      mockDnsLookup.mockReturnValue(new Promise(() => undefined));
+      const rejected = expect(sendWebhook({ url: 'https://hook.example/x' }, MESSAGE, { trusted: false })).rejects.toThrow(/deadline/);
+      await vi.advanceTimersByTimeAsync(15_000); await rejected;
+      expect(fetchMock).not.toHaveBeenCalled();
+    } finally { vi.useRealTimers(); }
+  });
+  it('cancels an unresolved DNS lookup and never sends when that lookup later completes', async () => {
+    const abort = new AbortController();
+    let resolve!: (addresses: { address: string; family: number }[]) => void;
+    mockDnsLookup.mockImplementation(() => new Promise(done => { resolve = done; }));
+    const sending = sendWebhook({ url: 'https://hook.example/x' }, MESSAGE, { trusted: false, signal: abort.signal });
+    const rejected = expect(sending).rejects.toThrow(/cancelled/);
+    abort.abort(new Error('Delivery cancelled')); await rejected;
+    resolve([{ address: '93.184.216.34', family: 4 }]);
+    await new Promise(done => setTimeout(done, 0));
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
   it('POSTs the structured payload without a signature when no secret is set', async () => {
     await sendWebhook({ url: 'https://hook.example/x' }, MESSAGE);
     const [url, init] = fetchMock.mock.calls[0]!;
@@ -223,12 +243,12 @@ describe('sendEmail', () => {
       { host: 'smtp.x', port: 587, secure: false, user: 'u', pass: 'p', from: 'a@x', to: 'b@y' },
       MESSAGE,
     );
-    expect(nodemailer.createTransport).toHaveBeenCalledWith({
+    expect(nodemailer.createTransport).toHaveBeenCalledWith(expect.objectContaining({
       host: 'smtp.x',
       port: 587,
       secure: false,
       auth: { user: 'u', pass: 'p' },
-    });
+    }));
     const mail = mockSendMail.mock.calls[0]![0];
     expect(mail.to).toBe('b@y');
     expect(mail.from).toBe('a@x');

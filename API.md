@@ -621,6 +621,23 @@ eligible prices without rearming an above-target alert. `notificationsConfigured
 reports channel readiness; saved alert preferences alone do not establish that
 a notification was delivered.
 
+Car target and new-low events are delivered through the existing enabled owner
+and global channels. Delivery runs independently of provider searches and hotel
+notifications. Pausing, editing, reassigning or deleting a tracker cancels its
+pending events; a request already submitted to a channel cannot be recalled.
+Each acknowledged channel is saved before another is attempted. Failed channels
+and events with no enabled channels retry after five minutes. Deleted or
+disabled channels are checked again before sending.
+
+Delivery claims expire after two minutes; each dispatch is limited to one minute
+and each channel transport to 15 seconds, including DNS and response bodies.
+Database reads and writes also have bounded lock and statement waits. A stale
+worker cannot acknowledge or overwrite a replacement claim. Delivery is
+**at least once**, not exactly once: a channel may accept a message immediately
+before its acknowledgement is lost. The stable `data.eventId` in webhook payloads
+lets receivers deduplicate that case. Flight query settings and scrape intervals
+are unaffected.
+
 For a read-only live provider check, run this from the repository root:
 
 ```bash
