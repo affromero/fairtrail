@@ -34,9 +34,16 @@ export function sumCarMoney(amounts: CarMoney[], currency: string): CarMoney {
 
 /** Keep fractional minor units exact even near Number.MAX_SAFE_INTEGER. */
 export function formatCarMoney(raw: CarMoney, locale = 'en'): string {
+  return formatAmount(raw, locale, true);
+}
+/** An editable local decimal with no grouping or currency decoration. */
+export function formatCarDecimal(raw: CarMoney, locale = 'en'): string {
+  return formatAmount(raw, locale, false);
+}
+function formatAmount(raw: CarMoney, locale: string, currencyStyle: boolean): string {
   const amount = validateCarMoney(raw), precision = currencyPrecision(amount.currency);
   const scale = 10n ** BigInt(precision), minor = BigInt(amount.minor);
   const fraction = precision ? new Intl.NumberFormat(locale, { useGrouping: false, minimumIntegerDigits: precision }).format(Number(minor % scale)) : '';
-  return new Intl.NumberFormat(locale, { style: 'currency', currency: amount.currency }).formatToParts(minor / scale)
+  return new Intl.NumberFormat(locale, { ...(currencyStyle ? { style: 'currency', currency: amount.currency } : { useGrouping: false }), minimumFractionDigits: precision, maximumFractionDigits: precision }).formatToParts(minor / scale)
     .map(part => part.type === 'fraction' ? fraction : part.value).join('');
 }
