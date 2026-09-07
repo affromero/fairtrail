@@ -18,7 +18,7 @@ const locales = { en, es, fr, de, pt };
 function fixture(): CarDetailView {
   const tracker = carTrackerViewFixture(), observedAt = new Date(Date.now() - 86_400_000).toISOString(), offer = carOfferFixture(observedAt);
   const snapshot = { id: 'observation-one', runId: 'run-one', source: offer.contract.source, contractHash: carContractHash(offer.contract), offer, currency: 'GBP', totalMinor: 10000, eligible: true, reasons: [], observedAt, evaluatedAt: observedAt };
-  return validateCarDetailView({ tracker, snapshots: [snapshot], latestObservation: snapshot, runs: [{ id: 'run-one', trackerId: tracker.id, status: 'success', createdAt: observedAt, completedAt: observedAt, error: null }], notificationsConfigured: false, canReassign: false }, tracker.id);
+  return validateCarDetailView({ tracker, snapshots: [snapshot], latestObservation: snapshot, runs: [{ id: 'run-one', trackerId: tracker.id, status: 'success', createdAt: observedAt, completedAt: observedAt, error: null }], deliveries: [], notificationsConfigured: false, canReassign: false }, tracker.id);
 }
 function View({ initial, locale = 'en' }: { initial: CarDetailView; locale?: keyof typeof locales }) {
   return <NextIntlClientProvider locale={locale} messages={locales[locale]}><CarTrackerStatus initial={initial} actorScope="alice" /></NextIntlClientProvider>;

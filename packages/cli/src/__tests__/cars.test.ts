@@ -94,7 +94,7 @@ describe('durable car command execution', () => {
   it('reports current settings after a stale PATCH without treating them as proof the earlier request succeeded', async () => {
     const tracker = { ...carTrackerViewFixture(), revision: 8, active: false };
     handle = (request, response) => request.method === 'PATCH' ? reject(response, 412, 'Revision changed')
-      : respond(response, { tracker, snapshots: [], runs: [], latestObservation: null, notificationsConfigured: false, canReassign: false });
+      : respond(response, { tracker, snapshots: [], runs: [], latestObservation: null, deliveries: [], notificationsConfigured: false, canReassign: false });
     await expect(performCarMutation(directory, client, { kind: 'edit', id: 'tracker-one', revision: 7, body: { active: false } }, () => undefined))
       .rejects.toMatchObject({ outcome: 'stale', status: 412, current: { tracker: { active: false, revision: 8 } } });
   });

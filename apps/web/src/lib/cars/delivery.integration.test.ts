@@ -7,6 +7,7 @@ import { carAlertMessage } from './alerts';
 import { deliverCarAlerts } from './delivery';
 import { runTravelAlertsSafely } from '../travel/schedule';
 import { runHotelJobsSafely } from '../hotels/runner';
+import { getCarDetail } from './views';
 
 describe.skipIf(process.env.CAR_DELIVERY_INTEGRATION_TESTS !== '1')('durable car notification delivery against PostgreSQL and local HTTP', () => {
   let server: Server, base = '', owner = '', other = '', trackerId = '', eventId = '';
@@ -55,6 +56,39 @@ describe.skipIf(process.env.CAR_DELIVERY_INTEGRATION_TESTS !== '1')('durable car
   const due = () => prisma.travelAlertDelivery.update({ where: { id: eventId }, data: { nextAttemptAt: new Date(0) } });
   const event = () => prisma.travelAlertDelivery.findUniqueOrThrow({ where: { id: eventId } });
 
+  it('shows actual delivery progression without exposing channel IDs, messages or transport details', async () => {
+    const actor = { userId: owner, isAdmin: false };
+    expect((await getCarDetail(trackerId, actor)).deliveries).toMatchObject([{ status: 'waiting', acknowledgedChannels: 0 }]);
+    await deliverCarAlerts();
+    expect((await getCarDetail(trackerId, actor)).deliveries).toMatchObject([{ status: 'retrying', acknowledgedChannels: 0 }]);
+    const first = await channel('private-a'); await channel('private-b');
+    handle = async path => path === '/private-b' ? 503 : 200;
+    await due(); await deliverCarAlerts();
+    const partial = await getCarDetail(trackerId, actor);
+    expect(partial.deliveries).toMatchObject([{ status: 'retrying', acknowledgedChannels: 1 }]);
+    expect(JSON.stringify(partial.deliveries)).not.toContain(first.id);
+    expect(JSON.stringify(partial.deliveries)).not.toMatch(/eventKey|claimToken|message|lastError|private-a|private-b/);
+    await expect(getCarDetail(trackerId, { userId: other, isAdmin: false })).rejects.toMatchObject({ status: 404 });
+    handle = async () => 200; await due(); await deliverCarAlerts();
+    expect((await getCarDetail(trackerId, actor)).deliveries).toMatchObject([{ status: 'accepted', acknowledgedChannels: 2, nextAttemptAt: null }]);
+  });
+  it('bounds delivery history to the newest twenty events for the requested tracker', async () => {
+    const createdAt = new Date();
+    const records = Array.from({ length: 21 }, (_, index) => ({ id: `delivery-view-${trackerId}-${String(index).padStart(2, '0')}`, carTrackerId: trackerId, eventKey: `delivery-view-${trackerId}-${index}`, message: {}, createdAt }));
+    await prisma.travelAlertDelivery.createMany({ data: records });
+    const view = await getCarDetail(trackerId, { userId: owner, isAdmin: false });
+    expect(view.deliveries.map(row => row.id)).toEqual(records.slice(1).reverse().map(row => row.id));
+    expect(view.deliveries.every(row => row.trackerId === trackerId)).toBe(true);
+  });
+  it('reports a live claim as a reservation and an expired claim as waiting without sending', async () => {
+    const actor = { userId: owner, isAdmin: false };
+    await prisma.travelAlertDelivery.update({ where: { id: eventId }, data: { claimToken: crypto.randomUUID(), claimExpiresAt: new Date(Date.now() + 60_000) } });
+    expect((await getCarDetail(trackerId, actor)).deliveries).toMatchObject([{ status: 'claimed', acknowledgedChannels: 0 }]);
+    await prisma.travelAlertDelivery.update({ where: { id: eventId }, data: { claimExpiresAt: new Date(0) } });
+    expect((await getCarDetail(trackerId, actor)).deliveries).toMatchObject([{ status: 'waiting', acknowledgedChannels: 0 }]);
+    expect(received).toEqual([]);
+  });
+
   it('claims an event once across workers and records its stable identity and channel receipt', async () => {
     const first = await channel('a');
     await Promise.all(Array.from({ length: 4 }, () => deliverCarAlerts()));
@@ -87,6 +121,7 @@ describe.skipIf(process.env.CAR_DELIVERY_INTEGRATION_TESTS !== '1')('durable car
     await deliverCarAlerts(); expect(received.map(row => row.path)).toEqual(['/a']);
     if (action !== 'delete') expect(await event()).toMatchObject({ pending: false, deliveredIds: [] });
     else expect(await prisma.travelAlertDelivery.findUnique({ where: { id: eventId } })).toBeNull();
+    if (action !== 'delete') expect((await getCarDetail(trackerId, { userId: owner, isAdmin: true })).deliveries).toMatchObject([{ status: 'stopped', nextAttemptAt: null }]);
   });
   it.each(['disabled', 'reassigned', 'removed'])('rechecks a channel that was %s after batch enumeration', async action => {
     await channel('a'); const second = await channel('b');

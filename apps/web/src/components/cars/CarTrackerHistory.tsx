@@ -29,6 +29,17 @@ export function CarTrackerHistory({ detail }: { detail: CarDetailView }) {
       {!detail.notificationsConfigured && <p className={styles.notice}>{t('noNotificationChannel')}</p>}
       {latestObservation && <details className={styles.details}><summary>{t('retainedEvidence')}</summary><p className={styles.hint}>{CAR_PROVIDER_LABELS[latestObservation.source]} · {latestObservation.offer.supplier} · {time(latestObservation.observedAt)}</p><CarEvidenceDetails offer={latestObservation.offer} /></details>}
     </section>
+    <section aria-labelledby={`${id}-deliveries`} className={styles.historySection}>
+      <h2 id={`${id}-deliveries`}>{t('Delivery.title')}</h2><p className={styles.hint}>{t('Delivery.help')}</p>
+      {!detail.deliveries.length && <p>{t('Delivery.empty')}</p>}
+      <ol className={styles.historyList}>{detail.deliveries.map(delivery => <li key={delivery.id} className={styles.checkHistory}>
+        <strong>{t(`Delivery.${delivery.status}`)}</strong>
+        <dl><div><dt>{t('Delivery.created')}</dt><dd>{time(delivery.createdAt)}</dd></div>
+          <div><dt>{t('Delivery.acknowledged')}</dt><dd>{delivery.acknowledgedChannels}</dd></div>
+          {delivery.nextAttemptAt && <div><dt>{t('Delivery.next')}</dt><dd>{time(delivery.nextAttemptAt)}</dd></div>}
+        </dl>
+      </li>)}</ol>
+    </section>
     <section aria-labelledby={`${id}-history`} className={styles.historySection}>
       <h2 id={`${id}-history`}>{t('verifiedHistory')}</h2><p className={styles.hint}>{t('historyLimit')}</p>
       {!verified.length && <p>{t('noVerifiedHistory')}</p>}

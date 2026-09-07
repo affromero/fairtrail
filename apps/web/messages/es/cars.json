@@ -1,5 +1,18 @@
 {
   "Cars": {
+    "Delivery": {
+      "title": "Entrega de notificaciones",
+      "help": "Últimas 20 alertas en la última actualización. La aceptación del canal no confirma que alguien haya leído la alerta. Los reintentos son aproximados; perder una confirmación puede causar un envío repetido.",
+      "empty": "No hay entregas de alertas registradas.",
+      "waiting": "Esperando entrega",
+      "claimed": "Asignada para entrega",
+      "retrying": "Esperando reintento",
+      "accepted": "Aceptada por los canales",
+      "stopped": "Se detuvieron los envíos pendientes",
+      "created": "Alerta creada",
+      "acknowledged": "Confirmaciones de canales",
+      "next": "Próximo intento no antes de"
+    },
     "closeTrackingTitle": "Cerrar el seguimiento desde esta búsqueda",
     "closeTrackingHelp": "No se puede leer el comprobante de creación guardado. Cierra permanentemente la creación de nuevos seguimientos desde esta búsqueda antes de iniciar otra. Cualquier seguimiento ya creado sigue activo y debes revisarlo en tu panel de coches. Esta acción no lo identifica, pausa ni elimina.",
     "closeTrackingConfirm": "Confirmar cierre permanente",

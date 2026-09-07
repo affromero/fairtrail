@@ -6,6 +6,7 @@ import { assessCarPrice } from './pricing';
 import { carViewBoolean, carViewTime, validateCarTrackerView, type CarTrackerView } from './tracker-view';
 import { validateCarRunSummary } from './run-view';
 import { CarError } from './types';
+import { validateCarDeliveryView } from './delivery-view';
 
 function boundedList(raw: unknown, maximum: number): unknown[] {
   if (!Array.isArray(raw) || raw.length > maximum) throw new CarError('Rental history exceeds its view bounds');
@@ -28,9 +29,11 @@ export function validateCarDetailView(raw: unknown, expectedId: string) {
   if (tracker.id !== expectedId) throw new CarError('Rental history belongs to another tracker');
   const snapshots = boundedList(value.snapshots, 100).map(raw => validateCarSnapshotView(raw, tracker));
   const runs = boundedList(value.runs, 20).map(raw => validateCarRunSummary(raw));
+  const deliveries = boundedList(value.deliveries, 20).map(raw => validateCarDeliveryView(raw, tracker.id));
+  if (new Set(deliveries.map(delivery => delivery.id)).size !== deliveries.length) throw new CarError('Duplicate rental notification identity');
   if (runs.some(run => run.trackerId !== tracker.id) || new Set(runs.map(run => run.id)).size !== runs.length || new Set(snapshots.map(snapshot => snapshot.id)).size !== snapshots.length) throw new CarError('Rental history identities are inconsistent');
   const latestObservation = value.latestObservation === null ? null : validateCarSnapshotView(value.latestObservation, tracker);
   if (latestObservation && (!latestObservation.eligible || latestObservation.totalMinor !== tracker.latestPriceMinor)) throw new CarError('Retained rental price has inconsistent evidence');
-  return { tracker, snapshots, runs, latestObservation, notificationsConfigured: carViewBoolean(value.notificationsConfigured), canReassign: carViewBoolean(value.canReassign) };
+  return { tracker, snapshots, runs, deliveries, latestObservation, notificationsConfigured: carViewBoolean(value.notificationsConfigured), canReassign: carViewBoolean(value.canReassign) };
 }
 export type CarDetailView = ReturnType<typeof validateCarDetailView>;

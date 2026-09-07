@@ -424,7 +424,7 @@ five-second read deadline. The browser pages `/cars`, `/cars/:id`, and
 |---|---|
 | `GET /api/cars?limit=25&cursor=...` | `{ trackers, nextCursor }`; omit `cursor` for the first page |
 | `POST /api/cars` | HTTP 201 with `{ tracker, creationKey }` from a selected completed-search quote |
-| `GET /api/cars/:id` | `{ tracker, snapshots, runs, latestObservation, notificationsConfigured, canReassign }` |
+| `GET /api/cars/:id` | `{ tracker, snapshots, runs, deliveries, latestObservation, notificationsConfigured, canReassign }` |
 | `PATCH /api/cars/:id` | `{ tracker }` after saving supported settings |
 | `DELETE /api/cars/:id` | `{ id, deleted: true }` after deleting the tracker and its history |
 | `POST /api/cars/:id/scrape` | HTTP 202 with `{ id, trackerId, status, refreshKey }`; requires `Idempotency-Key` and `X-Car-Revision` |
@@ -467,6 +467,22 @@ Do not reuse a cursor for a different account or listing mode. Administrators
 request all accounts with `admin=true` on every page; other accounts receive 403.
 Malformed cursors and page sizes return 400. Ownership is checked independently
 of the cursor.
+
+#### Inspect notification delivery
+
+The tracker detail includes up to 20 recent notification `deliveries`, newest
+first. Each has `id`, `trackerId`, `createdAt`, `status`, `acknowledgedChannels`
+and nullable `nextAttemptAt`. Status is `waiting`, `claimed`, `retrying`,
+`accepted` or `stopped`. A claim is a worker reservation at the last refresh,
+not proof of active transport. Acceptance records channel acknowledgements,
+not that a person received or read the alert. Retry times are estimates;
+lost acknowledgements can cause repeated external deliveries. Stopped events
+may retain acknowledgements from earlier attempts.
+
+Responses omit notification payloads, channel identities, raw errors and worker
+credentials. Web history displays these outcomes; press `d` in the CLI tracker
+browser to switch between prices and delivery history. Refresh status to reload
+the recorded state. Viewing delivery history does not trigger another send.
 
 #### Manually refresh a saved rental
 

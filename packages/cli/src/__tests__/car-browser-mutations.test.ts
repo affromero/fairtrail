@@ -34,7 +34,7 @@ beforeEach(async () => {
       mutate(request, response, body); return;
     }
     const data = request.url === '/api/cars/session' ? { scope, isAdmin: false }
-      : request.url === `/api/cars/${tracker.id}` ? { tracker, snapshots: [], runs: [], latestObservation: null, notificationsConfigured: false, canReassign: false }
+      : request.url === `/api/cars/${tracker.id}` ? { tracker, snapshots: [], runs: [], latestObservation: null, deliveries: [], notificationsConfigured: false, canReassign: false }
         : { trackers: deleted ? [] : [tracker], nextCursor: null };
     reply(response, data);
   });

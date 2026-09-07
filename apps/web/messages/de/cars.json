@@ -1,5 +1,18 @@
 {
   "Cars": {
+    "Delivery": {
+      "title": "Benachrichtigungsversand",
+      "help": "Die letzten 20 Meldungen beim letzten Statusabruf. Die Annahme durch einen Kanal bestätigt nicht, dass jemand die Meldung gelesen hat. Wiederholungszeiten sind Schätzungen; eine verlorene Bestätigung kann einen erneuten Versand verursachen.",
+      "empty": "Kein Meldungsversand erfasst.",
+      "waiting": "Wartet auf Versand",
+      "claimed": "Für den Versand übernommen",
+      "retrying": "Wartet auf Wiederholung",
+      "accepted": "Von Kanälen angenommen",
+      "stopped": "Weiterer Versand gestoppt",
+      "created": "Meldung erstellt",
+      "acknowledged": "Kanalbestätigungen",
+      "next": "Nächster Versuch frühestens"
+    },
     "closeTrackingTitle": "Tracking für diese Suche schließen",
     "closeTrackingHelp": "Der gespeicherte Erstellungsbeleg ist nicht lesbar. Schließe die Erstellung neuer Preisbeobachtungen aus dieser Suche dauerhaft, bevor du eine neue Suche startest. Bereits erstellte Beobachtungen bleiben aktiv und müssen in deiner Mietwagenübersicht geprüft werden. Diese Aktion identifiziert, pausiert oder löscht sie nicht.",
     "closeTrackingConfirm": "Dauerhafte Schließung bestätigen",

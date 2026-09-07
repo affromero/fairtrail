@@ -7,9 +7,14 @@ import { CarError } from './types';
 function detail() {
   const tracker = carTrackerViewFixture(), offer = carOfferFixture(), observedAt = offer.observedAt;
   const observation = { id: 'observation-one', runId: 'run-one', source: offer.contract.source, offer, currency: offer.contract.currency, totalMinor: 10000, eligible: true, reasons: [] as string[], contractHash: carContractHash(offer.contract), observedAt, evaluatedAt: observedAt };
-  return { tracker, snapshots: [observation], latestObservation: observation, runs: [{ id: 'run-one', trackerId: tracker.id, status: 'success', createdAt: observedAt, completedAt: observedAt, error: null }], notificationsConfigured: false, canReassign: false };
+  return { tracker, snapshots: [observation], latestObservation: observation, runs: [{ id: 'run-one', trackerId: tracker.id, status: 'success', createdAt: observedAt, completedAt: observedAt, error: null }], deliveries: [], notificationsConfigured: false, canReassign: false };
 }
 describe('rental tracker detail validation', () => {
+  it.each(['missing', 'duplicate', 'foreign', 'too-many'] as const)('rejects %s delivery history rather than displaying unverified outcomes', kind => {
+    const value = detail(), delivery = { id: 'delivery-one', trackerId: value.tracker.id, status: 'waiting', acknowledgedChannels: 0, createdAt: value.tracker.createdAt, nextAttemptAt: value.tracker.createdAt };
+    const deliveries = kind === 'missing' ? undefined : kind === 'duplicate' ? [delivery, delivery] : kind === 'foreign' ? [{ ...delivery, trackerId: 'another' }] : Array.from({ length: 21 }, (_, index) => ({ ...delivery, id: `delivery-${index}` }));
+    expect(() => validateCarDetailView({ ...value, deliveries }, value.tracker.id)).toThrow(CarError);
+  });
   it('keeps historical eligibility anchored to evaluation time rather than the current clock', () => {
     const value = detail(), old = new Date(Date.now() - 86_400_000).toISOString(), offer = carOfferFixture(old);
     value.snapshots[0]!.offer = offer; value.snapshots[0]!.observedAt = old; value.snapshots[0]!.evaluatedAt = old;

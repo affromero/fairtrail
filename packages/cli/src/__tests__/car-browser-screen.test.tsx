@@ -20,6 +20,7 @@ it.each([
   const directory = await mkdtemp(join(tmpdir(), 'car-browser-screen-'));
   const jobs = new Set<string>(); let loseRefreshReply = true;
   let tracker = { ...carTrackerViewFixture(), label: 'Heathrow rental', latestPriceMinor: 12345 };
+  const deliveries = Array.from({ length: 8 }, (_, index) => ({ id: `delivery-${index}`, trackerId: tracker.id, status: index === 7 ? 'accepted' : 'retrying', createdAt: tracker.createdAt, acknowledgedChannels: index === 7 ? 2 : 1, nextAttemptAt: index === 7 ? null : tracker.createdAt }));
   const server = createServer(async (request, response) => {
     methods.push(request.method!);
     if (request.method === 'POST') {
@@ -35,7 +36,7 @@ it.each([
       response.end(JSON.stringify({ ok: true, data: { tracker } })); return;
     }
     const data = request.url === '/api/cars/session' ? { scope: 'user:alice', isAdmin: false }
-      : request.url === `/api/cars/${tracker.id}` ? { tracker, snapshots: [], runs: [], latestObservation: null, notificationsConfigured: false, canReassign: false }
+      : request.url === `/api/cars/${tracker.id}` ? { tracker, snapshots: [], runs: [], latestObservation: null, deliveries, notificationsConfigured: false, canReassign: false }
         : { trackers: [tracker], nextCursor: null };
     response.writeHead(200, { 'Content-Type': 'application/json' });
     response.end(JSON.stringify({ ok: true, data }));
@@ -61,6 +62,15 @@ it.each([
     await vi.waitFor(() => expect(stripVTControlCharacters(output)).toContain('PRICE EVIDENCE'));
     expect(stripVTControlCharacters(output)).toContain('No observations yet');
     expect(stripVTControlCharacters(output)).toContain('No notification channel configured');
+    output = ''; stdin.push('d');
+    await vi.waitFor(() => expect(stripVTControlCharacters(output)).toContain('NOTIFICATION DELIVERY'));
+    expect(stripVTControlCharacters(output)).toContain('Waiting to retry');
+    expect(stripVTControlCharacters(output)).toContain('1 channel acknowledgements');
+    for (let index = 0; index < 8; index++) { stdin.push('\u001b[B'); await instance.waitUntilRenderFlush(); }
+    await vi.waitFor(() => expect(stripVTControlCharacters(output)).toContain('Accepted by channels'));
+    expect(methods.every(method => method === 'GET')).toBe(true);
+    output = ''; stdin.push('d');
+    await vi.waitFor(() => expect(stripVTControlCharacters(output)).toContain('PRICE EVIDENCE'));
     if (editing) {
       output = ''; stdin.push('c');
       await vi.waitFor(() => expect(stripVTControlCharacters(output)).toContain('CONFIRM CHANGE / Check prices'));
@@ -88,6 +98,11 @@ it.each([
     }
     stdout.rows = 16; stdout.columns = 42; stdout.emit('resize');
     await instance.waitUntilRenderFlush();
+    output = ''; stdin.push('d');
+    await vi.waitFor(() => expect(stripVTControlCharacters(output)).toContain('NOTIFICATION DELIVERY'));
+    expect(stripVTControlCharacters(output)).toContain('1 of 8');
+    for (let index = 0; index < 8; index++) { stdin.push('\u001b[B'); await instance.waitUntilRenderFlush(); }
+    await vi.waitFor(() => expect(stripVTControlCharacters(output)).toContain('8 of 8'));
     output = ''; stdin.push('\u001b');
     await vi.waitFor(() => expect(stripVTControlCharacters(output)).toContain('YOUR TRACKERS'));
     stdin.push('q'); await instance.waitUntilExit();

@@ -264,7 +264,29 @@ try {
   await db.query(`INSERT INTO "CarTracker" (id,"userId",label,search,currency,"latestPriceMinor","historicalLowMinor","lastCheckedAt","lastError","createdAt","updatedAt") VALUES ('car-browser-tracker','car-browser-alice','London weekend',$1,'GBP',10000,9000,$2,'Provider could not verify this check',$3,$2)`, [search, now, historicalAt]);
   await db.query(`INSERT INTO "CarSearchRun" (id,"userId","trackerId","trackerRevision",request,status,"createdAt","completedAt") VALUES ('car-browser-history','car-browser-alice','car-browser-tracker',0,$1,'success',$2,$2)`, [search, historicalAt]);
   await db.query(`INSERT INTO "CarSnapshot" (id,"trackerId","runId",source,offer,currency,"totalMinor",eligible,"contractHash","observedAt") VALUES ('car-browser-observation','car-browser-tracker','car-browser-history','discovercars',$1,'GBP',10000,true,$2,$3)`, [historicalOffer, carContractHash(historicalOffer.contract), historicalAt]);
+  for (const state of ['waiting', 'claimed', 'retrying', 'accepted', 'stopped']) {
+    const pending = !['accepted', 'stopped'].includes(state);
+    await db.query(`INSERT INTO "TravelAlertDelivery" (id,"carTrackerId","eventKey",message,pending,"deliveredIds","lastError","claimExpiresAt") VALUES ($1,'car-browser-tracker',$2,$3,$4,$5,$6,$7)`, [
+      `car-browser-delivery-${state}`, `private-event-${state}`, { title: 'private-message-sentinel' }, pending,
+      ['accepted', 'retrying'].includes(state) ? ['private-channel-sentinel'] : [],
+      ['retrying', 'stopped'].includes(state) ? 'private-error-sentinel' : null,
+      state === 'claimed' ? new Date(Date.now() + 120_000).toISOString() : null,
+    ]);
+  }
+  const deliveryResponse = await alice.request.get('/api/cars/car-browser-tracker');
+  assert.equal(deliveryResponse.status(), 200, await deliveryResponse.text());
+  const deliveryBody = await deliveryResponse.text();
+  assert.doesNotMatch(deliveryBody, /private-message-sentinel|private-channel-sentinel|private-error-sentinel|private-event-|claimExpiresAt|claimToken|deliveredIds/);
+  assert.deepEqual(new Set(JSON.parse(deliveryBody).data.deliveries.map((entry: { status: string }) => entry.status)), new Set(['waiting', 'claimed', 'retrying', 'accepted', 'stopped']));
   await page.goto('/cars/car-browser-tracker');
+  const deliveryRegion = page.getByRole('region', { name: 'Notification delivery', exact: true });
+  await deliveryRegion.getByText('Accepted by channels', { exact: true }).waitFor();
+  for (const width of [1280, 390]) {
+    await page.setViewportSize({ width, height: 1000 });
+    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
+    await deliveryRegion.screenshot({ path: resolve(output, `notification-delivery-${width}.png`) });
+  }
+  passed.push('Notification history distinguishes five stored outcomes and HTTP responses omit messages, channel identities, claim credentials and raw errors');
   await page.getByRole('heading', { name: 'London weekend' }).waitFor();
   assert.equal(await page.locator('h1').count(), 1);
   assert.match(await page.locator('meta[name="robots"]').getAttribute('content') ?? '', /noindex/);

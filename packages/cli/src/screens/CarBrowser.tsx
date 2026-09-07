@@ -10,13 +10,15 @@ export function CarBrowser({ browser, signal }: { browser: Browser; signal: Abor
   const { exit } = useApp(), { stdout } = useStdout();
   const { write } = useStderr();
   const [selected, setSelected] = useState(0), [offset, setOffset] = useState(0);
+  const [deliveryMode, setDeliveryMode] = useState(false);
   const [recoveryForm, setRecoveryForm] = useState(false), [receiptPath, setReceiptPath] = useState('');
   const enteringReceipt = recoveryForm && !state.hidden;
   const [rows, setRows] = useState(stdout.rows || 24);
-  const available = Math.max(1, rows - (state.detail ? 14 : 9));
+  const available = Math.max(1, Math.floor((rows - (state.detail ? deliveryMode ? 16 : 14 : 9)) / (state.detail && deliveryMode ? 2 : 1)));
   const selection = Math.max(0, Math.min(selected, state.trackers.length - 1));
   const snapshots = state.detail?.snapshots ?? [];
-  const historyOffset = Math.min(offset, Math.max(0, snapshots.length - available));
+  const deliveries = state.detail?.deliveries ?? [], historyLength = deliveryMode ? deliveries.length : snapshots.length;
+  const historyOffset = Math.min(offset, Math.max(0, historyLength - available));
   useEffect(() => browser.subscribeReceipts(path => write(`Recovery receipt: ${carTerminalText(path)}\n`)), [browser, write]);
   useEffect(() => {
     const resize = () => setRows(stdout.rows || 24);
@@ -39,16 +41,17 @@ export function CarBrowser({ browser, signal }: { browser: Browser; signal: Abor
     if (input === 't' && !state.hidden) { setReceiptPath(''); setRecoveryForm(true); return; }
     if (key.escape && state.detail) { setOffset(0); void browser.back(); return; }
     if (state.detail) {
+      if (input === 'd') { setDeliveryMode(value => !value); setOffset(0); }
       if (input === 'p') browser.requestAction(state.detail.tracker.active ? 'pause' : 'resume');
       if (input === 'c') browser.requestAction('refresh');
       if (input === 'x') browser.requestAction('delete');
-      if (key.downArrow) setOffset(Math.min(historyOffset + 1, Math.max(0, snapshots.length - available)));
+      if (key.downArrow) setOffset(Math.min(historyOffset + 1, Math.max(0, historyLength - available)));
       if (key.upArrow) setOffset(Math.max(0, historyOffset - 1));
       return;
     }
     if (key.downArrow) setSelected(Math.max(0, Math.min(selection + 1, state.trackers.length - 1)));
     if (key.upArrow) setSelected(Math.max(0, selection - 1));
-    if (key.return && state.trackers[selection]) { setOffset(0); void browser.open(state.trackers[selection].id); }
+    if (key.return && state.trackers[selection]) { setOffset(0); setDeliveryMode(false); void browser.open(state.trackers[selection].id); }
     if (input === 'n') { setSelected(0); void browser.nextPage(); }
     if (input === 'b') { setSelected(0); void browser.previousPage(); }
   });
@@ -86,11 +89,18 @@ export function CarBrowser({ browser, signal }: { browser: Browser; signal: Abor
       <Text color="#80a8a5">Latest: {price(state.detail.tracker.latestPriceMinor, state.detail.tracker.currency)} · Low: {price(state.detail.tracker.historicalLowMinor, state.detail.tracker.currency)}</Text>
       <Text dimColor>{state.detail.notificationsConfigured ? 'Notification channel configured; delivery is not guaranteed.' : 'No notification channel configured. Configure one in server settings.'}</Text>
       {state.detail.tracker.lastError && <Text color="#c1272d" wrap="truncate-end">Last check: {carTerminalText(state.detail.tracker.lastError)}</Text>}
-      <Text bold>PRICE EVIDENCE · {snapshots.length ? `${historyOffset + 1}–${Math.min(historyOffset + available, snapshots.length)} of ${snapshots.length}` : 'No observations yet'}</Text>
-      {snapshots.slice(historyOffset, historyOffset + available).map(snapshot => <Text key={snapshot.id} wrap="truncate-end">
+      <Text bold>{deliveryMode ? 'NOTIFICATION DELIVERY' : 'PRICE EVIDENCE'} · {historyLength ? `${historyOffset + 1}–${Math.min(historyOffset + available, historyLength)} of ${historyLength}` : deliveryMode ? 'No alert delivery recorded' : 'No observations yet'}</Text>
+      {deliveryMode ? <>
+        <Text dimColor wrap="truncate-end">Channel acceptance does not confirm reading.</Text>
+        <Text dimColor wrap="truncate-end">Lost acknowledgements can repeat alerts.</Text>
+        {deliveries.slice(historyOffset, historyOffset + available).map(delivery => <Box key={delivery.id} flexDirection="column">
+          <Text wrap="truncate-end">{delivery.createdAt.slice(0, 16).replace('T', ' ')} UTC · {({ waiting: 'Waiting', claimed: 'Claimed for delivery', retrying: 'Waiting to retry', accepted: 'Accepted by channels', stopped: 'Further delivery stopped' })[delivery.status]} · {delivery.acknowledgedChannels} channel acknowledgements</Text>
+          <Text dimColor wrap="truncate-end">{delivery.nextAttemptAt ? `Next attempt no earlier than ${delivery.nextAttemptAt} (estimated)` : 'No further attempt scheduled'}</Text>
+        </Box>)}
+      </> : snapshots.slice(historyOffset, historyOffset + available).map(snapshot => <Text key={snapshot.id} wrap="truncate-end">
         {snapshot.observedAt.slice(0, 16).replace('T', ' ')} UTC · {price(snapshot.totalMinor, snapshot.currency)} · {snapshot.eligible ? 'Eligible' : `Excluded: ${carTerminalText(snapshot.reasons.join('; '))}`} · {carTerminalText(snapshot.source)}
       </Text>)}
-      <Text dimColor>↑↓ history · Esc trackers · r reload status</Text>
+      <Text dimColor>↑↓ history · d {deliveryMode ? 'prices' : 'deliveries'} · Esc trackers · r reload status</Text>
       <Text dimColor>p pause/resume · c check prices · x delete (confirmation required)</Text>
     </>}
     {!state.confirmation && !enteringReceipt && state.recoveries.some(row => row.outcome !== 'confirmed') && <Text color="#c1272d">Recovery receipts need review. Press t to select one.</Text>}

@@ -1,5 +1,18 @@
 {
   "Cars": {
+    "Delivery": {
+      "title": "Envoi des notifications",
+      "help": "Les 20 dernières alertes à la dernière actualisation. L’acceptation par un canal ne confirme pas la lecture. Les dates de nouvelle tentative sont indicatives ; un accusé perdu peut entraîner un doublon.",
+      "empty": "Aucun envoi d’alerte enregistré.",
+      "waiting": "En attente d’envoi",
+      "claimed": "Prise en charge pour envoi",
+      "retrying": "En attente d’une nouvelle tentative",
+      "accepted": "Acceptée par les canaux",
+      "stopped": "Envois restants arrêtés",
+      "created": "Alerte créée",
+      "acknowledged": "Accusés des canaux",
+      "next": "Prochaine tentative au plus tôt"
+    },
     "closeTrackingTitle": "Fermer le suivi depuis cette recherche",
     "closeTrackingHelp": "Le reçu de création enregistré est illisible. Fermez définitivement la création de nouveaux suivis depuis cette recherche avant d’en lancer une autre. Tout suivi déjà créé reste actif et doit être vérifié dans votre tableau de bord voitures. Cette action ne l’identifie pas, ne le suspend pas et ne le supprime pas.",
     "closeTrackingConfirm": "Confirmer la fermeture définitive",

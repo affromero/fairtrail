@@ -1,5 +1,18 @@
 {
   "Cars": {
+    "Delivery": {
+      "title": "Notification delivery",
+      "help": "Latest 20 alerts at the last status refresh. Channel acceptance does not confirm that someone read the alert. Retry times are estimates; a lost acknowledgement can cause a repeat.",
+      "empty": "No alert delivery recorded.",
+      "waiting": "Waiting for delivery",
+      "claimed": "Claimed for delivery",
+      "retrying": "Waiting to retry",
+      "accepted": "Accepted by channels",
+      "stopped": "Further delivery stopped",
+      "created": "Alert created",
+      "acknowledged": "Channel acknowledgements",
+      "next": "Next attempt no earlier than"
+    },
     "closeTrackingTitle": "Close tracking from this search",
     "closeTrackingHelp": "The saved creation receipt cannot be read. Permanently close new tracker creation from this search before starting another search. Any tracker already created stays active and must be reviewed in your car dashboard. This action does not identify, pause or remove it.",
     "closeTrackingConfirm": "Confirm permanent closure",
