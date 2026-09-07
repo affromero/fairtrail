@@ -9,6 +9,22 @@ permissions:
   contents: read
 
 jobs:
+  execution-browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-node@v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run db:generate
+      - run: npx playwright install chromium --with-deps
+      - run: npm run test --workspace=@flight-finder/web -- src/lib/travel/execution.test.ts src/lib/travel/execution.browser.test.ts src/lib/scraper/browser.test.ts
+        env:
+          TRAVEL_BROWSER_TESTS: '1'
+
   shared-jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
