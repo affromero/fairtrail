@@ -2,10 +2,11 @@
 
 # Flight Finder
 
-**Flight and hotel prices, tracked on your terms.**
+**Flight, hotel, and car rental prices, tracked on your terms.**
 
-Track flights, hotels, or both in one self-hosted app. Open source. Use your own
-AI provider for natural-language requests, or search hotels with a structured form.
+Track flights, hotels, and car rentals independently in one self-hosted app.
+Open source. Use your own AI provider for natural-language requests, or search
+hotels and cars with structured forms.
 
 [![GitHub Release](https://img.shields.io/github/v/release/affromero/flight-finder)](https://github.com/affromero/flight-finder/releases/latest)
 [![CI](https://img.shields.io/github/actions/workflow/status/affromero/flight-finder/ci.yml?label=CI)](https://github.com/affromero/flight-finder/actions/workflows/ci.yml)
@@ -61,30 +62,34 @@ If you have [Claude Code](https://docs.anthropic.com/en/docs/claude-code) or [Co
 
 Once it finishes:
 
-1. Open [localhost:3003](http://localhost:3003) and choose **Flights** or **Hotels**.
-2. Search for a route or stay, review the details, and select what to track.
-3. Follow price history and configure alerts. Hotel searches do not require a flight.
+1. Open [localhost:3003](http://localhost:3003) and choose **Flights**, **Hotels**, or **Cars**.
+2. Search for a route, stay, or rental, review the details, and select what to track.
+3. Follow price history and configure alerts. Hotels and cars do not require a flight.
 
 From the terminal, use `flight-finder search "NYC to Tokyo in July under $800"`
 for flights or the [hotel commands](#hotel-tracking) for stays.
 
-### Flights, hotels, or both
+### Choose what you track
 
 The public website explains the product and provides installation instructions.
-Searches and trackers run on your own installation, in the browser or CLI. The
-desktop launcher and mobile browser connect to that same instance.
+Searches and trackers run on your own installation. The desktop launcher and
+mobile browser connect to that same instance.
 
 - **Flights:** follow routes and airlines, compare flexible dates, and share flight price charts.
 - **Hotels:** search Google Hotels or Booking.com by dates, rooms, and guests;
   track the cheapest qualifying offer or a particular room/rate; set a target-price
   alert and inspect the recorded history. The structured hotel form does not use AI.
-- **Households:** each person can use flights only, hotels only, or both. Ordinary
+- **Cars:** search DiscoverCars and Auto Europe independently of flights or hotels;
+  compare verified rental totals and track the cheapest qualifying offer or a
+  specific rental contract. See [Car rental tracking](#car-rental-tracking).
+- **Households:** each person can use any combination of travel trackers. Ordinary
   members see their own trackers; administrators can manage and reassign them.
 
-Flight and hotel trackers are independent. This does not combine them into a
+Flight, hotel, and car trackers are independent. This does not combine them into a
 package, shared itinerary, or combined budget. Bookings are completed with the
-airline or hotel seller. Hotel histories require access to your instance and,
-when multi-user mode is enabled, the owning account or an administrator.
+airline, hotel seller, or rental provider. Hotel and car histories require access
+to your instance and, when multi-user mode is enabled, the owning account or an
+administrator.
 
 Google Hotels supports one room; Booking.com supports multiple rooms with child
 ages assigned to each room. Discovery checks up to eight properties per source
@@ -92,6 +97,50 @@ and stay, with at most 24 date/source combinations. Unverified prices, fees,
 occupancy, or requested policies are not guessed. Results can include usable
 offers alongside explicit provider errors. Configure a notification channel to
 receive alerts outside the app; approximate matches require explicit opt-in.
+
+### Car rental tracking
+
+Open **Cars** on your self-hosted instance. Select pickup and return locations
+from the airport and city catalog, enter local dates and times, and provide the
+driver's age, residence country, and years holding a licence. Choose either
+provider or both. Account settings save each user's preferred car providers
+separately from flight and hotel preferences.
+
+The structured form works without AI. An optional natural-language request
+produces a draft for review. Location suggestions still require a catalog
+selection, and missing driver details remain empty until you supply them.
+Reviewing a draft starts neither a provider search nor a tracker.
+
+Providers run in headless Chromium. Results show how many visible offers were
+checked, whether a limit was reached, and any provider failures. A search checks
+up to eight offers per provider; it does not claim to find every available car.
+An advertised price remains unverified when the provider does not supply enough
+evidence to establish the requested rental and its charges. Such candidates
+remain visible for inspection but cannot trigger price alerts.
+
+For verified offers, inspect the rental total, payment timing, deposit, excess,
+fuel and mileage policies, and driver requirements before tracking. Requested
+extras must have supported pricing evidence; an unknown charge is not treated
+as free. Deposits and excess are shown separately from the rental total.
+Always confirm availability and final terms with the provider before booking.
+
+Choose **best** mode to follow the cheapest qualifying offer across the selected
+providers, or **contract** mode to follow the selected rental contract. Set a
+target price, new-low alerts, and a check interval. The tracker records check
+history and provider errors. Pause stops future checks and pending alerts;
+messages already sent cannot be recalled.
+
+**Refresh status** reads the current state. **Check saved rental prices** requests
+a provider check. If its acknowledgement is lost, recover the saved request
+instead of starting another one. Recovery uses the original request identity,
+including after a page reload. Browser session storage must be available to save
+mutation recovery identities safely.
+
+Car search and tracking APIs require a self-hosted instance and its configured
+authentication. The public website does not expose private rental histories.
+See [API.md](API.md) for request formats, retry headers, and ownership rules.
+The catalog's source attribution and downloadable data are available at
+`/cars/location-data` on your instance.
 
 ### Prefer not to touch the terminal?
 
@@ -392,13 +441,13 @@ All settings are in `~/.flight-finder/.env` (generated by the installer):
 
 Self-hosting Flight Finder with your spouse, your roommates, or your whole
 family? Multi user mode gives each person their own login, their own
-trackers, and their own preferences. Everyone watches their own flights and hotels
+trackers, and their own preferences. Everyone watches their own flights, hotels, and cars
 without seeing each other's dashboards. You stay admin.
 
 #### When you want this
 
 - Two or more people sharing one self-hosted instance
-- Each person tracks flights, hotels, or both (work travel vs. personal trips)
+- Each person chooses which flights, hotels, or cars to track
 - Different default currencies or preferred airlines per person
 - You want the admin panel back to yourself
 
