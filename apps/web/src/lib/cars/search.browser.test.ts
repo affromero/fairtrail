@@ -7,7 +7,8 @@ import { validateCarSearch } from './validation';
 import { assessCarPrice } from './pricing';
 import { prisma } from '@/lib/prisma';
 import { acquireTravelLease, claimTravelJob, releaseTravelLease, type TravelLeaseToken } from '../travel/jobs';
-import { cancelCarSearch, createCarSearch, createCarCatalogSearch, createCarTracker, editCarTracker } from './store';
+import { cancelCarSearch, createCarSearch, createCarCatalogSearch, createCarTracker, createCarProtectionRecheck, editCarTracker } from './store';
+import { carContractHash } from './selection';
 import { executeCarJob } from './run';
 import type { CarActor } from './access';
 import { executeTravelJob } from '../travel/coordinator';
@@ -117,6 +118,7 @@ describe.skipIf(process.env.TRAVEL_BROWSER_TESTS !== '1')('bounded rental provid
   let server: Server;
   let mode: 'mixed' | 'success' | 'stall' | 'cancel' = 'success';
   let protectionMode: 'none' | 'available' | 'invalid' | 'blocked' | 'stall' = 'none';
+  let changedProtectedPolicy = false;
   const optionVisits = new Map<string, number>();
   let controller: AbortController;
   let actor: CarActor | null = null;
@@ -151,7 +153,9 @@ describe.skipIf(process.env.TRAVEL_BROWSER_TESTS !== '1')('bounded rental provid
         if (visits > 1 && protectionMode === 'stall') { pending.add(response); response.once('close', () => pending.delete(response)); return; }
         response.end(optionsPage(reference!, protectionMode !== 'none', protectionMode === 'invalid')); return;
       }
-      response.end(url.pathname.endsWith('/checkout') ? checkout(reference!, url.searchParams.get('protection') === '1') : homepage());
+      let html = url.pathname.endsWith('/checkout') ? checkout(reference!, url.searchParams.get('protection') === '1') : homepage();
+      if (changedProtectedPolicy && url.searchParams.get('protection') === '1') html = html.replace('Collision damage excess USD 2,000.00.', 'Collision damage excess USD 2,000.00. Additional base policy exclusion.');
+      response.end(html);
     });
     await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
     const address = server.address();
@@ -161,7 +165,7 @@ describe.skipIf(process.env.TRAVEL_BROWSER_TESTS !== '1')('bounded rental provid
   beforeEach(() => {
     vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date('2026-09-06T12:00:00Z'));
     mode = 'success'; controller = new AbortController(); requested.length = 0; transport.browsers.length = 0; transport.failClose = false;
-    protectionMode = 'none'; optionVisits.clear();
+    protectionMode = 'none'; optionVisits.clear(); changedProtectedPolicy = false;
     transport.beforeRequest = null;
   });
   afterEach(async () => {
@@ -229,6 +233,20 @@ describe.skipIf(process.env.TRAVEL_BROWSER_TESTS !== '1')('bounded rental provid
     expect(result.offers).toMatchObject([{ extras: [{ productId: 'ZC.USD' }], total: { value: { minor: 6765 } } }]);
     expect(assessCarPrice(result.offers[0], search).eligible).toBe(true);
   }, 30_000);
+
+  it.each(['different-base', 'changed-policy'] as const)('never substitutes a protected price after %s is observed in the browser', async change => {
+    protectionMode = 'available';
+    const baseReport = await run(), base = baseReport.offers[0]!;
+    if (change === 'different-base') base.contract.supplierId = 'original-other-supplier';
+    changedProtectedPolicy = change === 'changed-policy'; requested.length = 0;
+    const search = validateCarSearch({ ...criteria(), extras: { ...criteria().extras, protection: [{ source: 'autoeurope', productId: 'ZC.USD' }] },
+      protectionRecheck: { searchId: 'original', offerId: base.id, choiceId: crypto.randomUUID(), baseContractHash: carContractHash(base.contract), baseCoverageTerms: base.contract.coverageTerms } });
+    const result = await withTravelExecution(new TravelExecution({ jobId: 'protected-mismatch', generation: 1, resource: 'browser' }), () => searchCars(search));
+    expect(result.offers).toEqual([]);
+    expect(result.candidates).toMatchObject([{ advertisedTotal: null, reasons: [expect.stringMatching(change === 'different-base' ? /does not match/ : /coverage changed/)] }]);
+    if (change === 'different-base') expect(requested.some(path => path.includes('protection=1'))).toBe(false);
+    expect(transport.browsers.every(browser => !browser.isConnected())).toBe(true);
+  }, 45_000);
 
   it('retains a verified quote through a later failure and stops visits after rate limiting', async () => {
     mode = 'mixed';
@@ -384,6 +402,27 @@ describe.skipIf(process.env.TRAVEL_BROWSER_TESTS !== '1')('bounded rental provid
     expect(transport.browsers.every(browser => !browser.isConnected())).toBe(true);
     lease = await acquireTravelLease('browser'); expect(lease).not.toBeNull();
   }, 45_000);
+
+  databaseTest('rechecks a saved protection choice and tracks the fresh all-in quote without retaining the one-time base binding', async () => {
+    protectionMode = 'available';
+    const first = await queued(false), job = await prisma.travelJob.findUniqueOrThrow({ where: { carRunId: first.id } });
+    expect(await executeTravelJob(job.id)).toBe(true);
+    const original = await getCarRunView(first.id, actor!), choice = original.result!.protection![0]!.choices[0]!;
+    const child = await createCarProtectionRecheck(first.id, { offerId: original.result!.offers[0]!.id, choiceId: choice.id }, actor!, crypto.randomUUID());
+    const recheckJob = await prisma.travelJob.findUniqueOrThrow({ where: { carRunId: child.id } });
+    expect(await executeTravelJob(recheckJob.id)).toBe(true);
+    const fresh = await getCarRunView(child.id, actor!);
+    expect(fresh).toMatchObject({ status: 'success', result: { offers: [{ total: { value: { minor: 6765 } }, extras: [{ productId: 'ZC.USD' }] }] } });
+    expect(fresh.result).not.toHaveProperty('protection');
+    expect(original.result!.offers[0]!.total.value?.minor).toBe(4965);
+    const tracker = await createCarTracker({ searchId: child.id, offerId: fresh.result!.offers[0]!.id, mode: 'contract' }, actor!);
+    expect(tracker.search).not.toHaveProperty('protectionRecheck');
+    expect(tracker.search).toMatchObject({ extras: { protection: [{ source: 'autoeurope', productId: 'ZC.USD' }] } });
+    const refresh = await prisma.travelJob.findFirstOrThrow({ where: { carRun: { trackerId: tracker.id } } });
+    expect(await executeTravelJob(refresh.id)).toBe(true);
+    expect(await prisma.carTracker.findUnique({ where: { id: tracker.id } })).toMatchObject({ latestPriceMinor: 6765n });
+    expect(await prisma.carSnapshot.findMany({ where: { trackerId: tracker.id } })).toMatchObject([{ totalMinor: 6765n, eligible: true }]);
+  }, 60_000);
 
   databaseTest('executes an owned search and refresh through real browser extraction and atomic price alerts', async () => {
     const first = await queued(); await (await execute(first.id)).work();

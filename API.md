@@ -538,6 +538,31 @@ hotel tracker. Example body, replacing the catalog version and future dates:
 
 Optional `extras` contain categorized `childSeats` and complete
 `additionalDrivers`. Arbitrary protection product identifiers are rejected.
+Completed base-search results may include `protection` entries bound to each
+`offerId`. A complete entry lists observed options; a complete empty list means
+no options were found. A missing entry means discovery was not completed, and
+a failed entry includes an error without changing the base quote. Option prices
+are observed extras, not confirmed all-in rental totals.
+
+To request a fresh protected quote, send `POST /api/cars/search/:id/protection`
+with an `Idempotency-Key` UUID and `{ "offerId": "...", "choiceId": "..." }`.
+Use the opaque choice ID from that offer's saved result. Only the search owner
+can make this request; administrator access does not impersonate an owner.
+The response is HTTP 202 with `{ "id", "status", "creationKey" }`; poll the
+returned search ID. Retry the same body and key after a lost acknowledgement.
+Reusing a key for another operation or choice returns 409. Closed base searches
+reject new rechecks, while committed receipts remain replayable. Deleted child
+searches return 410 without recreating work.
+
+The recheck retains the original criteria and budget, checks only the chosen
+provider, and verifies the original base contract before selecting protection.
+A changed supplier, station or rental policy cannot silently replace it. A
+bounded miss does not prove that the original rental is unavailable. Review the
+fresh result's coverage terms and verified all-in total before creating a
+tracker: product terms and prices can change after discovery. Exact-contract
+tracking preserves that protected contract; best-match tracking may later choose
+another eligible rental with the selected product.
+
 Optional `filters` contain `transmission`, `minSeats`, `unlimitedMileage`,
 `freeCancellation`, and a currency-specific `maxTotal` in integer minor units.
 Driver age, licence tenure and residence must be explicit. Ambiguous or missing

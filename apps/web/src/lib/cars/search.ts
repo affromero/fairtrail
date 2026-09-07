@@ -8,7 +8,8 @@ import { navigateDiscoverCarsSearch } from './discovercars-navigation';
 import { captureDiscoverCarsDetail } from './discovercars-capture';
 import { extractDiscoverCarsOffer } from './discovercars-extraction';
 import { prepareCarPage } from './navigation';
-import { carTrackerSearch, validateCarSelection } from './selection';
+import { carContractHash, carTrackerSearch, validateCarSelection } from './selection';
+import { assertCarProtectionRecheck } from './protection-recheck';
 import { validateCarSearch } from './validation';
 import { resolveCarProviderLocations } from './location-resolution';
 import { captureAutoEuropeProtectionChoices, extractAutoEuropeProtectionChoices } from './autoeurope-protection';
@@ -76,6 +77,36 @@ async function providerFailure(error: unknown, page: Page | undefined, source: C
   return { message: error instanceof CarError ? error.message : 'The provider quote could not be verified; no estimated price was substituted', terminal: false, blocked: false };
 }
 
+async function captureOffer(source: CarSource, detail: Page, url: string, search: CarSearch, searchPage: Page) {
+  return source === 'discovercars'
+    ? extractDiscoverCarsOffer(await captureDiscoverCarsDetail(detail, url, search, searchPage), search)
+    : extractAutoEuropeOffer(await captureAutoEuropeDetail(detail, url, search), search);
+}
+
+async function captureRequestedOffer(source: CarSource, detail: Page, url: string, search: CarSearch, searchPage: Page) {
+  const binding = search.protectionRecheck;
+  if (!binding) return captureOffer(source, detail, url, search, searchPage);
+  const baseSearch = { ...search, extras: { ...search.extras, protection: [] } };
+  delete baseSearch.protectionRecheck;
+  const base = await captureOffer(source, detail, url, baseSearch, searchPage);
+  if (!('contract' in base)) return base;
+  const mismatch = (reason: string) => ({ source, supplier: base.supplier, model: base.contract.model,
+    bookingUrl: base.bookingUrl, observedAt: base.observedAt, advertisedTotal: null, requirements: base.requirements, reasons: [reason] });
+  if (carContractHash(base.contract) !== binding.baseContractHash) {
+    return mismatch('This checked rental does not match the selected base contract; no protected price was substituted');
+  }
+  const protectedOffer = await captureOffer(source, detail, url, search, searchPage);
+  if (!('contract' in protectedOffer)) return protectedOffer;
+  try {
+    assertCarProtectionRecheck(protectedOffer, { ...search, protectionRecheck: { ...binding,
+      baseContractHash: carContractHash(base.contract), baseCoverageTerms: base.contract.coverageTerms } });
+  } catch (error) {
+    if (!(error instanceof CarError)) throw error;
+    return mismatch(error.message);
+  }
+  return protectedOffer;
+}
+
 async function inspectProvider(source: CarSource, search: CarSearch, report: CarSearchReport, execution: TravelExecution, progress: CarProviderProgress, options: CarSearchOptions): Promise<void> {
   let activePage: Page | undefined;
   try {
@@ -102,9 +133,7 @@ async function inspectProvider(source: CarSource, search: CarSearch, report: Car
       progress.checked++;
       let protectionOffer: CarOffer | undefined;
       try {
-        const observation = source === 'discovercars'
-          ? extractDiscoverCarsOffer(await captureDiscoverCarsDetail(detail, url, search, searchPage), search)
-          : extractAutoEuropeOffer(await captureAutoEuropeDetail(detail, url, search), search);
+        const observation = await captureRequestedOffer(source, detail, url, search, searchPage);
         if ('contract' in observation) report.offers.push(observation);
         else report.candidates.push(observation);
         if ('contract' in observation && options.discoverProtection && search.extras.protection.length === 0 && !options.selection) {

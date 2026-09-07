@@ -11,7 +11,9 @@ export function carContractHash(contract: unknown): string {
 
 /** A discovery ceiling must not hide later above-target observations from alerts. */
 export function carTrackerSearch(search: CarSearch): CarSearch {
-  return { ...search, filters: { ...search.filters, maxTotal: null } };
+  const tracking = { ...search, filters: { ...search.filters, maxTotal: null } };
+  delete tracking.protectionRecheck;
+  return tracking;
 }
 
 export type CarObservationSelection =

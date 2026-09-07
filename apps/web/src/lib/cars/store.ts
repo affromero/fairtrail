@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { prisma } from '@/lib/prisma';
 import { Prisma, type CarTracker } from '@/generated/prisma/client';
 import { cancelTravelJob, enqueueTravelJob, lockTravelResource } from '../travel/jobs';
@@ -11,6 +11,9 @@ import { CarError, type CarSearch } from './types';
 import { carCreationIntent, carRefreshIntent } from './creation';
 import { validateCarTrackerView } from './tracker-view';
 import { carSearchIntent, carSearchReceipt } from './search-input';
+import { assertCarProtectionRecheck } from './protection-recheck';
+import { validateCarReport } from './report';
+import { carInputFields } from './public-input';
 
 export const carJson = (value: unknown): Prisma.InputJsonValue => JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
 
@@ -84,6 +87,45 @@ export async function createCarCatalogSearch(raw: unknown, actor: CarActor, requ
   });
 }
 
+export async function createCarProtectionRecheck(searchId: string, raw: unknown, actor: CarActor, requestKey: unknown) {
+  const input = carInputFields(raw, ['offerId', 'choiceId']);
+  const offerId = carText(input.offerId, 200, 'rental offer');
+  const choiceId = carText(input.choiceId, 36, 'protection choice');
+  const receipt = carSearchReceipt({ operation: 'protection-recheck-v1', searchId, offerId, choiceId }, actor, requestKey);
+  receipt.requestHash = createHash('sha256').update('protection-recheck-v1\0').update(receipt.requestHash).digest('hex');
+  const owner = { ...actor, isAdmin: false };
+  return prisma.$transaction(async tx => {
+    await lockTravelResource(tx, 'car_search');
+    const previous = await tx.carSearchCreation.findUnique({ where: { id: receipt.id }, include: { run: true } });
+    if (previous) {
+      if (previous.requestHash !== receipt.requestHash) throw new CarError('This search key was already used for a different request', 409);
+      if (!previous.run) throw new CarError('This search was removed; retrying will not recreate it', 410);
+      assertCarOwner(owner, previous.run);
+      return previous.run;
+    }
+    await tx.$queryRaw`SELECT id FROM "CarSearchRun" WHERE id = ${searchId} FOR UPDATE`;
+    const parent = await tx.carSearchRun.findUnique({ where: { id: searchId } });
+    assertCarOwner(owner, parent);
+    if (parent.trackingClosed) throw new CarError('New tracking from this search is permanently closed', 410);
+    if (parent.trackerId !== null || !['success', 'partial'].includes(parent.status) || !parent.completedAt) throw new CarError('Choose protection from a completed standalone rental search', 409);
+    const search = validateCarSearch(parent.request, new Date(), { allowUnresolvedProviders: true });
+    if (search.extras.protection.length || search.protectionRecheck) throw new CarError('Choose protection from an original base rental search', 409);
+    const report = validateCarReport(parent.result, search.sources, parent.completedAt);
+    const offer = report.offers.find(offer => offer.id === offerId);
+    const discovery = report.protection?.find(entry => entry.offerId === offerId && entry.status === 'complete');
+    const choice = discovery?.choices.find(choice => choice.id === choiceId);
+    if (!offer || !choice) throw new CarError('Choose a verified protection option returned for this rental');
+    if (!assessCarPrice(offer, search, parent.completedAt).eligible) throw new CarError('Protection requires a verified eligible base rental', 409);
+    const recheck = validateCarSearch({ ...search, sources: [choice.source],
+      extras: { ...search.extras, protection: [{ source: choice.source, productId: choice.productId }] },
+      protectionRecheck: { searchId, offerId, choiceId, baseContractHash: carContractHash(offer.contract), baseCoverageTerms: offer.contract.coverageTerms },
+    }, new Date(), { allowUnresolvedProviders: true });
+    const run = await queueSearch(tx, recheck, actor.userId);
+    await tx.carSearchCreation.create({ data: { ...receipt, userId: actor.userId, runId: run.id } });
+    return run;
+  });
+}
+
 export async function getCarTracker(id: string, actor: CarActor) {
   const row = await prisma.carTracker.findUnique({ where: { id } });
   assertCarOwner(actor, row);
@@ -133,6 +175,7 @@ export async function createCarTracker(raw: unknown, actor: CarActor, requestKey
     const offers = result.offers.map(value => validateCarOffer(value)).filter(offer => offer.id === offerId);
     if (offers.length !== 1) throw new CarError('Choose a quote returned by this search');
     const offer = offers[0]!;
+    assertCarProtectionRecheck(offer, search);
     validateCarSearch({ ...search, sources: [offer.contract.source], extras: { ...search.extras, protection: search.extras.protection.filter(product => product.source === offer.contract.source) } });
     const assessment = assessCarPrice(offer, search);
     if (!assessment.eligible) throw new CarError(`This quote cannot be tracked: ${assessment.reasons.join('; ')}`, 409);

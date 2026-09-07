@@ -10,6 +10,7 @@ import { GET as detail, PATCH as edit, DELETE as remove } from '@/app/api/cars/[
 import { POST as refresh } from '@/app/api/cars/[id]/scrape/route';
 import { GET as status, DELETE as cancel } from '@/app/api/cars/search/[id]/route';
 import { GET as searches, POST as startSearch } from '@/app/api/cars/search/route';
+import { POST as protect } from '@/app/api/cars/search/[id]/protection/route';
 import { GET as locations } from '@/app/api/cars/locations/route';
 import { GET as session } from '@/app/api/cars/session/route';
 import { invalidateMultiUserCache } from '../multi-user';
@@ -142,6 +143,29 @@ describe.skipIf(process.env.CAR_HTTP_INTEGRATION_TESTS !== '1')('car HTTP owners
     expect(await prisma.travelJob.findMany({ where: { carRun: { trackerId: row.id } } })).toMatchObject([{ status: 'queued', attempts: 0 }]);
     expect((await (await list(request())).json()).data.trackers).toMatchObject([{ id: row.id, latestPriceMinor: null }]);
   });
+  it('acknowledges a protected recheck through authenticated HTTP and recovers it without a duplicate job', async () => {
+    const run = await completed(), key = crypto.randomUUID(), choiceId = crypto.randomUUID();
+    const report = carReportFixture();
+    const result = { ...report, protection: [{ offerId: report.offers[0]!.id, status: 'complete', error: null, choices: [{
+      id: choiceId, source: 'discovercars', productId: '35', name: 'Full Coverage', termsSummary: 'Reimbursement with exclusions', policyLinks: [],
+      observedExtraPrice: { currency: 'GBP', minor: 1800 }, sourceUrl: 'https://www.discovercars.com/offer/coverage/example', observedAt: report.offers[0]!.observedAt,
+    }] }] };
+    await prisma.carSearchRun.update({ where: { id: run.id }, data: { result: carJson(result), completedAt: new Date() } });
+    const body = { offerId: report.offers[0]!.id, choiceId };
+    const missingKey = request(body, 'POST'); missingKey.headers.delete('Idempotency-Key');
+    expect((await protect(missingKey, context(run.id))).status).toBe(400);
+    expect((await protect(request({ ...body, productId: '35' }, 'POST'), context(run.id))).status).toBe(400);
+    const response = await protect(request(body, 'POST', key), context(run.id));
+    expect(response.status).toBe(202); expect(response.headers.get('cache-control')).toBe('private, no-store');
+    const accepted = (await response.json()).data;
+    expect(accepted).toMatchObject({ creationKey: key, status: 'queued' });
+    expect((await (await protect(request(body, 'POST', key), context(run.id))).json()).data).toEqual(accepted);
+    expect((await status(request(), context(accepted.id))).status).toBe(200);
+    expect(await prisma.travelJob.count({ where: { userId: owner } })).toBe(1);
+    boundary.token = createUserSessionToken(other);
+    await prisma.user.update({ where: { id: other }, data: { isAdmin: true } });
+    expect((await protect(request(body, 'POST'), context(run.id))).status).toBe(404);
+  });
   it('requires refresh identity and revision and correlates a recovered cancelled check', async () => {
     const row = await tracker(), key = crypto.randomUUID();
     expect((await refresh(request(undefined, 'POST'), context(row.id))).status).toBe(428);
@@ -192,6 +216,7 @@ describe.skipIf(process.env.CAR_HTTP_INTEGRATION_TESTS !== '1')('car HTTP owners
     expect((await list(request())).status).toBe(mode === 'public' ? 404 : 401);
     expect((await create(request({}, 'POST'))).status).toBe(mode === 'public' ? 404 : 401);
     expect((await startSearch(request({}, 'POST'))).status).toBe(mode === 'public' ? 404 : 401);
+    expect((await protect(request({}, 'POST'), context('unread-parent'))).status).toBe(mode === 'public' ? 404 : 401);
     expect((await searches(request())).status).toBe(mode === 'public' ? 404 : 401);
     expect((await locations(new Request('http://localhost/api/cars/locations?q=LHR'))).status).toBe(mode === 'public' ? 404 : 401);
   });

@@ -116,8 +116,19 @@ export function validateCarSearch(raw: unknown, now = new Date(), options: { all
   const extras = validateCarExtras(r.extras);
   if (extras.protection.length && sources.some(s => !extras.protection.some(p => p.source === s))) throw new CarError('Choose a protection product for every selected provider');
   if (extras.protection.some(p => !sources.includes(p.source))) throw new CarError('Protection must belong to a selected provider');
+  let protectionRecheck: CarSearch['protectionRecheck'];
+  if (r.protectionRecheck !== undefined) {
+    const binding = carRecord(r.protectionRecheck);
+    if (Object.keys(binding).some(key => !['searchId', 'offerId', 'choiceId', 'baseContractHash', 'baseCoverageTerms'].includes(key))
+      || sources.length !== 1 || extras.protection.length !== 1) throw new CarError('Invalid protected rental recheck');
+    const choiceId = carText(binding.choiceId, 36, 'protection choice');
+    const baseContractHash = carText(binding.baseContractHash, 64, 'base rental identity');
+    if (!/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(choiceId) || !/^[a-f0-9]{64}$/.test(baseContractHash)) throw new CarError('Invalid protected rental identity');
+    protectionRecheck = { searchId: carText(binding.searchId, 200, 'original search'), offerId: carText(binding.offerId, 200, 'original offer'), choiceId, baseContractHash, baseCoverageTerms: carText(binding.baseCoverageTerms, 12000, 'base coverage terms') };
+  }
   return {
     pickup, dropoff, pickupAt, dropoffAt, driver: validateCarDriver(r.driver), currency, sources, extras,
+    ...(protectionRecheck ? { protectionRecheck } : {}),
     filters: validateCarFilters(r.filters, currency),
   };
 }

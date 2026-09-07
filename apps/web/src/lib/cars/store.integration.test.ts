@@ -9,7 +9,7 @@ import type { CarActor } from './access';
 import { searchCarLocations } from './locations';
 import { getCarRunView } from './views';
 import { listCarSearchPage } from './search-list';
-import { closeCarSearchTracking } from './store';
+import { closeCarSearchTracking, createCarProtectionRecheck } from './store';
 
 describe.skipIf(process.env.CAR_STORE_INTEGRATION_TESTS !== '1')('car ownership and persistence against isolated PostgreSQL', () => {
   let owner: CarActor, other: CarActor;
@@ -39,6 +39,90 @@ describe.skipIf(process.env.CAR_STORE_INTEGRATION_TESTS !== '1')('car ownership 
     const run = await completedSearch();
     return createCarTracker({ searchId: run.id, offerId: 'verified-quote', mode, target: { currency: 'GBP', minor: 9000 } }, owner);
   }
+  async function protectionSearch() {
+    const base = offer(), choiceId = crypto.randomUUID();
+    const result = { ...carReportFixture([base]), protection: [{ offerId: base.id, status: 'complete', error: null,
+      choices: [{ id: choiceId, source: 'discovercars', productId: '35', name: 'Full Coverage', termsSummary: 'Reimbursement with exclusions', policyLinks: [],
+        observedExtraPrice: { currency: 'GBP', minor: 1800 }, sourceUrl: 'https://www.discovercars.com/offer/coverage/example', observedAt: base.observedAt }] }] };
+    const run = await prisma.carSearchRun.create({ data: { userId: owner.userId, request: carJson(criteria()), result: carJson(result), status: 'success', completedAt: new Date() } });
+    return { run, body: { offerId: base.id, choiceId } };
+  }
+
+  it('queues one fresh protected search for concurrent retries and preserves the original rental criteria', async () => {
+    const { run, body } = await protectionSearch(), key = crypto.randomUUID();
+    const attempts = await Promise.allSettled(Array.from({ length: 4 }, () => createCarProtectionRecheck(run.id, body, owner, key)));
+    expect(attempts.map(attempt => attempt.status)).toEqual(['fulfilled', 'fulfilled', 'fulfilled', 'fulfilled']);
+    const children = attempts.flatMap(attempt => attempt.status === 'fulfilled' ? [attempt.value] : []);
+    expect(new Set(children.map(child => child.id)).size).toBe(1);
+    expect(children[0]!.request).toMatchObject({ ...criteria(), sources: ['discovercars'],
+      extras: { protection: [{ source: 'discovercars', productId: '35' }] },
+      protectionRecheck: { searchId: run.id, offerId: body.offerId, choiceId: body.choiceId, baseContractHash: carContractHash(offer().contract) } });
+    expect(await prisma.travelJob.count({ where: { userId: owner.userId } })).toBe(1);
+    expect(await getCarSearch(run.id, owner)).toEqual(run);
+    await expect(createCarProtectionRecheck(run.id, { ...body, choiceId: crypto.randomUUID() }, owner, key)).rejects.toMatchObject({ status: 409 });
+    await expect(createCarCatalogSearch({}, owner, key)).rejects.toMatchObject({ status: 409 });
+    await expect(createCarCatalogSearch({ operation: 'protection-recheck-v1', searchId: run.id, ...body }, owner, key)).rejects.toMatchObject({ status: 409 });
+  });
+
+  it('rejects invented products, wrong offer associations and administrator impersonation', async () => {
+    const { run, body } = await protectionSearch();
+    for (const actor of [other, { ...other, isAdmin: true }]) await expect(createCarProtectionRecheck(run.id, body, actor, crypto.randomUUID())).rejects.toMatchObject({ status: 404 });
+    for (const invalid of [{ ...body, productId: '35' }, { ...body, offerId: 'other' }, { ...body, choiceId: crypto.randomUUID() }]) {
+      await expect(createCarProtectionRecheck(run.id, invalid, owner, crypto.randomUUID())).rejects.toMatchObject({ status: 400 });
+    }
+    expect(await prisma.travelJob.count({ where: { userId: owner.userId } })).toBe(0);
+  });
+
+  it('allows an old observed option to request a fresh quote without treating its old price as current', async () => {
+    const { run, body } = await protectionSearch();
+    const report = run.result as unknown as ReturnType<typeof carReportFixture>;
+    const old = new Date(Date.now() - 60 * 60_000);
+    const result = JSON.parse(JSON.stringify(run.result).replaceAll(report.offers[0]!.observedAt, old.toISOString()));
+    await prisma.carSearchRun.update({ where: { id: run.id }, data: { result, completedAt: old } });
+    const child = await createCarProtectionRecheck(run.id, body, owner, crypto.randomUUID());
+    expect(child).toMatchObject({ status: 'queued', result: null, completedAt: null });
+    expect(await prisma.carTracker.count({ where: { userId: owner.userId } })).toBe(0);
+  });
+
+  it('preserves protected search receipts after parent closure and deletion without recreating deleted children', async () => {
+    const { run, body } = await protectionSearch(), key = crypto.randomUUID();
+    const child = await createCarProtectionRecheck(run.id, body, owner, key);
+    await closeCarSearchTracking(run.id, owner);
+    await expect(createCarProtectionRecheck(run.id, body, owner, crypto.randomUUID())).rejects.toMatchObject({ status: 410 });
+    expect(await createCarProtectionRecheck(run.id, body, owner, key)).toEqual(child);
+    await prisma.carSearchRun.delete({ where: { id: run.id } });
+    expect(await createCarProtectionRecheck(run.id, body, owner, key)).toEqual(child);
+    await cancelCarSearch(child.id, owner);
+    await prisma.travelJob.deleteMany({ where: { carRunId: child.id } });
+    await prisma.carSearchRun.delete({ where: { id: child.id } });
+    await expect(createCarProtectionRecheck(run.id, body, owner, key)).rejects.toMatchObject({ status: 410 });
+    expect(await prisma.carSearchRun.count({ where: { userId: owner.userId } })).toBe(0);
+  });
+
+  it('rechecks current child ownership on receipt replay and rolls back quota failures', async () => {
+    const { run, body } = await protectionSearch(), key = crypto.randomUUID();
+    await Promise.all(Array.from({ length: 3 }, () => createCarSearch(criteria(), owner)));
+    await expect(createCarProtectionRecheck(run.id, body, owner, key)).rejects.toMatchObject({ status: 429 });
+    expect(await prisma.carSearchCreation.count({ where: { userId: owner.userId } })).toBe(0);
+    const active = await prisma.carSearchRun.findFirstOrThrow({ where: { userId: owner.userId, status: 'queued' } });
+    await cancelCarSearch(active.id, owner);
+    const child = await createCarProtectionRecheck(run.id, body, owner, key);
+    await prisma.carSearchRun.update({ where: { id: child.id }, data: { userId: other.userId } });
+    await expect(createCarProtectionRecheck(run.id, body, { ...owner, isAdmin: true }, key)).rejects.toMatchObject({ status: 404 });
+  });
+
+  it('fences protection creation racing permanent closure and replays only committed work', async () => {
+    const { run, body } = await protectionSearch(), key = crypto.randomUUID();
+    const [closure, creation] = await Promise.allSettled([closeCarSearchTracking(run.id, owner), createCarProtectionRecheck(run.id, body, owner, key)]);
+    expect(closure.status).toBe('fulfilled');
+    if (creation.status === 'fulfilled') expect(await createCarProtectionRecheck(run.id, body, owner, key)).toEqual(creation.value);
+    else {
+      expect(creation.reason).toMatchObject({ status: 410 });
+      await expect(createCarProtectionRecheck(run.id, body, owner, key)).rejects.toMatchObject({ status: 410 });
+    }
+    await expect(createCarProtectionRecheck(run.id, body, owner, crypto.randomUUID())).rejects.toMatchObject({ status: 410 });
+    expect(await prisma.travelJob.count({ where: { userId: owner.userId } })).toBe(creation.status === 'fulfilled' ? 1 : 0);
+  });
   async function running(id: string) {
     const run = await refreshCarTracker(id, owner);
     const job = await prisma.travelJob.findUniqueOrThrow({ where: { carRunId: run!.id } });
