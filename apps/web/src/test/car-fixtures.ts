@@ -21,3 +21,9 @@ export function carOfferFixture(observedAt = new Date().toISOString(), minor = 1
 export function carReportFixture(offers = [carOfferFixture()], sources: CarSource[] = ['discovercars', 'autoeurope']): CarSearchReport {
   return { scope: 'checked_provider_offers', offers, candidates: [], errors: [], completed: sources.length, total: sources.length, successfulProviders: sources.length, providers: sources.map(source => ({ source, status: 'complete', checked: offers.filter(offer => offer.contract.source === source).length, discoveredVisible: offers.filter(offer => offer.contract.source === source).length, limit: 8, truncated: false })) };
 }
+export function carTrackerViewFixture() {
+  const now = new Date().toISOString();
+  return { id: 'tracker-one', userId: 'alice', label: 'London weekend', search: carSearchFixture(), selection: null,
+    options: { mode: 'best' as const, target: null, notifyLows: true, scrapeInterval: 3 }, active: true, revision: 0,
+    latestPriceMinor: 10000, historicalLowMinor: 9000, currency: 'GBP', createdAt: now, updatedAt: now, lastCheckedAt: now, nextCheckAt: now, lastError: null };
+}

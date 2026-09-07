@@ -125,6 +125,73 @@ describe.skipIf(process.env.CAR_HTTP_INTEGRATION_TESTS !== '1')('car HTTP owners
     expect(done.status).toBe(200);
     expect((await done.json()).data.result).toMatchObject({ total: 1, completed: 1, offers: [{ id: offer.id }] });
   });
+  it.each(['best', 'contract'] as const)('retains the verified %s observation beyond the recent history window after failed checks', async mode => {
+    const source = await completed(), row = await createCarTracker({ searchId: source.id, offerId: 'verified-quote', mode }, { userId: owner, isAdmin: false });
+    const originalTime = new Date(Date.now() - 3 * 3_600_000), original = carOfferFixture(originalTime.toISOString());
+    const originalRun = await prisma.carSearchRun.create({ data: { trackerId: row.id, userId: owner, request: row.search!, status: 'success', createdAt: originalTime, completedAt: originalTime } });
+    const verified = await prisma.carSnapshot.create({ data: { trackerId: row.id, runId: originalRun.id, source: 'discovercars', offer: carJson(original), currency: 'GBP', totalMinor: 10000, eligible: true, reasons: [], contractHash: carContractHash(original.contract), observedAt: originalTime } });
+    if (mode === 'contract') {
+      const observedAt = new Date(originalTime.getTime() + 60_000), mismatched = carOfferFixture(observedAt.toISOString());
+      mismatched.contract.fuelPolicy = 'Return empty';
+      const run = await prisma.carSearchRun.create({ data: { trackerId: row.id, userId: owner, request: row.search!, status: 'success', createdAt: observedAt, completedAt: observedAt } });
+      await prisma.carSnapshot.create({ data: { trackerId: row.id, runId: run.id, source: 'discovercars', offer: carJson(mismatched), currency: 'GBP', totalMinor: 10000, eligible: true, reasons: [], contractHash: carContractHash(mismatched.contract), observedAt } });
+    }
+    const newer = Array.from({ length: 101 }, (_, index) => ({ id: crypto.randomUUID(), time: new Date(Date.now() - 2 * 3_600_000 + index * 60_000) }));
+    await prisma.carSearchRun.createMany({ data: newer.map(entry => ({ id: entry.id, trackerId: row.id, userId: owner, request: row.search!, status: 'partial', createdAt: entry.time, completedAt: entry.time })) });
+    await prisma.carSnapshot.createMany({ data: newer.map(entry => {
+      const offer = carOfferFixture(entry.time.toISOString()); offer.taxesIncluded.status = 'unknown';
+      return { trackerId: row.id, runId: entry.id, source: 'discovercars', offer: carJson(offer), currency: 'GBP', totalMinor: 10000, eligible: false, reasons: ['Tax inclusion was not verified'], contractHash: carContractHash(offer.contract), observedAt: entry.time };
+    }) });
+    await prisma.carTracker.update({ where: { id: row.id }, data: { latestPriceMinor: 10000, lastCheckedAt: new Date(), lastError: 'Latest check failed' } });
+    const response = await detail(request(), context(row.id)); expect(response.status).toBe(200);
+    const data = (await response.json()).data;
+    expect(data.snapshots).toHaveLength(100); expect(data.snapshots.every((entry: { eligible: boolean }) => !entry.eligible)).toBe(true);
+    expect(data.latestObservation).toMatchObject({ id: verified.id, observedAt: originalTime.toISOString(), totalMinor: 10000, eligible: true });
+    expect(data.tracker.lastCheckedAt).not.toBe(data.latestObservation.observedAt);
+  });
+  it('uses the most recently evaluated matching observation when equal prices repeat', async () => {
+    const row = await tracker(), base = Date.now() - 60_000;
+    let expected = '';
+    for (const index of [0, 1]) {
+      const observedAt = new Date(base - index * 1000), evaluatedAt = new Date(base + index * 1000), offer = carOfferFixture(observedAt.toISOString());
+      const run = await prisma.carSearchRun.create({ data: { trackerId: row.id, userId: owner, request: row.search!, status: 'success', createdAt: observedAt, completedAt: evaluatedAt } });
+      expected = (await prisma.carSnapshot.create({ data: { trackerId: row.id, runId: run.id, source: 'discovercars', offer: carJson(offer), currency: 'GBP', totalMinor: 10000, eligible: true, reasons: [], contractHash: carContractHash(offer.contract), observedAt } })).id;
+    }
+    await prisma.carTracker.update({ where: { id: row.id }, data: { latestPriceMinor: 10000 } });
+    const response = await detail(request(), context(row.id)); expect(response.status).toBe(200);
+    expect((await response.json()).data.latestObservation.id).toBe(expected);
+  });
+  it('allows only one concurrent settings request to advance a given tracker revision', async () => {
+    const row = await tracker();
+    const conditional = () => { const r = request({ label: 'Updated weekend' }, 'PATCH'); r.headers.set('X-Car-Revision', '0'); return r; };
+    const responses = await Promise.all([edit(conditional(), context(row.id)), edit(conditional(), context(row.id))]);
+    expect(responses.map(response => response.status).sort()).toEqual([200, 412]);
+    const current = await detail(request(), context(row.id));
+    expect(current.headers.get('X-Car-Revision')).toBe('1');
+    expect((await current.json()).data.tracker).toMatchObject({ label: 'Updated weekend', revision: 1 });
+  });
+  it('rejects a late edit and deletion before disturbing newer queued work or alerts', async () => {
+    const row = await tracker();
+    const editAt = (revision: number, label: string) => { const r = request({ label }, 'PATCH'); r.headers.set('X-Car-Revision', String(revision)); return edit(r, context(row.id)); };
+    expect((await editAt(0, 'First acknowledged state')).status).toBe(200);
+    expect((await editAt(1, 'Newer intentional state')).status).toBe(200);
+    await refresh(request(), context(row.id));
+    const queued = await prisma.travelJob.findMany({ where: { carRun: { trackerId: row.id }, status: 'queued' } });
+    const alert = await prisma.travelAlertDelivery.create({ data: { carTrackerId: row.id, eventKey: `revision-test-${row.id}`, message: { title: 'Test notification' } } });
+    expect((await editAt(0, 'Late retry')).status).toBe(412);
+    const deletion = request(undefined, 'DELETE'); deletion.headers.set('X-Car-Revision', '1');
+    expect((await remove(deletion, context(row.id))).status).toBe(412);
+    expect(await prisma.travelJob.findMany({ where: { carRun: { trackerId: row.id }, status: 'queued' } })).toEqual(queued);
+    expect(await prisma.travelAlertDelivery.findUniqueOrThrow({ where: { id: alert.id } })).toEqual(alert);
+    expect((await prisma.carTracker.findUniqueOrThrow({ where: { id: row.id } })).label).toBe('Newer intentional state');
+  });
+  it.each(['-1', '1.5', '01', '2147483648', '1,2', '"1"', 'NaN'])('rejects malformed revision header %s without changing the tracker', async value => {
+    const row = await tracker(), update = request({ active: false }, 'PATCH'); update.headers.set('X-Car-Revision', value);
+    expect((await edit(update, context(row.id))).status).toBe(400);
+    const deletion = request(undefined, 'DELETE'); deletion.headers.set('X-Car-Revision', value);
+    expect((await remove(deletion, context(row.id))).status).toBe(400);
+    expect(await prisma.carTracker.findUniqueOrThrow({ where: { id: row.id } })).toMatchObject({ active: true, revision: 0 });
+  });
   it('preserves owned search visibility across tracker reassignment without exposing the tracker', async () => {
     const row = await tracker(), run = await prisma.carSearchRun.findFirstOrThrow({ where: { trackerId: row.id } });
     await prisma.user.update({ where: { id: owner }, data: { isAdmin: true } });
@@ -132,6 +199,8 @@ describe.skipIf(process.env.CAR_HTTP_INTEGRATION_TESTS !== '1')('car HTTP owners
     await prisma.user.update({ where: { id: owner }, data: { isAdmin: false } });
     expect((await detail(request(), context(row.id))).status).toBe(404);
     expect((await status(request(), context(run.id))).status).toBe(200);
+    const retry = request({ label: 'Late owner request' }, 'PATCH'); retry.headers.set('X-Car-Revision', '0');
+    expect((await edit(retry, context(row.id))).status).toBe(404);
     boundary.token = createUserSessionToken(other);
     expect((await detail(request(), context(row.id))).status).toBe(200);
     expect((await status(request(), context(run.id))).status).toBe(404);

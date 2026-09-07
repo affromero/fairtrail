@@ -6,9 +6,10 @@ import { assertCarOwner, type CarActor } from './access';
 import { carInteger, carRecord, carText, validateCarOptions, validateCarSearch } from './validation';
 import { validateCarOffer } from './offer-validation';
 import { assessCarPrice } from './pricing';
-import { carContractHash, carTrackerSearch, validateCarSelection } from './selection';
-import { CarError, type CarContractSelection, type CarSearch } from './types';
+import { carContractHash, carTrackerSearch } from './selection';
+import { CarError, type CarSearch } from './types';
 import { carCreationIntent } from './creation';
+import { validateCarTrackerView } from './tracker-view';
 
 export const carJson = (value: unknown): Prisma.InputJsonValue => JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
 
@@ -19,17 +20,13 @@ export function carMinorNumber(value: bigint | null): number | null {
 }
 
 export function carTrackerDto(row: CarTracker) {
-  const search = validateCarSearch(row.search, row.createdAt);
-  if (search.currency !== row.currency) throw new CarError('Stored rental currency does not match its search', 500);
-  const options = validateCarOptions({ mode: row.mode, target: row.targetMinor === null ? null : { currency: row.currency, minor: carMinorNumber(row.targetMinor) }, notifyLows: row.notifyLows, scrapeInterval: row.scrapeInterval }, row.currency);
-  const selection = row.selection === null ? null : validateCarSelection(carRecord(row.selection) as unknown as CarContractSelection);
-  if ((row.mode === 'contract') !== Boolean(selection) || (selection && !search.sources.includes(selection.source))) throw new CarError('Stored rental selection does not match its tracking mode', 500);
-  return {
-    id: row.id, userId: row.userId, label: row.label, search, selection, options, active: row.active, revision: row.revision,
+  return validateCarTrackerView({
+    id: row.id, userId: row.userId, label: row.label, search: row.search, selection: row.selection,
+    options: { mode: row.mode, target: row.targetMinor === null ? null : { currency: row.currency, minor: carMinorNumber(row.targetMinor) }, notifyLows: row.notifyLows, scrapeInterval: row.scrapeInterval }, active: row.active, revision: row.revision,
     latestPriceMinor: carMinorNumber(row.latestPriceMinor), historicalLowMinor: carMinorNumber(row.historicalLowMinor), currency: row.currency,
     createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString(), lastCheckedAt: row.lastCheckedAt?.toISOString() ?? null,
     nextCheckAt: row.nextCheckAt.toISOString(), lastError: row.lastError,
-  };
+  });
 }
 
 export async function lockCarTracker(tx: Prisma.TransactionClient, id: string, actor: CarActor): Promise<CarTracker> {
@@ -132,7 +129,7 @@ async function cancelTrackerWork(tx: Prisma.TransactionClient, id: string, reaso
   await tx.travelAlertDelivery.updateMany({ where: { carTrackerId: id, pending: true }, data: { pending: false, lastError: reason } });
 }
 
-export async function editCarTracker(id: string, raw: unknown, actor: CarActor) {
+export async function editCarTracker(id: string, raw: unknown, actor: CarActor, expectedRevision?: number) {
   const input = carRecord(raw);
   const allowed = ['active', 'target', 'notifyLows', 'scrapeInterval', 'userId', 'label'];
   if (!Object.keys(input).length || Object.keys(input).some(key => !allowed.includes(key))) throw new CarError('Unsupported update; create a new tracker to change rental criteria');
@@ -140,6 +137,7 @@ export async function editCarTracker(id: string, raw: unknown, actor: CarActor) 
   if (input.userId !== undefined && !actor.isAdmin) throw new CarError('Only administrators can reassign car trackers', 403);
   return prisma.$transaction(async tx => {
     const tracker = await lockCarTracker(tx, id, actor);
+    assertCarRevision(tracker, expectedRevision);
     const previous = carTrackerDto(tracker);
     const options = validateCarOptions({ ...previous.options, ...input }, tracker.currency);
     const userId = input.userId === undefined ? tracker.userId : carText(input.userId, 200, 'tracker owner');
@@ -167,9 +165,16 @@ export async function cancelCarSearch(id: string, actor: CarActor) {
   });
 }
 
-export async function deleteCarTracker(id: string, actor: CarActor): Promise<void> {
+function assertCarRevision(tracker: CarTracker, expectedRevision: number | undefined) {
+  if (expectedRevision === undefined) return;
+  carInteger(expectedRevision, 0, 2147483647, 'Tracker revision');
+  if (tracker.revision !== expectedRevision) throw new CarError('Rental settings changed; refresh before trying this action again', 412);
+}
+
+export async function deleteCarTracker(id: string, actor: CarActor, expectedRevision?: number): Promise<void> {
   await prisma.$transaction(async tx => {
-    await lockCarTracker(tx, id, actor);
+    const tracker = await lockCarTracker(tx, id, actor);
+    assertCarRevision(tracker, expectedRevision);
     await cancelTrackerWork(tx, id, 'Car tracker deleted');
     await tx.carTracker.delete({ where: { id } });
   });

@@ -1,16 +1,12 @@
 import { createHash } from 'node:crypto';
-import { carContractIdentity } from './identity';
+import { carContractIdentity, validateCarSelection } from './identity';
 import { assessCarPrice, type CarPriceAssessment } from './pricing';
-import { CAR_SOURCES, CarError, type CarContractSelection, type CarOffer, type CarSearch, type CarSearchReport } from './types';
+import { CarError, type CarContractSelection, type CarOffer, type CarSearch, type CarSearchReport } from './types';
+export { validateCarSelection } from './identity';
 
 /** Server-side stable identity; never uses a provider's expiring session URL. */
 export function carContractHash(contract: unknown): string {
   return createHash('sha256').update(carContractIdentity(contract)).digest('hex');
-}
-
-export function validateCarSelection(value: CarContractSelection): CarContractSelection {
-  if (!value || !CAR_SOURCES.includes(value.source) || typeof value.contractHash !== 'string' || !/^[a-f0-9]{64}$/.test(value.contractHash)) throw new CarError('Invalid selected rental contract');
-  return { source: value.source, contractHash: value.contractHash };
 }
 
 /** A discovery ceiling must not hide later above-target observations from alerts. */

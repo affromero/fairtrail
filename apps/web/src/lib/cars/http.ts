@@ -2,8 +2,16 @@ import { apiError } from '../api-response';
 import { TravelJobError } from '../travel/jobs';
 import { carActor, type CarActor } from './access';
 import { CarError } from './types';
+import { carInteger } from './validation';
 
 const MAX_BODY_BYTES = 64 * 1024;
+
+export function carRevisionPrecondition(request: Request): number | undefined {
+  const value = request.headers.get('X-Car-Revision');
+  if (value === null) return undefined;
+  if (!/^(?:0|[1-9]\d{0,9})$/.test(value)) throw new CarError('X-Car-Revision must contain a nonnegative tracker revision');
+  return carInteger(Number(value), 0, 2147483647, 'Tracker revision');
+}
 
 export async function readCarJson(request: Request): Promise<unknown> {
   if (request.headers.get('content-type')?.split(';')[0]?.trim().toLowerCase() !== 'application/json') throw new CarError('Send an application/json request', 415);

@@ -1,5 +1,12 @@
-import type { CarContract, CarDriver, CarLocalTime, CarSearch } from './types';
+import { CAR_SOURCES, CarError, type CarContractSelection, type CarContract, type CarDriver, type CarLocalTime, type CarSearch } from './types';
 import { validateCarContract } from './offer-validation';
+import { carRecord } from './validation';
+
+export function validateCarSelection(raw: unknown): CarContractSelection {
+  const value = carRecord(raw), source = CAR_SOURCES.find(source => source === value.source);
+  if (!source || typeof value.contractHash !== 'string' || !/^[a-f0-9]{64}$/.test(value.contractHash)) throw new CarError('Invalid selected rental contract');
+  return { source, contractHash: value.contractHash };
+}
 
 const driverKey = (driver: CarDriver) => [driver.age, driver.licenceYears, driver.residenceCountry];
 const timeKey = (time: CarLocalTime) => [time.date, time.time, time.timeZone, time.instant];
