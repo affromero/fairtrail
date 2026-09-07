@@ -1,6 +1,6 @@
 import type { Browser, BrowserContext } from 'playwright';
 import type { CountryProfile } from './country-profiles';
-import { currentTravelExecution } from '@/lib/travel/execution';
+import { currentTravelExecution } from '../travel/execution';
 
 // Chrome-only user agents — Google blocks non-Chrome heavily
 const USER_AGENTS = [

@@ -4,7 +4,8 @@ import { validateCarOffer } from './offer-validation';
 import { parseCarMoney, sumCarMoney } from './money';
 import { carContractIdentity } from './identity';
 import { validateCarSearch } from './validation';
-import type { CarEvidence, CarOffer, CarSearch } from './types';
+import { carRequirementTerms } from './requirements';
+import type { CarEvidence, CarOffer, CarRequirement, CarSearch } from './types';
 
 const evidence = <T>(value: T): CarEvidence<T> => ({ value, status: 'confirmed', text: 'Provider rental detail', sourceUrl: 'https://www.discovercars.com/offer/example', observedAt: '2026-09-06T12:00:00Z' });
 const money = (minor: number) => ({ currency: 'USD', minor });
@@ -18,6 +19,7 @@ const search = validateCarSearch({
 }, new Date('2026-09-01'));
 
 function offer(): CarOffer {
+  const requirements: CarRequirement[] = [{ kind: 'physical_licence', appliesTo: 'all_drivers', condition: 'At pickup', evidence: evidence('Present the original valid driving licence') }];
   return {
     id: 'observation-1', supplier: 'Example supplier', observedAt: '2026-09-06T12:00:00Z', bookingUrl: 'https://www.discovercars.com/offer/session-1',
     contract: {
@@ -25,9 +27,11 @@ function offer(): CarOffer {
       pickupAt: search.pickupAt, dropoffAt: search.dropoffAt, driver: search.driver, additionalDrivers: search.extras.additionalDrivers, currency: 'USD',
       vehicleClass: 'mini', transmission: 'manual', seats: 4, model: 'Fiat 500', modelGuaranteed: false,
       fuelPolicy: 'full_to_full', mileagePolicy: 'unlimited', cancellationPolicy: 'free_until_48h', coverageProductIds: ['third-party', 'full-coverage'], coverageTerms: 'Provider reimbursement; excess USD 1500; excludes lost keys.',
+      rentalRequirements: carRequirementTerms(requirements),
       extras: [{ kind: 'child_seat', category: 'child', quantity: 2, productId: 'child-9-18kg' }, { kind: 'additional_driver', category: null, quantity: 1, productId: 'driver' }, { kind: 'protection', category: null, quantity: 1, productId: 'full-coverage' }],
     },
     available: evidence(true), requestVerified: evidence(true), driverEligible: evidence(true), mandatoryChargesComplete: evidence(true), taxesIncluded: evidence(true), unlimitedMileage: evidence(true), freeCancellation: evidence(true),
+    requirements, requirementsComplete: evidence(true),
     total: evidence(money(71000)),
     charges: [
       { id: 'prepay', label: 'Prepayment', kind: 'rental', payment: 'now', amount: evidence(money(200)) },
@@ -60,6 +64,20 @@ describe('exact rental amounts', () => {
 });
 
 describe('confirmed all-in rental totals', () => {
+  it('preserves customer document requirements without claiming they have been verified', () => {
+    const quote = offer();
+    quote.requirements.push({ kind: 'flight_ticket', appliesTo: 'rental', condition: 'Airport pickup', evidence: evidence('Present a return flight ticket') });
+    quote.contract.rentalRequirements = carRequirementTerms(quote.requirements);
+    expect(validateCarOffer(quote).requirements).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: 'flight_ticket', appliesTo: 'rental', evidence: expect.objectContaining({ value: 'Present a return flight ticket', status: 'confirmed' }) }),
+    ]));
+    quote.requirementsComplete = { ...evidence(true), value: null, status: 'unknown' };
+    expect(assessCarPrice(quote, search)).toMatchObject({ eligible: false, reasons: [expect.stringMatching(/supplier requirements/)] });
+  });
+  it('excludes a quote whose supplier restrictions are uncertain despite a complete summary', () => {
+    const quote = offer(); quote.requirements[0]!.evidence.status = 'unknown';
+    expect(assessCarPrice(quote, search)).toMatchObject({ eligible: false, reasons: [expect.stringMatching(/conditions/)] });
+  });
   it('reconciles one-way, young-driver and selected extras without adding deposits, excess or included extras', () => {
     expect(assessCarPrice(offer(), search)).toEqual({ eligible: true, reasons: [], total: money(71000), payNow: money(8200), payAtPickup: money(62800) });
   });

@@ -14,7 +14,7 @@ export function carContractIdentity(raw: unknown): string {
     contract.currency, contract.vehicleClass, contract.transmission, contract.seats,
     contract.modelGuaranteed, contract.modelGuaranteed ? contract.model : null,
     contract.fuelPolicy, contract.mileagePolicy, contract.cancellationPolicy,
-    [...contract.coverageProductIds].sort(), contract.coverageTerms,
+    [...contract.coverageProductIds].sort(), contract.coverageTerms, contract.rentalRequirements,
     contract.extras.map(e => JSON.stringify([e.kind, e.productId, e.category, e.quantity])).sort(),
   ]);
 }

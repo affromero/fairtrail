@@ -69,6 +69,13 @@ export interface CarExtraQuote {
   included: CarEvidence<boolean>;
   chargeId: string | null;
 }
+export const CAR_REQUIREMENT_KINDS = ['flight_ticket', 'physical_licence', 'international_permit', 'payment_card', 'address_proof', 'additional_driver', 'other'] as const;
+export interface CarRequirement {
+  kind: typeof CAR_REQUIREMENT_KINDS[number];
+  appliesTo: 'main_driver' | 'all_drivers' | 'rental';
+  condition: string;
+  evidence: CarEvidence<string>;
+}
 export interface CarContract {
   source: CarSource;
   supplierId: string;
@@ -91,6 +98,7 @@ export interface CarContract {
   cancellationPolicy: string;
   coverageProductIds: string[];
   coverageTerms: string;
+  rentalRequirements: string;
   extras: { kind: CarExtraQuote['kind']; productId: string; quantity: number; category: ChildSeatCategory | null }[];
 }
 export interface CarOffer {
@@ -101,7 +109,10 @@ export interface CarOffer {
   observedAt: string;
   available: CarEvidence<boolean>;
   requestVerified: CarEvidence<boolean>;
+  /** Age/licence tenure only; documents and supplier restrictions remain separate. */
   driverEligible: CarEvidence<boolean>;
+  requirements: CarRequirement[];
+  requirementsComplete: CarEvidence<boolean>;
   mandatoryChargesComplete: CarEvidence<boolean>;
   taxesIncluded: CarEvidence<boolean>;
   unlimitedMileage: CarEvidence<boolean>;
@@ -111,6 +122,24 @@ export interface CarOffer {
   deposit: CarEvidence<CarMoney>;
   excess: CarEvidence<CarMoney>;
   extras: CarExtraQuote[];
+}
+/** Partial observations are displayable but never valid contracts or alert prices. */
+export interface CarCandidate {
+  source: CarSource;
+  supplier: string | null;
+  model: string | null;
+  bookingUrl: string;
+  observedAt: string;
+  advertisedTotal: CarEvidence<CarMoney> | null;
+  requirements: CarRequirement[];
+  reasons: string[];
+}
+export interface CarSearchResult {
+  offers: CarOffer[];
+  candidates: CarCandidate[];
+  errors: { source: CarSource; message: string }[];
+  completed: number;
+  total: number;
 }
 export interface CarTrackingOptions {
   mode: 'best' | 'contract';

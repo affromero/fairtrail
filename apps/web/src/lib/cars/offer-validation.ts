@@ -1,6 +1,7 @@
-import { CAR_SOURCES, CHILD_SEAT_CATEGORIES, CarError, type CarCharge, type CarContract, type CarEvidence, type CarExtraQuote, type CarOffer, type CarSource } from './types';
+import { CAR_SOURCES, CAR_REQUIREMENT_KINDS, CHILD_SEAT_CATEGORIES, CarError, type CarCharge, type CarContract, type CarEvidence, type CarExtraQuote, type CarOffer, type CarRequirement, type CarSource } from './types';
 import { carInteger, carRecord, carText, resolveCarLocalTime, validateCarDriver } from './validation';
 import { currencyPrecision, validateCarMoney } from './money';
+import { carRequirementTerms } from './requirements';
 
 const PROVIDER_HOSTS: Record<CarSource, string> = { discovercars: 'www.discovercars.com', autoeurope: 'book.autoeurope.com' };
 export function carProviderUrl(raw: unknown, source: CarSource): string {
@@ -59,7 +60,7 @@ export function validateCarContract(raw: unknown): CarContract {
     vehicleClass: carText(r.vehicleClass, 100, 'vehicle class'), transmission: r.transmission, seats: carInteger(r.seats, 2, 9, 'Vehicle seats'),
     model: carText(r.model, 200, 'vehicle model'), modelGuaranteed: boolean(r.modelGuaranteed), fuelPolicy: carText(r.fuelPolicy, 500, 'fuel policy'),
     mileagePolicy: carText(r.mileagePolicy, 500, 'mileage policy'), cancellationPolicy: carText(r.cancellationPolicy, 500, 'cancellation policy'),
-    coverageProductIds, coverageTerms: carText(r.coverageTerms, 12000, 'coverage terms'), extras: list(r.extras, 8, 'contract extras').map(extraIdentity),
+    coverageProductIds, coverageTerms: carText(r.coverageTerms, 12000, 'coverage terms'), rentalRequirements: carText(r.rentalRequirements, 100000, 'rental requirements'), extras: list(r.extras, 8, 'contract extras').map(extraIdentity),
   };
 }
 export function validateCarOffer(raw: unknown, now = new Date()): CarOffer {
@@ -82,9 +83,17 @@ export function validateCarOffer(raw: unknown, now = new Date()): CarOffer {
   const quotedIdentities = identities(extras);
   if (new Set(quotedIdentities).size !== quotedIdentities.length || JSON.stringify(identities(contract.extras)) !== JSON.stringify(quotedIdentities)) throw new CarError('Quoted extras disagree with the rental contract');
   if (extras.some(e => e.kind === 'protection' && !contract.coverageProductIds.includes(e.productId))) throw new CarError('Quoted protection disagrees with contract coverage');
+  const requirements: CarRequirement[] = list(r.requirements, 30, 'supplier requirements').map(rawRequirement => {
+    const item = carRecord(rawRequirement);
+    const kind = CAR_REQUIREMENT_KINDS.find(value => value === item.kind);
+    if (!kind || (item.appliesTo !== 'main_driver' && item.appliesTo !== 'all_drivers' && item.appliesTo !== 'rental')) throw new CarError('Invalid supplier requirement');
+    return { kind, appliesTo: item.appliesTo, condition: carText(item.condition, 1000, 'requirement applicability'), evidence: proof(item.evidence, value => carText(value, 12000, 'supplier requirement')) };
+  });
+  if (contract.rentalRequirements !== carRequirementTerms(requirements)) throw new CarError('Supplier requirements disagree with the rental contract');
   return {
     id: carText(r.id, 200, 'offer ID'), supplier: carText(r.supplier, 200, 'supplier'), contract, bookingUrl: carProviderUrl(r.bookingUrl, contract.source), observedAt,
     available: proof(r.available, boolean), requestVerified: proof(r.requestVerified, boolean), driverEligible: proof(r.driverEligible, boolean),
+    requirements, requirementsComplete: proof(r.requirementsComplete, boolean),
     mandatoryChargesComplete: proof(r.mandatoryChargesComplete, boolean), taxesIncluded: proof(r.taxesIncluded, boolean),
     unlimitedMileage: proof(r.unlimitedMileage, boolean), freeCancellation: proof(r.freeCancellation, boolean),
     total: proof(r.total, monetary), charges, deposit: proof(r.deposit, monetary), excess: proof(r.excess, monetary), extras,

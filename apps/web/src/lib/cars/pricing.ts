@@ -26,11 +26,12 @@ export function assessCarPrice(raw: unknown, search: CarSearch, now = new Date()
   if (!carContractMatchesSearch(offer.contract, search)) reasons.push('Rental contract does not match the requested locations, times or driver details');
   for (const [name, evidence] of [
     ['availability', offer.available], ['search details', offer.requestVerified],
-    ['driver eligibility', offer.driverEligible], ['mandatory fees', offer.mandatoryChargesComplete],
+    ['driver age and licence eligibility', offer.driverEligible], ['supplier requirements', offer.requirementsComplete], ['mandatory fees', offer.mandatoryChargesComplete],
     ['included taxes', offer.taxesIncluded],
   ] as const) {
     if (!confirmedCarEvidence(evidence) || evidence.value !== true) reasons.push(`Unconfirmed ${name}`);
   }
+  if (offer.requirements.some(requirement => !confirmedCarEvidence(requirement.evidence))) reasons.push('Supplier rental conditions could not be verified');
   let total: CarMoney | null = null, payNow: CarMoney | null = null, payAtPickup: CarMoney | null = null;
   try {
     if (!confirmedCarEvidence(offer.total)) throw new CarError('Unconfirmed rental total');
