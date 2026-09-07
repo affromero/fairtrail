@@ -414,7 +414,7 @@ returns 404. Administrators can manage other accounts' records, but their normal
 collection list remains personal. In single-user mode, the collection includes
 the instance's car trackers.
 
-Every car response sets `Cache-Control: private, no-store` and uses the `ok`/`data`
+Every private car response sets `Cache-Control: private, no-store` and uses the `ok`/`data`
 or `ok`/`error` envelope described above. JSON writes require
 `Content-Type: application/json`; request bodies are limited to 64 KiB and a
 five-second read deadline. The browser pages `/cars`, `/cars/:id`, and
@@ -428,6 +428,9 @@ five-second read deadline. The browser pages `/cars`, `/cars/:id`, and
 | `PATCH /api/cars/:id` | `{ tracker }` after saving supported settings |
 | `DELETE /api/cars/:id` | `{ id, deleted: true }` after deleting the tracker and its history |
 | `POST /api/cars/:id/scrape` | HTTP 202 with `{ id, status }` for a queued or already-active check |
+| `GET /api/cars/locations?q=LHR` | Up to 12 catalog suggestions with `id`, `version`, country, region and timezone; no provider requests |
+| `POST /api/cars/search` | HTTP 202 with `{ id, status, creationKey }`; requires a UUID v4 `Idempotency-Key` |
+| `GET /api/cars/search?cursor=...` | `{ searches, nextCursor }`; 25 caller-scoped standalone search summaries per page |
 | `GET /api/cars/search/:id` | `{ id, trackerId, status, createdAt, completedAt, error, search, result }` |
 | `DELETE /api/cars/search/:id` | `{ id, status }`; completed searches retain their terminal status |
 
@@ -439,6 +442,59 @@ Do not reuse a cursor for a different account or listing mode. Administrators
 request all accounts with `admin=true` on every page; other accounts receive 403.
 Malformed cursors and page sizes return 400. Ownership is checked independently
 of the cursor.
+
+#### Start an independent rental search
+
+Select pickup and return from `/api/cars/locations`. Send only their `id` and
+`version`, and local `date`/`time` pairs. Country, timezone, UTC instants and
+provider location identifiers are server-managed. A search needs no flight or
+hotel tracker. Example body, replacing the catalog version and future dates:
+
+```json
+{
+  "pickup": { "id": "ourairports:2434", "version": "<version from suggestions>" },
+  "dropoff": { "id": "ourairports:2434", "version": "<version from suggestions>" },
+  "pickupAt": { "date": "2027-01-15", "time": "11:00" },
+  "dropoffAt": { "date": "2027-01-18", "time": "11:00" },
+  "driver": { "age": 35, "licenceYears": 5, "residenceCountry": "GB" },
+  "currency": "GBP",
+  "sources": ["discovercars", "autoeurope"]
+}
+```
+
+Optional `extras` contain categorized `childSeats` and complete
+`additionalDrivers`. Arbitrary protection product identifiers are rejected.
+Optional `filters` contain `transmission`, `minSeats`, `unlimitedMileage`,
+`freeCancellation`, and a currency-specific `maxTotal` in integer minor units.
+Driver age, licence tenure and residence must be explicit. Ambiguous or missing
+local times are rejected; different pickup and return timezones are supported.
+
+Creation commits the search and shared travel job atomically, before contacting
+providers. Resolution and price checks share the same admission, cancellation,
+deadline and browser cleanup. Airports require an exact code, country and type;
+ambiguous city matches fail visibly without choosing a nearby station. One
+provider's failure does not discard a verified sibling result. Provider IDs may
+appear in status responses as resolution progresses; the catalog intent stays
+fixed. Catalog version changes require reselection, never silent timezone changes.
+
+Persist the request body and UUID before sending. Retry the same body and key
+after a lost acknowledgement, including after cancellation or completion. Keys
+are scoped to the caller; different criteria with the same key return 409.
+Receipts survive search deletion and return 410 without creating another job.
+They are retained for the account lifetime, or indefinitely in single-user mode.
+The browser preserves pending requests in session storage and locks new searches
+until the original result is recovered.
+
+The recent-search list provides read-only recovery links and pagination. An
+unreadable browser record is never silently replaced. If retrying storage does
+not recover it, the user can explicitly confirm discarding that local record.
+This does not cancel an earlier in-flight search; starting another may duplicate
+provider checks, but cannot create trackers, change alerts or book a rental.
+
+Location searches accept at most 100 characters and perform no live autocomplete
+requests. `/cars/location-data` publishes attribution and the public
+`/api/cars/location-data` download supplies the licensed, gzip-compressed NDJSON
+catalog. Neither endpoint exposes private searches or provider sessions.
 
 #### Create a rental tracker safely
 

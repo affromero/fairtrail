@@ -18,6 +18,7 @@ export interface CarLocation {
   timeZone: string;
   providerIds: Partial<Record<CarSource, string>>;
   providerNames?: Partial<Record<CarSource, string>>;
+  catalog?: { id: string; version: string };
 }
 export interface CarDriver { age: number; licenceYears: number; residenceCountry: string }
 export interface CarExtras {

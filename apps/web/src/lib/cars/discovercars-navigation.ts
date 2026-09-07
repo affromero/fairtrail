@@ -12,7 +12,7 @@ async function selectOption(control: Locator, label: string): Promise<void> {
   await option.click();
 }
 
-function residenceName(code: string): string {
+export function discoverCarsCountryName(code: string): string {
   const names: Record<string, string> = { US: 'United States of America (USA)', CZ: 'Czech Republic', RU: 'Russian Federation', TR: 'Turkey', SZ: 'Swaziland', VA: 'Vatican', VN: 'Vietnam', LA: "Lao People's Democratic Republic", KR: 'South Korea', KP: 'North Korea', CD: 'Congo, Democratic Republic of', PS: 'Palestine, State of' };
   return names[code] ?? new Intl.DisplayNames(['en'], { type: 'region' }).of(code) ?? code;
 }
@@ -74,7 +74,7 @@ export async function fillDiscoverCarsSearch(page: Page, search: CarSearch): Pro
     await guard.settle();
     if ((await currencyTrigger.innerText()).trim() !== search.currency) throw new CarError('DiscoverCars changed the requested currency');
   }
-  await selectOption(page.locator('#sb-country'), residenceName(search.driver.residenceCountry));
+  await selectOption(page.locator('#sb-country'), discoverCarsCountryName(search.driver.residenceCountry));
   await selectOption(page.locator('#sb-age'), age === 35 ? '30-65' : age === 80 ? '80+' : String(age));
   const sameLocation = search.pickup.providerIds.discovercars === search.dropoff.providerIds.discovercars;
   const same = page.locator('input[name="IsSameLocation"]');

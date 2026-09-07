@@ -65,7 +65,7 @@ export function useCarCreation(actorScope: string, searchId: string) {
       update({ ...initial, phase: 'created', trackerId });
     } catch (error) {
       if (active !== generation.current) return;
-      const rejected = !aborter.signal.aborted && error instanceof TravelResponseError && [400, 401, 403, 404, 409, 410, 413, 415, 429].includes(error.status);
+      const rejected = !aborter.signal.aborted && error instanceof TravelResponseError && error.definitive && [400, 401, 403, 404, 409, 410, 413, 415, 429].includes(error.status);
       if (!rejected || recovering) { update({ ...initial, phase: 'uncertain', pending, error: rejected ? error.message : '' }); return; }
       try { sessionStorage.removeItem(storageKey); }
       catch { update({ ...initial, phase: 'storage_error', pending }); return; }

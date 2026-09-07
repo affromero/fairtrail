@@ -7,10 +7,12 @@ import { validateCarSearch } from './validation';
 import { assessCarPrice } from './pricing';
 import { prisma } from '@/lib/prisma';
 import { acquireTravelLease, claimTravelJob, releaseTravelLease, type TravelLeaseToken } from '../travel/jobs';
-import { cancelCarSearch, createCarSearch, createCarTracker, editCarTracker } from './store';
+import { cancelCarSearch, createCarSearch, createCarCatalogSearch, createCarTracker, editCarTracker } from './store';
 import { executeCarJob } from './run';
 import type { CarActor } from './access';
 import { executeTravelJob } from '../travel/coordinator';
+import { getCarCatalogPlace } from './locations';
+import { getCarRunView } from './views';
 
 const transport = vi.hoisted(() => ({ origin: '', browsers: [] as Browser[], failClose: false, beforeRequest: null as ((url: URL) => Promise<void>) | null }));
 vi.mock('playwright', async importOriginal => {
@@ -92,7 +94,7 @@ function homepage(): string {
       <span>US Dollar</span><span>USD</span>
     </button></div>
     <input id="drivers_age_checkbox" type="checkbox"><input id="drivers_age" value="35">
-    <input id="pickup_location"><input type="hidden" name="pickup_location" value="547"><input id="dropoff_location"><input type="hidden" name="dropoff_location" value="547">
+    <input id="pickup_location" oninput="if(this.value)fetch('/en-us/locations/search?query_filter='+encodeURIComponent(this.value))"><input type="hidden" name="pickup_location" value="547"><input id="dropoff_location"><input type="hidden" name="dropoff_location" value="547">
     <button type="button" aria-label="Pickup date">Choose dates</button><button type="button" aria-label="Thu Oct 15, 2026">15</button><button type="button" aria-label="Sun Oct 18, 2026">18</button>
     <input name="pickup_time_input"><button type="button" data-cy="pickup_time_field_option">12:00</button><input name="dropoff_time_input"><button type="button" data-cy="dropoff_time_field_option">12:00</button>
     <button type="button" onclick="location.href='${routeUrl('results')}'">Find Your Car</button></form>`;
@@ -116,6 +118,10 @@ describe.skipIf(process.env.TRAVEL_BROWSER_TESTS !== '1')('bounded rental provid
         return;
       }
       if (url.pathname.startsWith('/www.discovercars.com')) { response.writeHead(403); response.end('Access denied'); return; }
+      if (url.pathname.endsWith('/locations/search')) {
+        response.setHeader('content-type', 'application/json');
+        response.end(JSON.stringify({ data: [{ locations: [{ location_id: 547, location_type_id: 1, name: 'London Heathrow Airport', city_name: 'London', country_code: 'GB', code: 'LHR' }] }] })); return;
+      }
       const reference = url.searchParams.get('rate_reference');
       if (reference === 'broken') { response.writeHead(404); response.end('Quote no longer found'); return; }
       if (reference === 'blocked') { response.writeHead(429); response.end('Provider rate limit'); return; }
@@ -239,7 +245,7 @@ describe.skipIf(process.env.TRAVEL_BROWSER_TESTS !== '1')('bounded rental provid
     expect(transport.browsers.every(browser => !browser.isConnected())).toBe(true);
   }, 30_000);
 
-  async function queued(acquire = true) {
+  async function queued(acquire = true, catalog = false) {
     const url = new URL(process.env.DATABASE_URL ?? 'http://invalid');
     if (url.hostname !== '127.0.0.1' || url.port !== '55440' || url.pathname !== '/car_test') throw new Error('Car execution tests require disposable localhost:55440/car_test');
     actor = { userId: (await prisma.user.create({ data: { username: `car-browser-${crypto.randomUUID()}` } })).id, isAdmin: false };
@@ -247,7 +253,9 @@ describe.skipIf(process.env.TRAVEL_BROWSER_TESTS !== '1')('bounded rental provid
       lease = await acquireTravelLease('browser');
       if (!lease) throw new Error('Expected isolated browser lease');
     }
-    return createCarSearch(criteria(), actor);
+    if (!catalog) return createCarSearch(criteria(), actor);
+    const place = await getCarCatalogPlace('ourairports:2434'), search = criteria();
+    return createCarCatalogSearch({ pickup: { id: place.id, version: place.version }, dropoff: { id: place.id, version: place.version }, pickupAt: { date: search.pickupAt.date, time: search.pickupAt.time }, dropoffAt: { date: search.dropoffAt.date, time: search.dropoffAt.time }, driver: search.driver, currency: search.currency, sources: ['discovercars', 'autoeurope'] }, actor, crypto.randomUUID());
   }
   async function execute(runId: string) {
     const job = await prisma.travelJob.findUniqueOrThrow({ where: { carRunId: runId } });
@@ -256,6 +264,32 @@ describe.skipIf(process.env.TRAVEL_BROWSER_TESTS !== '1')('bounded rental provid
     return { execution, work: () => withTravelExecution(execution, () => executeCarJob(job.id, lease!)) };
   }
   const databaseTest = it.skipIf(process.env.CAR_RUN_INTEGRATION_TESTS !== '1');
+
+  databaseTest('resolves queued catalog intent and retains a verified sibling when one provider blocks location lookup', async () => {
+    const first = await queued(false, true), job = await prisma.travelJob.findUniqueOrThrow({ where: { carRunId: first.id } });
+    expect((await getCarRunView(first.id, actor!)).search.pickup.providerIds).toEqual({});
+    expect(await executeTravelJob(job.id)).toBe(true);
+    const view = await getCarRunView(first.id, actor!);
+    expect(view).toMatchObject({ status: 'partial', search: { pickup: { providerIds: { autoeurope: '547' } } }, result: { offers: [expect.objectContaining({ supplier: 'Example supplier' })], providers: [{ source: 'discovercars', status: 'blocked' }, { source: 'autoeurope', status: 'complete' }] } });
+    const tracker = await createCarTracker({ searchId: first.id, offerId: view.result!.offers[0]!.id }, actor!);
+    expect(tracker.search).toMatchObject({ sources: ['discovercars', 'autoeurope'], pickup: { catalog: view.search.pickup.catalog } });
+    expect(transport.browsers.every(browser => !browser.isConnected())).toBe(true);
+  }, 45_000);
+
+  databaseTest('rejects provider location writes after cancellation during autocomplete', async () => {
+    const first = await queued(true, true), active = await execute(first.id);
+    transport.beforeRequest = async url => {
+      if (!url.pathname.endsWith('/locations/search')) return;
+      transport.beforeRequest = null;
+      await cancelCarSearch(first.id, actor!);
+      active.execution.abort(new Error('Cancelled during location lookup'));
+    };
+    await expect(active.work()).rejects.toMatchObject({ name: CarSearchInterruptedError.name });
+    const view = await getCarRunView(first.id, actor!);
+    expect(view).toMatchObject({ status: 'cancelled', search: { pickup: { providerIds: {} } } });
+    expect(requested.some(path => path.includes('/results'))).toBe(false);
+    expect(transport.browsers.every(browser => !browser.isConnected())).toBe(true);
+  }, 45_000);
 
   databaseTest('dispatches discovery and a tracked refresh through the production shared coordinator', async () => {
     const first = await queued(false);

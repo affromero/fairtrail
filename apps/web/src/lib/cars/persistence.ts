@@ -7,7 +7,8 @@ import { validateCarReport } from './report';
 import { assessCarPrice } from './pricing';
 import { carContractHash, carTrackerSearch, selectCarObservation } from './selection';
 import { carAlertMessage, evaluateCarAlerts } from './alerts';
-import { CarError, type CarContractSelection, type CarSearchReport, type CarSource } from './types';
+import { CarError, type CarContractSelection, type CarSearch, type CarSearchReport, type CarSource } from './types';
+import { currentTravelExecution } from '../travel/execution';
 
 interface CarRunContext { run: CarSearchRun; tracker: CarTracker | null; selection: CarContractSelection | null; sources: CarSource[] }
 
@@ -21,7 +22,7 @@ async function context(tx: Prisma.TransactionClient, job: TravelJob): Promise<Ca
   if (run.userId !== job.userId || run.trackerId !== source.trackerId || !['queued', 'running'].includes(run.status)) throw new TravelJobError('Car search was cancelled, completed or reassigned');
   if (tracker && (!tracker.active || tracker.revision !== run.trackerRevision)) throw new TravelJobError('Car tracker revision changed or tracking was paused');
   if (!tracker && run.trackerRevision !== null) throw new TravelJobError('Standalone car search has an invalid tracker revision');
-  const search = validateCarSearch(run.request, run.createdAt);
+  const search = validateCarSearch(run.request, run.createdAt, { allowUnresolvedProviders: true });
   const selection = tracker ? carTrackerDto(tracker).selection : null;
   return { run, tracker, selection, sources: selection ? [selection.source] : search.sources };
 }
@@ -30,10 +31,30 @@ export async function startCarRun(jobId: string, lease: TravelLeaseToken): Promi
   return prisma.$transaction(async tx => {
     const job = await guardTravelJob(tx, jobId, lease);
     const current = await context(tx, job);
-    validateCarSearch(current.run.request);
+    validateCarSearch(current.run.request, new Date(), { allowUnresolvedProviders: true });
     if (current.run.status === 'queued') current.run = await tx.carSearchRun.update({ where: { id: current.run.id }, data: { status: 'running' } });
     return current;
   });
+}
+
+/** Only verified provider identifiers change; dates, owners and criteria stay fenced. */
+export async function saveCarLocationResolution(jobId: string, lease: TravelLeaseToken, resolved: CarSearch, source: CarSource): Promise<void> {
+  currentTravelExecution()?.check();
+  await prisma.$transaction(async tx => {
+    const job = await guardTravelJob(tx, jobId, lease), current = await context(tx, job);
+    const search = validateCarSearch(current.run.request, current.run.createdAt, { allowUnresolvedProviders: true });
+    if (current.run.status !== 'running' || !current.sources.includes(source)) throw new TravelJobError('Provider resolution no longer belongs to this car check');
+    for (const field of ['pickup', 'dropoff'] as const) {
+      const location = search[field], result = resolved[field];
+      if (location.name !== result.name || location.country !== result.country || location.timeZone !== result.timeZone || JSON.stringify(location.catalog) !== JSON.stringify(result.catalog)) throw new CarError('Resolved location changed the requested geography');
+      search[field] = { ...location, providerIds: { ...location.providerIds, [source]: result.providerIds[source] }, providerNames: { ...location.providerNames, [source]: result.providerNames?.[source] } };
+    }
+    validateCarSearch({ ...search, sources: [source], extras: { ...search.extras, protection: search.extras.protection.filter(product => product.source === source) } });
+    currentTravelExecution()?.check();
+    await tx.carSearchRun.update({ where: { id: current.run.id }, data: { request: carJson(search) } });
+    await lockTravelLease(tx, lease);
+    currentTravelExecution()?.check();
+  }, { maxWait: 1000, timeout: 3000 });
 }
 
 /** Await the bounded transaction even after cancellation; no detached writes. */
@@ -58,7 +79,7 @@ export async function saveCarProgress(jobId: string, lease: TravelLeaseToken, ra
 async function persistTracker(tx: Prisma.TransactionClient, current: CarRunContext, report: CarSearchReport, jobId: string, now: Date): Promise<void> {
   const tracker = current.tracker;
   if (!tracker) return;
-  const search = carTrackerSearch(validateCarSearch(current.run.request, current.run.createdAt));
+  const search = carTrackerSearch(validateCarSearch(current.run.request, current.run.createdAt, { allowUnresolvedProviders: true }));
   const snapshots = report.offers.map(offer => {
     const assessment = assessCarPrice(offer, search, now), contractHash = carContractHash(offer.contract);
     const matches = !current.selection || (offer.contract.source === current.selection.source && contractHash === current.selection.contractHash);

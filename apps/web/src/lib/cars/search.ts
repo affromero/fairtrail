@@ -10,6 +10,7 @@ import { extractDiscoverCarsOffer } from './discovercars-extraction';
 import { prepareCarPage } from './navigation';
 import { carTrackerSearch, validateCarSelection } from './selection';
 import { validateCarSearch } from './validation';
+import { resolveCarProviderLocations } from './location-resolution';
 import { CarError, type CarContractSelection, type CarProviderProgress, type CarSearch, type CarSearchReport, type CarSource } from './types';
 
 export class CarSearchCleanupError extends Error {
@@ -35,6 +36,7 @@ export interface CarSearchOptions {
   onProgress?: (report: CarSearchReport, signal: AbortSignal) => Promise<void>;
   /** Private operator diagnostics; never included in the public result payload. */
   onDiagnostic?: (source: CarSource, error: unknown) => void;
+  onLocationResolution?: (search: CarSearch, source: CarSource) => Promise<void>;
 }
 
 class CarSearchObserverError extends Error {
@@ -76,6 +78,14 @@ async function inspectProvider(source: CarSource, search: CarSearch, report: Car
     const context = await browser.newContext({ locale: 'en-US', timezoneId: search.pickup.timeZone, viewport: { width: 1440, height: 1000 } });
     const searchPage = await context.newPage();
     activePage = searchPage;
+    const resolved = await resolveCarProviderLocations(searchPage, search, source);
+    const singleSource = validateCarSearch({ ...resolved, sources: [source], extras: { ...resolved.extras, protection: resolved.extras.protection.filter(product => product.source === source) } });
+    if (options.onLocationResolution) {
+      try { await options.onLocationResolution(resolved, source); }
+      catch (error) { throw new CarSearchObserverError(error); }
+    }
+    Object.assign(search, { pickup: resolved.pickup, dropoff: resolved.dropoff });
+    search = singleSource;
     const discovery = source === 'discovercars' ? await navigateDiscoverCarsSearch(searchPage, search) : await navigateAutoEuropeSearch(searchPage, search);
     Object.assign(progress, { discoveredVisible: discovery.discoveredVisible, limit: discovery.limit, truncated: discovery.truncated });
     await publishProgress(report, options.onProgress, [execution.signal]);
@@ -124,7 +134,7 @@ function summarizeReport(report: CarSearchReport): void {
 export async function searchCars(raw: CarSearch, options: CarSearchOptions = {}): Promise<CarSearchReport> {
   const parent = currentTravelExecution();
   if (!parent) throw new CarError('Rental searches require a shared travel execution', 500);
-  let search = validateCarSearch(raw);
+  let search = validateCarSearch(raw, new Date(), { allowUnresolvedProviders: true });
   if (options.selection) {
     const selection = validateCarSelection(options.selection);
     if (!search.sources.includes(selection.source)) throw new CarError('Selected contract provider is not included in this search');

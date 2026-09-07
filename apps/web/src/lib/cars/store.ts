@@ -10,6 +10,7 @@ import { carContractHash, carTrackerSearch } from './selection';
 import { CarError, type CarSearch } from './types';
 import { carCreationIntent } from './creation';
 import { validateCarTrackerView } from './tracker-view';
+import { carSearchIntent, carSearchReceipt } from './search-input';
 
 export const carJson = (value: unknown): Prisma.InputJsonValue => JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
 
@@ -58,6 +59,31 @@ export async function createCarSearch(raw: unknown, actor: CarActor) {
   });
 }
 
+export async function createCarCatalogSearch(raw: unknown, actor: CarActor, requestKey: unknown) {
+  const receipt = carSearchReceipt(raw, actor, requestKey);
+  const previous = await prisma.carSearchCreation.findUnique({ where: { id: receipt.id }, include: { run: true } });
+  if (previous) {
+    if (previous.requestHash !== receipt.requestHash) throw new CarError('This search key was already used for different rental criteria', 409);
+    if (!previous.run) throw new CarError('This search was removed; retrying will not recreate it', 410);
+    assertCarOwner(actor, previous.run);
+    return previous.run;
+  }
+  const search = await carSearchIntent(raw);
+  return prisma.$transaction(async tx => {
+    await lockTravelResource(tx, 'car_search');
+    const existing = await tx.carSearchCreation.findUnique({ where: { id: receipt.id }, include: { run: true } });
+    if (existing) {
+      if (existing.requestHash !== receipt.requestHash) throw new CarError('This search key was already used for different rental criteria', 409);
+      if (!existing.run) throw new CarError('This search was removed; retrying will not recreate it', 410);
+      assertCarOwner(actor, existing.run);
+      return existing.run;
+    }
+    const run = await queueSearch(tx, search, actor.userId);
+    await tx.carSearchCreation.create({ data: { ...receipt, userId: actor.userId, runId: run.id } });
+    return run;
+  });
+}
+
 export async function getCarTracker(id: string, actor: CarActor) {
   const row = await prisma.carTracker.findUnique({ where: { id } });
   assertCarOwner(actor, row);
@@ -86,12 +112,13 @@ export async function createCarTracker(raw: unknown, actor: CarActor, requestKey
     const run = await tx.carSearchRun.findUnique({ where: { id: searchId } });
     assertCarOwner(actor, run);
     if (!['success', 'partial'].includes(run.status) || !run.completedAt) throw new CarError('Choose a quote from a completed car search', 409);
-    const search = validateCarSearch(run.request);
+    const search = validateCarSearch(run.request, new Date(), { allowUnresolvedProviders: true });
     const result = carRecord(run.result);
     if (!Array.isArray(result.offers) || result.offers.length > 16) throw new CarError('Stored rental results are invalid', 500);
     const offers = result.offers.map(value => validateCarOffer(value)).filter(offer => offer.id === offerId);
     if (offers.length !== 1) throw new CarError('Choose a quote returned by this search');
     const offer = offers[0]!;
+    validateCarSearch({ ...search, sources: [offer.contract.source], extras: { ...search.extras, protection: search.extras.protection.filter(product => product.source === offer.contract.source) } });
     const assessment = assessCarPrice(offer, search);
     if (!assessment.eligible) throw new CarError(`This quote cannot be tracked: ${assessment.reasons.join('; ')}`, 409);
     const options = validateCarOptions(intent.options, search.currency);
@@ -115,7 +142,7 @@ export async function refreshCarTracker(id: string, actor: CarActor, dueOnly = f
     if (!tracker.active) throw new CarError('Resume this car tracker before refreshing', 409);
     const existing = await tx.carSearchRun.findFirst({ where: { trackerId: id, status: { in: ['queued', 'running'] } } });
     if (existing) return existing;
-    const search = carTrackerSearch(validateCarSearch(tracker.search));
+    const search = carTrackerSearch(validateCarSearch(tracker.search, new Date(), { allowUnresolvedProviders: true }));
     return queueSearch(tx, search, tracker.userId, tracker);
   });
 }

@@ -9,6 +9,8 @@ import { GET as list, POST as create } from '@/app/api/cars/route';
 import { GET as detail, PATCH as edit, DELETE as remove } from '@/app/api/cars/[id]/route';
 import { POST as refresh } from '@/app/api/cars/[id]/scrape/route';
 import { GET as status, DELETE as cancel } from '@/app/api/cars/search/[id]/route';
+import { GET as searches, POST as startSearch } from '@/app/api/cars/search/route';
+import { GET as locations } from '@/app/api/cars/locations/route';
 
 const boundary = vi.hoisted(() => ({ token: '' }));
 vi.mock('next/headers', () => ({ cookies: async () => ({ get: () => boundary.token ? { value: boundary.token } : undefined }) }));
@@ -92,7 +94,25 @@ describe.skipIf(process.env.CAR_HTTP_INTEGRATION_TESTS !== '1')('car HTTP owners
     if (mode === 'revoked') await prisma.user.update({ where: { id: owner }, data: { sessionsValidFrom: new Date(Date.now() + 1000) } });
     expect((await list(request())).status).toBe(mode === 'public' ? 404 : 401);
     expect((await create(request({}, 'POST'))).status).toBe(mode === 'public' ? 404 : 401);
+    expect((await startSearch(request({}, 'POST'))).status).toBe(mode === 'public' ? 404 : 401);
+    expect((await searches(request())).status).toBe(mode === 'public' ? 404 : 401);
+    expect((await locations(new Request('http://localhost/api/cars/locations?q=LHR'))).status).toBe(mode === 'public' ? 404 : 401);
   });
+  it('creates a catalog search through authenticated HTTP and recovers its exact acknowledgement', async () => {
+    const found = await locations(new Request('http://localhost/api/cars/locations?q=LHR'));
+    expect(found.status).toBe(200);
+    const place = (await found.json()).data[0], criteria = carSearchFixture(), key = crypto.randomUUID();
+    const body = { pickup: { id: place.id, version: place.version }, dropoff: { id: place.id, version: place.version }, pickupAt: { date: criteria.pickupAt.date, time: criteria.pickupAt.time }, dropoffAt: { date: criteria.dropoffAt.date, time: criteria.dropoffAt.time }, driver: criteria.driver, currency: criteria.currency, sources: criteria.sources };
+    const accepted = await startSearch(request(body, 'POST', key));
+    expect(accepted.status).toBe(202); expect(accepted.headers.get('cache-control')).toBe('private, no-store');
+    const first = (await accepted.json()).data;
+    expect(first).toMatchObject({ status: 'queued', creationKey: key });
+    expect((await (await startSearch(request(body, 'POST', key))).json()).data).toEqual(first);
+    expect((await (await searches(request())).json()).data.searches).toMatchObject([{ id: first.id, status: 'queued' }]);
+    boundary.token = createUserSessionToken(other);
+    expect((await (await searches(request())).json()).data.searches).toEqual([]);
+    expect((await status(request(), context(first.id))).status).toBe(404);
+  }, 20_000);
   it('requires explicit authorized administration and keeps an administrator’s normal list personal', async () => {
     const row = await tracker();
     boundary.token = createUserSessionToken(other);

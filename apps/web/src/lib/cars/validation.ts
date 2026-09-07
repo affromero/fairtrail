@@ -62,7 +62,14 @@ function location(raw: unknown): CarLocation {
     if (ids[source] !== undefined) providerIds[source] = carText(ids[source], 200, 'provider location');
     if (names[source] !== undefined) providerNames[source] = carText(names[source], 250, 'provider location name');
   }
-  return { name: carText(r.name, 250, 'location'), country: country(r.country), timeZone: timeZone(r.timeZone), providerIds, providerNames };
+  let catalog: CarLocation['catalog'];
+  if (r.catalog !== undefined) {
+    const value = carRecord(r.catalog);
+    const id = carText(value.id, 80, 'catalog location'), version = carText(value.version, 64, 'catalog version');
+    if (!/^(?:geonames|ourairports):\d+$/.test(id) || !/^[a-f0-9]{64}$/.test(version)) throw new CarError('Invalid rental location catalog identity');
+    catalog = { id, version };
+  }
+  return { name: carText(r.name, 250, 'location'), country: country(r.country), timeZone: timeZone(r.timeZone), providerIds, providerNames, ...(catalog ? { catalog } : {}) };
 }
 export function validateCarExtras(raw: unknown): CarExtras {
   const r = carRecord(raw ?? {});
@@ -84,7 +91,7 @@ export function validateCarExtras(raw: unknown): CarExtras {
   if (new Set(products.map(p => p.source)).size !== products.length) throw new CarError('Choose one protection product per provider');
   return { childSeats, additionalDrivers: drivers.map(validateCarDriver), protection: products };
 }
-export function validateCarSearch(raw: unknown, now = new Date()): CarSearch {
+export function validateCarSearch(raw: unknown, now = new Date(), options: { allowUnresolvedProviders?: boolean } = {}): CarSearch {
   const r = carRecord(raw);
   const pickup = location(r.pickup), dropoff = location(r.dropoff);
   const pickupAt = resolveCarLocalTime(r.pickupAt, pickup.timeZone);
@@ -96,7 +103,9 @@ export function validateCarSearch(raw: unknown, now = new Date()): CarSearch {
   currencyPrecision(currency);
   const sources = validateCarProviders(r.sources);
   for (const source of sources) {
-    if (!pickup.providerIds[source] || !dropoff.providerIds[source]) throw new CarError(`Select pickup and return locations for ${source}`);
+    for (const place of [pickup, dropoff]) {
+      if (!place.providerIds[source] && !(options.allowUnresolvedProviders && place.catalog)) throw new CarError(`Select pickup and return locations for ${source}`);
+    }
   }
   const f = carRecord(r.filters ?? {});
   const transmission = f.transmission ?? 'any';

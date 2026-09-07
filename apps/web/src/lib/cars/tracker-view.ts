@@ -13,7 +13,7 @@ export function carViewTime(value: unknown, future = false): string {
 }
 export function validateCarTrackerView(raw: unknown) {
   const row = carRecord(raw), createdAt = carViewTime(row.createdAt), updatedAt = carViewTime(row.updatedAt);
-  const search = validateCarSearch(row.search, new Date(createdAt));
+  const search = validateCarSearch(row.search, new Date(createdAt), { allowUnresolvedProviders: true });
   if (search.currency !== row.currency) throw new CarError('Stored rental currency does not match its search');
   const rawOptions = carRecord(row.options);
   if (rawOptions.mode == null || rawOptions.target === undefined || rawOptions.notifyLows == null || rawOptions.scrapeInterval == null) throw new CarError('Stored rental settings are incomplete');

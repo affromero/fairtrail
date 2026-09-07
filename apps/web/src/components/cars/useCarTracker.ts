@@ -76,7 +76,7 @@ export function useCarTracker(initial: CarDetailView, actorScope: string) {
           if (tracker.id !== pending.trackerId || tracker.revision !== pending.revision + 1 || !carManagementMatches(pending.action, tracker)) throw new Error('Settings acknowledgement is inconsistent');
           acknowledged = true;
         } catch (error) {
-          if (!(error instanceof TravelResponseError && error.status === 412)) throw error;
+          if (!(error instanceof TravelResponseError && error.definitive && error.status === 412)) throw error;
         }
       }
       reading = true;
@@ -87,11 +87,11 @@ export function useCarTracker(initial: CarDetailView, actorScope: string) {
     } catch (error) {
       if (sequence !== generation.current) return;
       const status = error instanceof TravelResponseError ? error.status : 0;
-      if (reading && status === 404) {
+      if (reading && status === 404 && error instanceof TravelResponseError && error.definitive) {
         removePending(); update({ phase: 'inaccessible', hidden: true, interrupted: true, pending: null }); return;
       }
       const hidden = current.current.hidden || [401, 403, 404].includes(status);
-      if (pending && !recovering && !reading && !aborter.signal.aborted && [400, 409, 413, 415, 429].includes(status)) {
+      if (pending && !recovering && !reading && !aborter.signal.aborted && error instanceof TravelResponseError && error.definitive && [400, 409, 413, 415, 429].includes(status)) {
         if (!removePending()) { update({ phase: 'storage_error', pending }); return; }
         update({ phase: 'ready', pending: null, error: error instanceof Error ? error.message : '', hidden }); return;
       }

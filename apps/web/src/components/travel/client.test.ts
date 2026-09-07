@@ -25,6 +25,10 @@ describe.each([{ label: 'travel', request: travelRequest }, { label: 'hotel comp
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ ok: true, data: {} }), { status: 400 })));
     const error = await request('/api/example').catch((value: unknown) => value);
     expect(error).toMatchObject({ message: 'HTTP 400' });
-    expect(error).not.toHaveProperty('status');
+    expect(error).toMatchObject({ status: 400, definitive: false });
+  });
+  it.each([401, 403, 404])('preserves HTTP %i when authentication middleware returns HTML', async status => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('<html>Access unavailable</html>', { status })));
+    await expect(request('/api/example')).rejects.toMatchObject({ status, definitive: false });
   });
 });

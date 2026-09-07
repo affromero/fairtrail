@@ -44,7 +44,7 @@ export async function getCarRunView(id: string, actor: CarActor) {
     const row = await tx.carSearchRun.findUnique({ where: { id } });
     assertCarOwner(actor, row);
     try {
-      const search = validateCarSearch(row.request, row.createdAt);
+      const search = validateCarSearch(row.request, row.createdAt, { allowUnresolvedProviders: true });
       const tracker = row.trackerId ? await tx.carTracker.findUnique({ where: { id: row.trackerId } }) : null;
       const selection = tracker ? carTrackerDto(tracker).selection : null;
       const sources = selection ? [selection.source] : search.sources;

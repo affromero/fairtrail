@@ -11,10 +11,13 @@ export function carOptionsToDraft(options: CarTrackingOptions, locale: string): 
 export function carDecimalSeparator(locale: string): string {
   return new Intl.NumberFormat(locale).formatToParts(1.1).find(part => part.type === 'decimal')?.value ?? '.';
 }
-export function carOptionsFromDraft(draft: CarOptionsDraft, currency: string, locale: string): CarTrackingOptions {
-  const text = draft.target.trim(), decimal = carDecimalSeparator(locale);
+export function carMoneyFromDraft(value: string, currency: string, locale: string) {
+  const text = value.trim(), decimal = carDecimalSeparator(locale);
   if (decimal !== '.' && text.includes('.')) throw new CarError('Use the local decimal separator without thousands separators');
-  const target = text ? parseCarMoney(text.replace(decimal, '.'), currency) : null;
+  return text ? parseCarMoney(text.replace(decimal, '.'), currency) : null;
+}
+export function carOptionsFromDraft(draft: CarOptionsDraft, currency: string, locale: string): CarTrackingOptions {
+  const target = carMoneyFromDraft(draft.target, currency, locale);
   if (target?.minor === 0) throw new CarError('Choose a positive target or leave it empty');
   if (!/^(?:[1-9]|1\d|2[0-4])$/.test(draft.interval)) throw new CarError('Check interval must be a whole number from 1 to 24');
   return validateCarOptions({ mode: draft.mode, target, scrapeInterval: Number(draft.interval), notifyLows: draft.notifyLows }, currency);

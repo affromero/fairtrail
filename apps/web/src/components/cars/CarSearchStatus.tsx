@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { carRunIsActive, validateCarRunView, type CarRunView } from '@/lib/cars/run-view';
 import { carRecord } from '@/lib/cars/validation';
+import { carSearchIdentity } from '@/lib/cars/search-identity';
 import { travelRequest, TravelResponseError } from '../travel/client';
 import { CarResults } from './CarResults';
 import styles from './Cars.module.css';
@@ -29,7 +30,7 @@ export function CarSearchStatus({ initial, actorScope }: { initial: CarRunView; 
       const next = validateCarRunView(await travelRequest<unknown>(url, { signal: aborter.signal, cache: 'no-store' }), initial.id, true);
       if (sequence !== generation.current) return;
       if (aborter.signal.aborted) throw new Error('Status request exceeded its deadline');
-      if (JSON.stringify(next.search) !== JSON.stringify(initial.search) || next.createdAt !== initial.createdAt) throw new Error('Search identity changed');
+      if (carSearchIdentity(next.search) !== carSearchIdentity(initial.search) || next.createdAt !== initial.createdAt) throw new Error('Search identity changed');
       if (!carRunIsActive(current.current) && current.current.status !== next.status) throw new Error('Search status regressed');
       current.current = next; setJob(next); setError(''); setPaused(false); setPrivateHidden(false);
     } catch (failure) {

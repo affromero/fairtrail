@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import { mkdir, mkdtemp, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { searchCars } from '../apps/web/src/lib/cars/search';
-import { validateCarSearch } from '../apps/web/src/lib/cars/validation';
+import { carSearchIntent } from '../apps/web/src/lib/cars/search-input';
+import { getCarCatalogPlace } from '../apps/web/src/lib/cars/locations';
 import { assessCarPrice } from '../apps/web/src/lib/cars/pricing';
 import { TravelExecution, withTravelExecution } from '../apps/web/src/lib/travel/execution';
 
@@ -15,9 +16,9 @@ const output = await mkdtemp(resolve(outputRoot, 'run-'));
 console.log(`Private live-search evidence: ${output}`);
 const pickup = new Date(); pickup.setUTCMonth(pickup.getUTCMonth() + 1, 15);
 const dropoff = new Date(pickup); dropoff.setUTCDate(dropoff.getUTCDate() + 3);
-const location = { name: 'London Heathrow Airport', country: 'GB', timeZone: 'Europe/London', providerIds: { discovercars: '1712', autoeurope: '547' }, providerNames: { discovercars: 'London Airport Heathrow (LHR)', autoeurope: 'London Heathrow Airport' } };
-const search = validateCarSearch({
-  pickup: location, dropoff: location,
+const location = await getCarCatalogPlace('ourairports:2434');
+const search = await carSearchIntent({
+  pickup: { id: location.id, version: location.version }, dropoff: { id: location.id, version: location.version },
   pickupAt: { date: pickup.toISOString().slice(0, 10), time: '11:00' },
   dropoffAt: { date: dropoff.toISOString().slice(0, 10), time: '11:00' },
   driver: { age: 35, licenceYears: 2, residenceCountry: 'GB' },
@@ -30,6 +31,10 @@ process.once('SIGINT', interrupted); process.once('SIGTERM', interrupted);
 const diagnostics: { source: string; error: string }[] = [];
 try {
   const result = await withTravelExecution(execution, () => searchCars(search, {
+    onLocationResolution: async resolved => {
+      Object.assign(search, { pickup: resolved.pickup, dropoff: resolved.dropoff });
+      await writeFile(resolve(output, 'resolved-request.json'), JSON.stringify(search, null, 2));
+    },
     onProgress: async (report, signal) => {
       signal.throwIfAborted();
       await writeFile(resolve(output, 'progress.json'), JSON.stringify(report, null, 2), { signal });

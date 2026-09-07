@@ -1,10 +1,13 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { prisma } from '@/lib/prisma';
 import { acquireTravelLease, claimTravelJob, completeTravelJob, releaseTravelLease, type TravelLeaseToken } from '../travel/jobs';
-import { cancelCarSearch, carJson, carMinorNumber, carTrackerDto, createCarSearch, createCarTracker, deleteCarTracker, editCarTracker, getCarSearch, getCarTracker, listCarTrackers, refreshCarTracker } from './store';
+import { cancelCarSearch, carJson, carMinorNumber, carTrackerDto, createCarSearch, createCarCatalogSearch, createCarTracker, deleteCarTracker, editCarTracker, getCarSearch, getCarTracker, listCarTrackers, refreshCarTracker } from './store';
 import { carOfferFixture as offer, carSearchFixture as criteria } from '@/test/car-fixtures';
 import { carContractHash } from './selection';
 import type { CarActor } from './access';
+import { searchCarLocations } from './locations';
+import { getCarRunView } from './views';
+import { listCarSearchPage } from './search-list';
 
 describe.skipIf(process.env.CAR_STORE_INTEGRATION_TESTS !== '1')('car ownership and persistence against isolated PostgreSQL', () => {
   let owner: CarActor, other: CarActor;
@@ -53,6 +56,40 @@ describe.skipIf(process.env.CAR_STORE_INTEGRATION_TESTS !== '1')('car ownership 
     expect(runs).toHaveLength(3);
     expect(runs.every(run => run.travelJob?.userId === owner.userId && run.travelJob.status === 'queued')).toBe(true);
   });
+  it('paginates owned standalone history even when a cursor row is deleted and does not expose another account', async () => {
+    const createdAt = new Date();
+    for (let index = 0; index < 3; index++) await prisma.carSearchRun.create({ data: { userId: owner.userId, request: carJson(criteria()), status: 'cancelled', createdAt, completedAt: createdAt } });
+    const foreign = await prisma.carSearchRun.create({ data: { userId: other.userId, request: carJson(criteria()), status: 'cancelled', createdAt, completedAt: createdAt } });
+    const first = await listCarSearchPage(owner, null, 2);
+    expect(first.searches).toHaveLength(2);
+    expect(first.searches.every(row => row.id !== foreign.id)).toBe(true);
+    expect(first.nextCursor).not.toBeNull();
+    await prisma.carSearchRun.delete({ where: { id: first.searches.at(-1)!.id } });
+    const second = await listCarSearchPage(owner, first.nextCursor, 2);
+    expect(second.searches).toHaveLength(1); expect(second.nextCursor).toBeNull();
+    expect(first.searches.some(row => row.id === second.searches[0]!.id)).toBe(false);
+    await expect(listCarSearchPage(other, first.nextCursor)).rejects.toMatchObject({ status: 400 });
+    expect((await listCarSearchPage({ ...other, isAdmin: true })).searches.map(row => row.id)).toEqual([foreign.id]);
+  });
+
+  it('recovers concurrent catalog search creation without duplicate jobs and preserves a deleted-run receipt', async () => {
+    const place = (await searchCarLocations('LHR'))[0]!;
+    const search = criteria(), key = crypto.randomUUID();
+    const body = { pickup: { id: place.id, version: place.version }, dropoff: { id: place.id, version: place.version }, pickupAt: { date: search.pickupAt.date, time: search.pickupAt.time }, dropoffAt: { date: search.dropoffAt.date, time: search.dropoffAt.time }, driver: search.driver, currency: search.currency, sources: search.sources };
+    const runs = await Promise.all(Array.from({ length: 4 }, () => createCarCatalogSearch(body, owner, key)));
+    expect(new Set(runs.map(run => run.id)).size).toBe(1);
+    expect(await prisma.travelJob.count({ where: { userId: owner.userId } })).toBe(1);
+    const view = await getCarRunView(runs[0]!.id, owner);
+    expect(view).toMatchObject({ status: 'queued', search: { pickup: { country: 'GB', providerIds: {}, catalog: { id: place.id } } }, result: null });
+    await expect(createCarCatalogSearch({ ...body, currency: 'USD' }, owner, key)).rejects.toMatchObject({ status: 409 });
+    await cancelCarSearch(view.id, owner);
+    expect((await createCarCatalogSearch(body, owner, key)).status).toBe('cancelled');
+    await prisma.travelJob.deleteMany({ where: { carRunId: view.id } });
+    await prisma.carSearchRun.delete({ where: { id: view.id } });
+    await expect(createCarCatalogSearch(body, owner, key)).rejects.toMatchObject({ status: 410 });
+    expect(await prisma.carSearchRun.count({ where: { userId: owner.userId } })).toBe(0);
+    expect(await prisma.carSearchCreation.count({ where: { userId: owner.userId, runId: null } })).toBe(1);
+  }, 20_000);
 
   it('creates best tracking without narrowing provider preferences or retaining the discovery ceiling', async () => {
     const row = await tracker();

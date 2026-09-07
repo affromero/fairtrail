@@ -21,6 +21,25 @@ afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); vi.restoreAllMocks(
 const settle = async () => { await act(async () => { await vi.advanceTimersByTimeAsync(0); }); };
 
 describe('private rental result lifecycle', () => {
+  it('continues polling when provider locations resolve without changing the requested rental', async () => {
+    const value = initial();
+    value.search.pickup = { ...value.search.pickup, catalog: { id: 'ourairports:2434', version: 'a'.repeat(64) }, providerIds: {} };
+    value.search.dropoff = { ...value.search.pickup };
+    const next = structuredClone(value);
+    next.search.pickup.providerIds = { discovercars: '1712', autoeurope: '547' };
+    next.search.dropoff.providerIds = { ...next.search.pickup.providerIds };
+    next.search.pickup.providerNames = { discovercars: 'London Airport Heathrow (LHR)' };
+    vi.stubGlobal('fetch', vi.fn(async () => response(next)));
+    render(surface(value)); await act(async () => { await vi.advanceTimersByTimeAsync(1500); });
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Cancel search' })).toBeEnabled();
+  });
+  it('hides private results when an expired session returns an HTML login response', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('<html>Sign in</html>', { status: 401 })));
+    render(surface(initial('success'))); fireEvent.click(screen.getByRole('button', { name: 'Refresh status' })); await settle();
+    expect(screen.queryByRole('heading', { name: /Example car/ })).not.toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent(en.Cars.accessLost);
+  });
   it('polls until completion and makes the verified result trackable without further automatic requests', async () => {
     const value = initial(), done = { ...value, status: 'success', completedAt: value.createdAt, result: carReportFixture() };
     const requests: string[] = [];
