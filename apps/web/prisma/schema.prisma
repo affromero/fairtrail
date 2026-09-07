@@ -191,6 +191,7 @@ model User {
   carSearches CarSearchRun[]
   carCreations CarTrackerCreation[]
   carSearchCreations CarSearchCreation[]
+  carParseGate CarParseGate?
   travelJobs TravelJob[]
   channels NotificationChannel[]
 
@@ -371,6 +372,15 @@ model CarSearchCreation {
   run         CarSearchRun? @relation(fields: [runId], references: [id], onDelete: SetNull)
 
   @@index([userId])
+}
+
+model CarParseGate {
+  id            String @id @db.Char(64)
+  userId        String? @unique
+  token         String? @db.Uuid
+  expiresAt     DateTime @default(now())
+  nextAllowedAt DateTime @default(now())
+  user          User? @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model CarSnapshot {

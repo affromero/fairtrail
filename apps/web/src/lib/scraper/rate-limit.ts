@@ -51,6 +51,21 @@ const PROVIDER_RPM: Record<string, number> = {
 const WINDOW_MS = 60_000;
 const timestampsByProvider = new Map<string, number[]>();
 
+function waitForSlot(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    signal?.throwIfAborted();
+    const abort = () => {
+      clearTimeout(timer);
+      reject(signal?.reason);
+    };
+    const timer = setTimeout(() => {
+      signal?.removeEventListener('abort', abort);
+      resolve();
+    }, ms);
+    signal?.addEventListener('abort', abort, { once: true });
+  });
+}
+
 // Admin-configured per-provider RPM overrides (ExtractionConfig), cached 60s so
 // the hot extract path does not hit the DB on every call. Precedence:
 // DB override > env (baked into PROVIDER_RPM) > built-in default. On any DB
@@ -91,20 +106,19 @@ async function resolveRpm(provider: string): Promise<number> {
   return base;
 }
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
 /**
  * Block until a provider call slot is available. Unknown providers
  * default to a 60 RPM ceiling; this errs on the side of caution and
  * can be tuned by adding the provider name to PROVIDER_RPM.
  */
-export async function acquireProviderToken(provider: string): Promise<void> {
+export async function acquireProviderToken(provider: string, signal?: AbortSignal): Promise<void> {
+  signal?.throwIfAborted();
   const rpm = await resolveRpm(provider);
+  signal?.throwIfAborted();
   if (rpm === UNLIMITED) return;
 
   while (true) {
+    signal?.throwIfAborted();
     const now = Date.now();
     const windowStart = now - WINDOW_MS;
     const existing = timestampsByProvider.get(provider) ?? [];
@@ -122,7 +136,7 @@ export async function acquireProviderToken(provider: string): Promise<void> {
     const oldest = fresh[0]!;
     const waitMs = Math.max(1, oldest + WINDOW_MS - now + 50);
     timestampsByProvider.set(provider, fresh);
-    await sleep(waitMs);
+    await waitForSlot(waitMs, signal);
   }
 }
 

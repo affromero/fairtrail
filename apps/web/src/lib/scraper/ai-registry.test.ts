@@ -963,4 +963,51 @@ describe('CLI provider lockdown (Finding 4)', () => {
     expect(args).not.toContain('danger-full-access');
     expect(args).not.toContain('--dangerously-bypass-approvals-and-sandbox');
   });
+
+  it('honors an explicit Luna model and removes temporary output after failure', async () => {
+    const proc = createFakeProc();
+    mockSpawn.mockReturnValue(proc);
+    const done = EXTRACTION_PROVIDERS.codex!.extract('', 'gpt-5.6-luna', 'system', 'draft');
+    const failure = expect(done).rejects.toThrow('codex CLI exited');
+    await vi.waitFor(() => expect(mockSpawn).toHaveBeenCalled());
+    const args = mockSpawn.mock.calls[0]![1] as string[];
+    expect(args[args.indexOf('--model') + 1]).toBe('gpt-5.6-luna');
+    const { stat } = await import('node:fs/promises');
+    const { dirname } = await import('node:path');
+    const directory = dirname(args[args.indexOf('-o') + 1]!);
+    expect((await stat(directory)).isDirectory()).toBe(true);
+    proc.emit('close', 1);
+    await failure;
+    await expect(stat(directory)).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
+  it('waits for cancelled inference to close before returning and cleaning up', async () => {
+    const proc = Object.assign(createFakeProc(), { kill: vi.fn() });
+    mockSpawn.mockReturnValue(proc);
+    const controller = new AbortController();
+    let settled = false;
+    const done = EXTRACTION_PROVIDERS.codex!.extract('', 'codex', 'system', 'draft', { signal: controller.signal });
+    const failure = expect(done).rejects.toThrow('cancelled');
+    void done.then(() => { settled = true; }, () => { settled = true; });
+    await vi.waitFor(() => expect(mockSpawn).toHaveBeenCalled());
+    controller.abort(new Error('cancelled'));
+    await Promise.resolve();
+    expect(proc.kill).toHaveBeenCalledWith('SIGKILL');
+    expect(settled).toBe(false);
+    proc.emit('close', null);
+    await failure;
+    expect(settled).toBe(true);
+  });
+
+  it('terminates oversized controlled output and waits for process closure', async () => {
+    const proc = Object.assign(createFakeProc(), { kill: vi.fn() });
+    mockSpawn.mockReturnValue(proc);
+    const done = EXTRACTION_PROVIDERS.codex!.extract('', 'codex', 'system', 'draft', { signal: new AbortController().signal });
+    const failure = expect(done).rejects.toThrow(/output.*size/);
+    await vi.waitFor(() => expect(mockSpawn).toHaveBeenCalled());
+    proc.stderr!.emit('data', Buffer.alloc(64_001, 'a'));
+    expect(proc.kill).toHaveBeenCalledWith('SIGKILL');
+    proc.emit('close', null);
+    await failure;
+  });
 });

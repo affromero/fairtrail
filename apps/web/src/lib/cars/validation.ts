@@ -20,7 +20,7 @@ function boolean(raw: unknown, defaultValue = false): boolean {
   if (typeof raw !== 'boolean') throw new CarError('Expected a boolean');
   return raw;
 }
-function country(raw: unknown): string {
+export function validateCarCountry(raw: unknown): string {
   const code = carText(raw, 2, 'country').toUpperCase();
   if (!/^[A-Z]{2}$/.test(code) || ['ZZ', 'EU', 'EZ', 'UN'].includes(code) || new Intl.DisplayNames(['en'], { type: 'region', fallback: 'none' }).of(code) === undefined) throw new CarError('Choose a valid country');
   return code;
@@ -50,7 +50,7 @@ export function validateCarDriver(raw: unknown): CarDriver {
   const r = carRecord(raw);
   const age = carInteger(r.age, 18, 99, 'Driver age');
   const licenceYears = carInteger(r.licenceYears, 0, age - 16, 'Years holding a licence');
-  return { age, licenceYears, residenceCountry: country(r.residenceCountry) };
+  return { age, licenceYears, residenceCountry: validateCarCountry(r.residenceCountry) };
 }
 function location(raw: unknown): CarLocation {
   const r = carRecord(raw);
@@ -69,7 +69,7 @@ function location(raw: unknown): CarLocation {
     if (!/^(?:geonames|ourairports):\d+$/.test(id) || !/^[a-f0-9]{64}$/.test(version)) throw new CarError('Invalid rental location catalog identity');
     catalog = { id, version };
   }
-  return { name: carText(r.name, 250, 'location'), country: country(r.country), timeZone: timeZone(r.timeZone), providerIds, providerNames, ...(catalog ? { catalog } : {}) };
+  return { name: carText(r.name, 250, 'location'), country: validateCarCountry(r.country), timeZone: timeZone(r.timeZone), providerIds, providerNames, ...(catalog ? { catalog } : {}) };
 }
 export function validateCarExtras(raw: unknown): CarExtras {
   const r = carRecord(raw ?? {});

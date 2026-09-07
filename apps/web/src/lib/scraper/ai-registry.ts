@@ -9,6 +9,7 @@ import {
 } from './provider-metadata';
 import { prisma } from '@/lib/prisma';
 import { decryptSecret } from '@/lib/secret-crypto';
+import { cliOutputControl, linkCliCancellation } from './cli-cancellation';
 
 // Client-safe metadata lives in provider-metadata.ts so the settings/setup/admin
 // client pages can render the provider UI without pulling this module (and the
@@ -79,6 +80,7 @@ export interface ExtractionResult {
 
 export interface ExtractOptions {
   baseUrl?: string;
+  signal?: AbortSignal;
   /**
    * Force the model into a structured output mode. `'json_object'` maps to
    * OpenAI's `response_format: { type: 'json_object' }`, which Ollama (>= 0.1.34),
@@ -95,6 +97,11 @@ export interface ExtractOptions {
    * (claude-code, codex) keep their own spawn timeout.
    */
   timeoutMs?: number;
+}
+
+function extractionSignal(options?: ExtractOptions): AbortSignal {
+  const timeout = AbortSignal.timeout(options?.timeoutMs ?? EXTRACT_TIMEOUT_MS);
+  return options?.signal ? AbortSignal.any([options.signal, timeout]) : timeout;
 }
 
 interface ProviderConfig extends ProviderMeta {
@@ -144,7 +151,7 @@ export const EXTRACTION_PROVIDERS: Record<string, ProviderConfig> = {
           system: systemPrompt,
           messages: [{ role: 'user', content: userPrompt }],
         },
-        { signal: AbortSignal.timeout(options?.timeoutMs ?? EXTRACT_TIMEOUT_MS) },
+        { signal: extractionSignal(options) },
       );
 
       const text = response.content
@@ -181,7 +188,7 @@ export const EXTRACTION_PROVIDERS: Record<string, ProviderConfig> = {
             ? { response_format: { type: 'json_object' as const } }
             : {}),
         },
-        { signal: AbortSignal.timeout(options?.timeoutMs ?? EXTRACT_TIMEOUT_MS) },
+        { signal: extractionSignal(options) },
       );
 
       return {
@@ -214,7 +221,7 @@ export const EXTRACTION_PROVIDERS: Record<string, ProviderConfig> = {
             ? { response_format: { type: 'json_object' as const } }
             : {}),
         },
-        { signal: AbortSignal.timeout(options?.timeoutMs ?? EXTRACT_TIMEOUT_MS) },
+        { signal: extractionSignal(options) },
       );
 
       return {
@@ -244,7 +251,7 @@ export const EXTRACTION_PROVIDERS: Record<string, ProviderConfig> = {
             ? { response_format: { type: 'json_object' as const } }
             : {}),
         },
-        { signal: AbortSignal.timeout(options?.timeoutMs ?? EXTRACT_TIMEOUT_MS) },
+        { signal: extractionSignal(options) },
       );
 
       return {
@@ -274,7 +281,7 @@ export const EXTRACTION_PROVIDERS: Record<string, ProviderConfig> = {
             ? { response_format: { type: 'json_object' as const } }
             : {}),
         },
-        { signal: AbortSignal.timeout(options?.timeoutMs ?? EXTRACT_TIMEOUT_MS) },
+        { signal: extractionSignal(options) },
       );
 
       return {
@@ -301,7 +308,7 @@ export const EXTRACTION_PROVIDERS: Record<string, ProviderConfig> = {
       // the underlying fetch (better than Promise.race which would leak).
       const timeoutMs = options?.timeoutMs ?? EXTRACT_TIMEOUT_MS;
       const result = await genModel.generateContent(userPrompt, {
-        signal: AbortSignal.timeout(timeoutMs),
+        signal: extractionSignal(options),
         timeout: timeoutMs,
       });
       const response = result.response;
@@ -317,12 +324,13 @@ export const EXTRACTION_PROVIDERS: Record<string, ProviderConfig> = {
   },
   'claude-code': {
     ...PROVIDER_METADATA['claude-code']!,
-    extract: async (_apiKey, model, systemPrompt, userPrompt) => {
+    extract: async (_apiKey, model, systemPrompt, userPrompt, options) => {
       const { spawn } = await import(/* webpackIgnore: true */ 'child_process');
 
       const fullPrompt = `${systemPrompt}\n\n${userPrompt}`;
 
       const result = await new Promise<string>((resolve, reject) => {
+        options?.signal?.throwIfAborted();
         const env = { ...process.env };
         // Force the CLI onto its own Max-subscription auth. Drop the API key AND
         // any inherited base-URL / auth-token override that would otherwise
@@ -346,18 +354,23 @@ export const EXTRACTION_PROVIDERS: Record<string, ProviderConfig> = {
           '--disallowedTools', 'Bash,Edit,MultiEdit,Write,Read,Glob,Grep,WebFetch,WebSearch,Task,NotebookEdit,TodoWrite',
         ], {
           timeout: 240_000,
+          ...(options?.signal ? { detached: process.platform !== 'win32' } : {}),
           env,
         });
+        const outputControl = cliOutputControl(options?.signal);
+        const unlink = linkCliCancellation(proc, outputControl.signal);
 
         let stdout = '';
         let stderr = '';
         proc.stdout.on('data', (d: Buffer) => {
-          stdout += d.toString();
+          stdout = outputControl.append(stdout, d);
         });
         proc.stderr.on('data', (d: Buffer) => {
-          stderr += d.toString();
+          stderr = outputControl.append(stderr, d);
         });
         proc.on('close', (code) => {
+          unlink();
+          if (outputControl.signal?.aborted) { reject(outputControl.signal.reason); return; }
           if (code !== 0) {
             // The CLI prints authentication failures ("Not logged in", "OAuth
             // session expired and could not be refreshed") on stdout in print
@@ -370,6 +383,7 @@ export const EXTRACTION_PROVIDERS: Record<string, ProviderConfig> = {
           }
         });
         proc.on('error', (err: NodeJS.ErrnoException) => {
+          unlink();
           if (err.code === 'ENOENT') {
             reject(new Error('claude CLI not found. Restart the container to trigger install.'));
           } else {
@@ -388,18 +402,21 @@ export const EXTRACTION_PROVIDERS: Record<string, ProviderConfig> = {
   },
   codex: {
     ...PROVIDER_METADATA.codex!,
-    extract: async (_apiKey, _model, systemPrompt, userPrompt) => {
+    extract: async (_apiKey, model, systemPrompt, userPrompt, options) => {
       const { spawn } = await import(/* webpackIgnore: true */ 'child_process');
 
       const fullPrompt = `${systemPrompt}\n\n${userPrompt}`;
 
-      const { mkdtempSync, readFileSync, unlinkSync } = await import(/* webpackIgnore: true */ 'fs');
+      const { mkdtempSync, readFileSync, rmSync, statSync } = await import(/* webpackIgnore: true */ 'fs');
       const { join } = await import(/* webpackIgnore: true */ 'path');
       const os = await import(/* webpackIgnore: true */ 'os');
 
-      const tmpFile = join(mkdtempSync(join(os.tmpdir(), 'codex-')), 'output.txt');
+      options?.signal?.throwIfAborted();
+      const tmpDirectory = mkdtempSync(join(os.tmpdir(), 'codex-'));
+      const tmpFile = join(tmpDirectory, 'output.txt');
 
       const result = await new Promise<string>((resolve, reject) => {
+        options?.signal?.throwIfAborted();
         // Pin the read-only sandbox: model-generated shell commands cannot write
         // files, execute side effects, or reach the network. codex exec is
         // inherently agentic and cannot be reduced to pure inference, so a
@@ -410,31 +427,40 @@ export const EXTRACTION_PROVIDERS: Record<string, ProviderConfig> = {
           'exec', '-',
           '--skip-git-repo-check',
           '--ephemeral',
+          ...(model && model !== 'codex' ? ['--model', model] : []),
           '-s', 'read-only',
           '-o', tmpFile,
         ], {
           timeout: 240_000,
+          ...(options?.signal ? { detached: process.platform !== 'win32' } : {}),
           env: { ...process.env },
         });
+        const outputControl = cliOutputControl(options?.signal);
+        const unlink = linkCliCancellation(proc, outputControl.signal);
 
         let stderr = '';
         let stdout = '';
         proc.stderr.on('data', (d: Buffer) => {
-          stderr += d.toString();
+          stderr = outputControl.append(stderr, d);
         });
         // Same blind spot as the claude path: an auth failure lands on stdout
         // with nothing on stderr, so the error would read "codex CLI exited 1:".
         proc.stdout.on('data', (d: Buffer) => {
-          stdout += d.toString();
+          stdout = outputControl.append(stdout, d);
         });
         proc.on('close', (code) => {
+          unlink();
+          if (outputControl.signal?.aborted) { reject(outputControl.signal.reason); return; }
           const filtered = filterCliStderr(stderr) || filterCliStderr(stdout) || '(no output)';
           const hint = filtered.includes('401') || filtered.includes('Unauthorized')
             ? ' (ensure codex is authenticated on the host via `codex auth` and ~/.codex is readable)'
             : '';
           try {
+            if (options?.signal && statSync(tmpFile).size > 64_000) {
+              reject(new Error('Inference output exceeded the allowed size'));
+              return;
+            }
             const output = readFileSync(tmpFile, 'utf-8').trim();
-            unlinkSync(tmpFile);
             if (code !== 0) reject(new Error(`codex CLI exited ${code}: ${filtered}${hint}`));
             else resolve(output);
           } catch {
@@ -442,6 +468,7 @@ export const EXTRACTION_PROVIDERS: Record<string, ProviderConfig> = {
           }
         });
         proc.on('error', (err: NodeJS.ErrnoException) => {
+          unlink();
           if (err.code === 'ENOENT') {
             reject(new Error('codex CLI not found. Restart the container to trigger install.'));
           } else {
@@ -450,7 +477,7 @@ export const EXTRACTION_PROVIDERS: Record<string, ProviderConfig> = {
         });
         proc.stdin.write(fullPrompt);
         proc.stdin.end();
-      });
+      }).finally(() => rmSync(tmpDirectory, { recursive: true, force: true }));
 
       return {
         content: result,

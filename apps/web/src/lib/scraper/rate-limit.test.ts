@@ -100,4 +100,27 @@ describe('acquireProviderToken', () => {
     await acquireProviderToken('anthropic');
     expect(Date.now() - start).toBeLessThan(50);
   });
+
+  it('cancels a waiting request without consuming the next available slot', async () => {
+    vi.useFakeTimers();
+    mockConfigFindFirst.mockResolvedValue({ googleRpm: 1 });
+    await acquireProviderToken('google');
+    const controller = new AbortController();
+    const waiting = acquireProviderToken('google', controller.signal);
+    const rejected = expect(waiting).rejects.toThrow('cancelled');
+    await vi.advanceTimersByTimeAsync(100);
+    controller.abort(new Error('cancelled'));
+    await rejected;
+    await vi.advanceTimersByTimeAsync(60_000);
+    await acquireProviderToken('google');
+  });
+
+  it('rejects cancellation even while provider configuration is loading', async () => {
+    const controller = new AbortController();
+    mockConfigFindFirst.mockImplementationOnce(async () => {
+      controller.abort(new Error('cancelled'));
+      return null;
+    });
+    await expect(acquireProviderToken('google', controller.signal)).rejects.toThrow('cancelled');
+  });
 });
