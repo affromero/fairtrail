@@ -5,11 +5,23 @@ import { json, lockHotelTracker, refreshHotelTracker } from './store';
 import { deliverHotelAlerts, recordHotelAlerts } from './alerts';
 import type { HotelSearchRun, HotelTracker, Prisma } from '@/generated/prisma/client';
 import type { HotelSearchResult, HotelSelection, HotelTrackingOptions } from './types';
-import { completeTravelJob, enqueueTravelJob, failTravelJob, guardTravelJob, lockTravelAdmission, TravelJobError, type TravelLeaseToken } from '../travel/jobs';
+import { completeTravelJob, enqueueTravelJob, failTravelJob, guardTravelJob, lockTravelAdmission, lockTravelResource, TravelJobError, type TravelLeaseToken } from '../travel/jobs';
 import { checkTravelAuthority, currentTravelContext } from '../travel/context';
 import { currentTravelExecution, TravelCleanupError } from '../travel/execution';
 
 const errorText = (error: unknown) => error instanceof Error ? error.message : String(error);
+
+/** Preserve the original 24-hour retention for completed standalone searches. */
+export async function cleanupHotelSearches(now = new Date()) {
+  const cutoff = new Date(now.getTime() - 86_400_000);
+  return prisma.$transaction(async tx => {
+    await lockTravelResource(tx, 'hotel_search');
+    return tx.hotelSearchRun.deleteMany({ where: {
+      trackerId: null, status: { in: ['success', 'partial', 'unavailable', 'failed', 'cancelled'] }, createdAt: { lt: cutoff },
+      OR: [{ travelJob: null }, { travelJob: { is: { status: { in: ['succeeded', 'failed', 'cancelled'] }, leaseResource: null } } }],
+    } });
+  });
+}
 
 export async function scheduleDueHotels() {
   const due = await prisma.hotelTracker.findMany({ where: { active: true, nextCheckAt: { lte: new Date() } }, orderBy: { nextCheckAt: 'asc' }, take: 20 });
@@ -124,6 +136,7 @@ export async function pumpHotelJobs(): Promise<void> {
   const config = await prisma.extractionConfig.findUnique({ where: { id: 'singleton' } });
   if (config?.enabled === false) return;
   await reconcileHotelJobs();
+  await cleanupHotelSearches();
   await scheduleDueHotels();
   const { pumpTravelJobs } = await import('../travel/coordinator');
   await pumpTravelJobs();

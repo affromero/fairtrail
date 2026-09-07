@@ -1,7 +1,7 @@
 import { beforeAll, beforeEach, afterAll, describe, it, expect, vi } from 'vitest';
 import { prisma } from '@/lib/prisma';
 import { createHotelSearch, createHotelTracker, editHotelTracker, refreshHotelTracker, getHotelTracker, json } from './store';
-import { pumpHotelJobs } from './runner';
+import { cleanupHotelSearches, pumpHotelJobs } from './runner';
 import { deliverHotelAlerts } from './alerts';
 import { prepareStoredConfig } from '@/lib/notifications/channels';
 import { PartialHotelSourceError } from './providers';
@@ -9,7 +9,7 @@ import { POST as searchRoute } from '@/app/api/hotels/search/route';
 import { GET as detailRoute, DELETE as deleteRoute } from '@/app/api/hotels/[id]/route';
 import { invalidateMultiUserCache } from '@/lib/multi-user';
 import type { HotelOffer } from './types';
-import { acquireTravelLease, releaseTravelLease } from '../travel/jobs';
+import { acquireTravelLease, releaseTravelLease, enqueueTravelJob, claimTravelJob } from '../travel/jobs';
 
 const boundary = vi.hoisted(() => ({ search: vi.fn(), cookie: vi.fn() }));
 // Provider adapters and request cookies are external I/O boundaries; domain,
@@ -60,6 +60,30 @@ describe.skipIf(!enabled)('hotel workflows against isolated PostgreSQL', () => {
     await pumpHotelJobs();
     return createHotelTracker({ searchId: run.id, offerId: sample.id, targetPrice: 700, ...options }, solo);
   }
+  it('expires only old standalone terminal searches without deleting active or leased work and tracker history', async () => {
+    const tracker = await tracked();
+    await pumpHotelJobs();
+    const now = new Date(), cutoff = new Date(now.getTime() - 86_400_000), old = new Date(cutoff.getTime() - 1);
+    await prisma.hotelSearchRun.updateMany({ where: { trackerId: tracker.id }, data: { createdAt: old } });
+    const make = (status: string, createdAt = old) => prisma.hotelSearchRun.create({ data: { request: criteria, status, createdAt } });
+    const expired = await Promise.all(['success', 'partial', 'unavailable', 'failed', 'cancelled'].map(status => make(status)));
+    const preserved = await Promise.all([make('success', cutoff), make('success', now), make('queued'), make('running')]);
+    const finished = await make('success'), running = await make('success'), leased = await make('failed');
+    const finishedJob = await prisma.travelJob.create({ data: { kind: 'hotel_search', status: 'succeeded', hotelRunId: finished.id, completedAt: now } });
+    await enqueueTravelJob({ kind: 'hotel_search', hotelRunId: running.id, userId: null });
+    const active = await enqueueTravelJob({ kind: 'hotel_search', hotelRunId: leased.id, userId: null });
+    const lease = await acquireTravelLease('browser');
+    if (!lease) throw new Error('Test browser lease unavailable');
+    await claimTravelJob(active.id, lease);
+    await prisma.travelAdmission.update({ where: { id: 'singleton' }, data: { quarantinedAt: now, quarantineReason: 'Test execution awaiting cleanup' } });
+    await cleanupHotelSearches(now);
+    expect(await prisma.hotelSearchRun.findMany({ where: { id: { in: [...expired.map(run => run.id), finished.id] } } })).toEqual([]);
+    expect(await prisma.travelJob.findUnique({ where: { id: finishedJob.id } })).toBeNull();
+    const survivors = await prisma.hotelSearchRun.findMany({ where: { id: { in: [...preserved.map(run => run.id), running.id, leased.id] } } });
+    expect(survivors.map(run => run.id).sort()).toEqual([...preserved.map(run => run.id), running.id, leased.id].sort());
+    expect(await prisma.hotelSnapshot.findFirst({ where: { trackerId: tracker.id } })).not.toBeNull();
+    expect(await prisma.hotelSearchRun.findFirst({ where: { trackerId: tracker.id } })).not.toBeNull();
+  });
   it('searches, persists a selected hotel, records a total and queues its initial alert without touching flights', async () => {
     const tracker = await tracked();
     await pumpHotelJobs();

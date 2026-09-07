@@ -1,6 +1,6 @@
 import { prisma } from '@/lib/prisma';
 import { refreshCarTracker } from '../cars/store';
-import { reconcileHotelJobs, scheduleDueHotels } from '../hotels/runner';
+import { cleanupHotelSearches, reconcileHotelJobs, scheduleDueHotels } from '../hotels/runner';
 import { deliverHotelAlerts } from '../hotels/alerts';
 import { deliverCarAlerts } from '../cars/delivery';
 import { notificationTransaction } from '../notifications/database';
@@ -31,6 +31,7 @@ async function pump(): Promise<void> {
   if (config?.enabled === false) return;
   if (process.env.SELF_HOSTED === 'true') {
     await reconcileHotelJobs();
+    await cleanupHotelSearches();
     await scheduleDueHotels();
     await scheduleDueCars();
   }
