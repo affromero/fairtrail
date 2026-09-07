@@ -1,7 +1,16 @@
-import { CarClient } from './car-client.js';
+import { CarClient, CarScopeError } from './car-client.js';
 import { carRecord, carText } from '../../../../apps/web/src/lib/cars/validation.js';
 import { validateCarTrackerView } from '../../../../apps/web/src/lib/cars/tracker-view.js';
 import { validateCarRunSummary } from '../../../../apps/web/src/lib/cars/run-view.js';
+import { validateCarPreferencesView } from '../../../../apps/web/src/lib/cars/preference-view.js';
+
+export async function readCarPreferences(client: CarClient, signal?: AbortSignal) {
+  const before = await client.getSession(signal);
+  const current = validateCarPreferencesView(await client.request('/api/cars/preferences', { signal }));
+  const after = await client.getSession(signal);
+  if (before.scope !== after.scope || current.scope !== before.scope) throw new CarScopeError();
+  return current;
+}
 
 function cursor(raw: unknown): string | null {
   if (raw === null) return null;

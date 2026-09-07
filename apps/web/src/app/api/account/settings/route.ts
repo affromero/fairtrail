@@ -31,6 +31,7 @@ export async function GET() {
     preferredAirlines: user.preferredAirlines,
     preferredAggregators: user.preferredAggregators,
     preferredCarProviders: user.preferredCarProviders,
+    carPreferencesRevision: user.carPreferencesRevision,
     cabinClass: user.cabinClass,
   });
 }
@@ -47,6 +48,7 @@ export async function PATCH(request: NextRequest) {
   if (body.preferredCarProviders !== undefined) {
     try { data.preferredCarProviders = validateCarProviders(body.preferredCarProviders, true); }
     catch { return apiError('preferredCarProviders must be an ordered list of distinct supported rental providers, or [] for defaults', 400); }
+    data.carPreferencesRevision = { increment: 1 };
   }
 
   if (typeof body.displayName === 'string') {
@@ -123,7 +125,7 @@ export async function PATCH(request: NextRequest) {
   }
 
   const updated = await prisma.user.update({
-    where: { id: auth.user.id },
+    where: { id: auth.user.id, ...(body.preferredCarProviders === undefined ? {} : { carPreferencesRevision: { lt: 2147483647 } }) },
     data,
     select: {
       username: true,
@@ -135,9 +137,13 @@ export async function PATCH(request: NextRequest) {
       preferredAirlines: true,
       preferredAggregators: true,
       preferredCarProviders: true,
+      carPreferencesRevision: true,
       cabinClass: true,
     },
+  }).catch((error: unknown) => {
+    if (error && typeof error === 'object' && 'code' in error && error.code === 'P2025') return null;
+    throw error;
   });
-
+  if (!updated) return apiError('Account or car preference revision changed; reload settings', 409);
   return apiSuccess(updated);
 }

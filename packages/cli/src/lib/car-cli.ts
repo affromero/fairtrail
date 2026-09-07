@@ -10,14 +10,16 @@ import { validateCarDetailView } from '../../../../apps/web/src/lib/cars/detail-
 import { validateCarRunView } from '../../../../apps/web/src/lib/cars/run-view.js';
 import { validateCarParseDraft } from '../../../../apps/web/src/lib/cars/parse-draft.js';
 import { validateCarLocationChoice } from '../../../../apps/web/src/lib/cars/location-types.js';
-import { readCarSearchPage, readCarTrackerPage } from './car-views.js';
+import { readCarPreferences, readCarSearchPage, readCarTrackerPage } from './car-views.js';
+import { validateCarProviders } from '../../../../apps/web/src/lib/cars/preferences.js';
 
 interface Options {
   server?: string; json?: boolean; receiptDir?: string; file?: string; wait?: boolean; timeout?: string;
   revision?: string; target?: string; currency?: string; clearTarget?: boolean; lows?: boolean; interval?: string;
   mode?: string; label?: string; cursor?: string; admin?: boolean; locale?: string;
+  providers?: string; reset?: boolean;
 }
-interface Context { client: CarClient; options: Options; args: string[]; signal: AbortSignal; mutate: (intent: CarOperation) => Promise<Awaited<ReturnType<typeof performCarMutation>>> }
+interface Context { client: CarClient; options: Options; args: string[]; signal: AbortSignal; mutate: (intent: CarOperation, expectedScope?: string) => Promise<Awaited<ReturnType<typeof performCarMutation>>> }
 function identity(raw: string | undefined): string {
   if (!raw || !/^[A-Za-z0-9_-]{1,200}$/.test(raw)) throw new Error('Choose a valid rental identity');
   return raw;
@@ -50,9 +52,9 @@ export function registerCarCommands(program: Command): () => boolean {
     process.once('SIGINT', interrupt); process.once('SIGTERM', interrupt);
     try {
       const client = new CarClient(options.server ?? process.env.FLIGHT_FINDER_URL ?? `http://localhost:${process.env.HOST_PORT ?? process.env.PORT ?? '3003'}`, process.env.FLIGHT_FINDER_SESSION, process.env.FLIGHT_FINDER_TOKEN);
-      const mutate = async (intent: CarOperation) => performCarMutation(await carReceiptDirectory(options.receiptDir), client, intent, path => {
+      const mutate = async (intent: CarOperation, expectedScope?: string) => performCarMutation(await carReceiptDirectory(options.receiptDir), client, intent, path => {
         console.error(options.json ? JSON.stringify({ receiptPath: path, state: 'prepared' }) : `Recovery receipt: ${path}`);
-      }, controller.signal);
+      }, controller.signal, expectedScope);
       const result = await run({ client, options, args: args.filter((arg): arg is string => typeof arg === 'string'), signal: controller.signal, mutate });
       if (result !== undefined) console.log(JSON.stringify(result, null, options.json ? undefined : 2));
     } catch (error) {
@@ -60,6 +62,19 @@ export function registerCarCommands(program: Command): () => boolean {
       console.error(options.json ? JSON.stringify({ error: message(error), ...detail }) : `Error: ${message(error)}${error instanceof CarMutationError ? ` Receipt: ${error.receiptPath}${error.current ? `\n${JSON.stringify(error.current, null, 2)}` : ''}` : ''}`);
       process.exitCode = controller.signal.aborted ? 130 : 1;
     } finally { process.removeListener('SIGINT', interrupt); process.removeListener('SIGTERM', interrupt); }
+  });
+  action(cars.command('preferences').description('Read or change your ordered rental providers; reset inherits both defaults')
+    .option('--providers <list>', 'Comma-separated provider IDs in preferred order').option('--reset', 'Restore inherited provider defaults')
+    .option('--revision <revision>', 'Expected preference revision from cars preferences'), async ({ client, options, signal, mutate }) => {
+    if (options.reset && options.providers !== undefined) throw new Error('Choose --providers or --reset');
+    const changing = options.reset || options.providers !== undefined;
+    if (!changing && options.revision !== undefined) throw new Error('--revision requires --providers or --reset');
+    const revision = changing ? integer(options.revision, 0, 2147483646, '--revision') : null;
+    const providers = changing ? validateCarProviders(options.reset ? [] : options.providers!.split(',').map(value => value.trim()), true) : null;
+    const current = await readCarPreferences(client, signal);
+    if (!changing) return current;
+    if (!current.savingAllowed || current.userId === null) throw new Error('Saved car preferences require a personal account; single-user searches use both providers or explicit search sources');
+    return mutate({ kind: 'preferences', id: current.userId, revision, body: { providers } }, current.scope);
   });
   action(cars.command('browse').description('Browse rental trackers and verified price history').option('--admin', 'Administrator list of all owners'), async ({ client, options, signal }) => {
     if (options.json || !process.stdin.isTTY || !process.stdout.isTTY) throw new Error('cars browse requires an interactive terminal without --json; use cars list or cars view');
@@ -88,7 +103,9 @@ export function registerCarCommands(program: Command): () => boolean {
     .option('--timeout <minutes>', 'Wait limit from 1 to 120 minutes', '120'), async ({ client, options, signal, mutate }) => {
     const timeoutMs = integer(options.timeout, 1, 120, '--timeout') * 60_000;
     const body = carRecord(await readCarInput(options.file!, signal));
-    const result = await mutate({ kind: 'search', id: null, revision: null, body });
+    const preferences = body.sources === undefined ? await readCarPreferences(client, signal) : null;
+    if (preferences) body.sources = preferences.effectiveProviders;
+    const result = await mutate({ kind: 'search', id: null, revision: null, body }, preferences?.scope);
     if (!options.wait) return result;
     const id = identity(carRecord(result.result).id as string);
     console.error(options.json ? JSON.stringify(result) : `Search ${id} accepted. Receipt: ${result.receiptPath}`);

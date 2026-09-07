@@ -30,7 +30,7 @@ beforeEach(async () => {
   server = createServer(async (request, response) => {
     let body = ''; for await (const chunk of request) body += String(chunk);
     requests.push({ method: request.method!, path: request.url!, key: request.headers['idempotency-key'] as string | undefined, revision: request.headers['x-car-revision'] as string | undefined, body });
-    if (request.url === '/api/cars/session') { respond(response, { scope, isAdmin: false }); return; }
+    if (request.url === '/api/cars/session') { respond(response, { scope, isAdmin: scope === 'single' }); return; }
     await handle(request, response, body);
   });
   await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
@@ -121,6 +121,102 @@ describe('rental CLI commands', () => {
     await command.parseAsync(['node', 'flightfinder', 'cars', '--server', client.origin, '--receipt-dir', directory, '--json', ...args]);
     expect(handled()).toBe(true);
   }
+  it('reads account-bound preferences without creating a mutation receipt', async () => {
+    const output = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    handle = (request, response) => respond(response, { scope, userId: 'alice', providers: [], effectiveProviders: ['discovercars', 'autoeurope'], revision: 3, savingAllowed: true });
+    await run(['preferences']);
+    expect(JSON.parse(String(output.mock.calls[0]?.[0]))).toMatchObject({ providers: [], revision: 3 });
+    expect(await readdir(directory)).toEqual([]);
+    expect(requests.every(row => row.method === 'GET')).toBe(true);
+  });
+  it('hides preferences if the account changes during the read', async () => {
+    const output = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    handle = (request, response) => {
+      respond(response, { scope, userId: 'alice', providers: [], effectiveProviders: ['discovercars', 'autoeurope'], revision: 0, savingAllowed: true });
+      scope = 'user:bob';
+    };
+    await run(['preferences']);
+    expect(process.exitCode).toBe(1);
+    expect(output.mock.calls).toEqual([]);
+    expect(await readdir(directory)).toEqual([]);
+  });
+  it('shows single-user defaults without allowing an implicit server-wide preference write', async () => {
+    scope = 'single';
+    const output = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    handle = (request, response) => respond(response, { scope, userId: null, providers: [], effectiveProviders: ['discovercars', 'autoeurope'], revision: null, savingAllowed: false });
+    await run(['preferences']);
+    expect(JSON.parse(String(output.mock.calls[0]?.[0]))).toMatchObject({ savingAllowed: false, providers: [] });
+    await run(['preferences', '--reset', '--revision', '0']);
+    expect(String(errors.mock.calls.at(-1)?.[0])).toMatch(/personal account/);
+    expect(requests.every(row => row.method === 'GET')).toBe(true);
+    expect(await readdir(directory)).toEqual([]);
+  });
+  it('does not publish a preference receipt targeting another account', async () => {
+    await expect(performCarMutation(directory, client, { kind: 'preferences', id: 'bob', revision: 0, body: { providers: [] } }, () => undefined)).rejects.toThrow(/account/);
+    expect(await readdir(directory)).toEqual([]);
+    expect(requests.every(row => row.method === 'GET')).toBe(true);
+  });
+  it('resolves omitted search sources from saved preferences before retaining the search receipt', async () => {
+    vi.spyOn(console, 'log').mockImplementation(() => undefined); vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const search = carSearchFixture(), catalog = { id: 'ourairports:1', version: 'a'.repeat(64) };
+    const body = { ...search, sources: undefined, pickup: catalog, dropoff: catalog, pickupAt: { date: search.pickupAt.date, time: search.pickupAt.time }, dropoffAt: { date: search.dropoffAt.date, time: search.dropoffAt.time } };
+    const path = join(directory, 'search.json'); await writeFile(path, JSON.stringify(body));
+    handle = (request, response) => request.method === 'POST'
+      ? respond(response, { id: 'run-one', status: 'queued', creationKey: request.headers['idempotency-key'] }, 202)
+      : respond(response, { scope, userId: 'alice', providers: ['autoeurope'], effectiveProviders: ['autoeurope'], revision: 2, savingAllowed: true });
+    await run(['search', '--file', path]);
+    expect(process.exitCode ?? 0).toBe(0);
+    expect(JSON.parse(requests.find(row => row.method === 'POST')!.body).sources).toEqual(['autoeurope']);
+    const saved = (await readdir(directory)).find(name => name !== 'search.json')!;
+    expect(JSON.parse(await readFile(join(directory, saved), 'utf8')).operation.body.sources).toEqual(['autoeurope']);
+  });
+  it.each([['--providers', 'autoeurope,discovercars'], ['--reset']] as const)('persists a revision-fenced preference receipt before changing choices: %s', (...flags) => {
+    return (async () => {
+      const output = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+      vi.spyOn(console, 'error').mockImplementation(() => undefined);
+      let providers: string[] = [], revision = 3;
+      handle = async (request, response, body) => {
+        if (request.method === 'PATCH') {
+          expect(request.url).toBe('/api/cars/preferences/alice');
+          const files = await readdir(directory);
+          expect(JSON.parse(await readFile(join(directory, files[0]!), 'utf8'))).toMatchObject({ scope, operation: { kind: 'preferences', id: 'alice', revision: 3 } });
+          expect(request.headers['x-car-revision']).toBe('3');
+          providers = JSON.parse(body).providers; revision++;
+        }
+        respond(response, { scope, userId: 'alice', providers, effectiveProviders: providers.length ? providers : ['discovercars', 'autoeurope'], revision, savingAllowed: true });
+      };
+      await run(['preferences', ...flags, '--revision', '3']);
+      expect(JSON.parse(String(output.mock.calls[0]?.[0]))).toMatchObject({ result: { revision: 4, providers: flags[0] === '--reset' ? [] : ['autoeurope', 'discovercars'] } });
+    })();
+  });
+  it('keeps a lost preference acknowledgement unproven and does not overwrite a newer revision on retry', async () => {
+    let revision = 0, providers = ['discovercars'], saved = '';
+    handle = (request, response, body) => {
+      if (request.method === 'PATCH') {
+        if (Number(request.headers['x-car-revision']) !== revision) { reject(response, 412, 'Preferences changed'); return; }
+        revision++; providers = JSON.parse(body).providers; response.destroy(); return;
+      }
+      respond(response, { scope, userId: 'alice', providers, effectiveProviders: providers, revision, savingAllowed: true });
+    };
+    await expect(performCarMutation(directory, client, { kind: 'preferences', id: 'alice', revision: 0, body: { providers: ['autoeurope'] } }, path => { saved = path; })).rejects.toMatchObject({ outcome: 'unconfirmed' });
+    await expect(replayCarMutation(saved, client)).rejects.toMatchObject({ outcome: 'stale', current: { providers: ['autoeurope'], revision: 1 } });
+    expect(revision).toBe(1);
+    expect(JSON.parse(await readFile(saved, 'utf8')).operation.revision).toBe(0);
+  });
+  it('rejects an acknowledgement with a foreign preference owner or a different ordered selection', async () => {
+    for (const changes of [{ userId: 'bob', scope: 'user:bob' }, { providers: ['discovercars', 'autoeurope'], effectiveProviders: ['discovercars', 'autoeurope'] }]) {
+      handle = (request, response) => respond(response, { scope, userId: 'alice', providers: ['autoeurope', 'discovercars'], effectiveProviders: ['autoeurope', 'discovercars'], revision: 1, savingAllowed: true, ...changes });
+      await expect(performCarMutation(directory, client, { kind: 'preferences', id: 'alice', revision: 0, body: { providers: ['autoeurope', 'discovercars'] } }, () => undefined)).rejects.toMatchObject({ outcome: 'unconfirmed' });
+    }
+  });
+  it.each([['--reset'], ['--providers', 'unknown', '--revision', '0'], ['--reset', '--providers', 'autoeurope', '--revision', '0']])('rejects invalid preference changes before sending requests: %s', async (...flags) => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    await run(['preferences', ...flags]);
+    expect(process.exitCode).toBe(1);
+    expect(requests).toEqual([]);
+  });
   it('publishes recovery information before sending a refresh and prints correlated JSON', async () => {
     const output = vi.spyOn(console, 'log').mockImplementation(() => undefined), errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     handle = (request, response) => {

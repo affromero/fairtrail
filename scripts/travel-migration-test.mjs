@@ -88,6 +88,7 @@ try {
   await push(expandedSchema); await client.query(constraints);
   await push(expandedSchema); await client.query(constraints);
   assert.equal(await snapshot(tables), before, 'Idempotent upgrade must preserve every existing column and row');
+  assert.equal((await client.query('SELECT "carPreferencesRevision" FROM "User" WHERE id = $1', ['migration-owner'])).rows[0].carPreferencesRevision, 0, 'Existing accounts start with preference revision zero');
   await client.query(`
     INSERT INTO "CarTracker" (id, label, search, currency, "latestPriceMinor", "updatedAt") VALUES ('migration-car', 'New car data survives rollback', '{}', 'USD', 9365, now());
     INSERT INTO "CarTrackerCreation" (id, "requestHash", "trackerId") VALUES (repeat('b',64), repeat('c',64), 'migration-car');
@@ -99,6 +100,8 @@ try {
       VALUES ('migration-car-alert', 'migration-car', 'migration-alert', '{"title":"Pending car alert"}', ARRAY['delivered-test-channel']);
   `);
   const newTables = {};
+  await client.query('UPDATE "User" SET "preferredCarProviders" = ARRAY[\'autoeurope\']::"CarProvider"[], "carPreferencesRevision" = 2 WHERE id = $1', ['migration-owner']);
+  newTables.User = ['id', 'preferredCarProviders', 'carPreferencesRevision'];
   for (const table of ['CarTracker', 'CarTrackerCreation', 'CarSearchRun', 'CarSnapshot', 'TravelJob', 'TravelAlertDelivery']) {
     newTables[table] = (await client.query('SELECT column_name FROM information_schema.columns WHERE table_schema = \'public\' AND table_name = $1 ORDER BY ordinal_position', [table])).rows.map(row => row.column_name);
   }

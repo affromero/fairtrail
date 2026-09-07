@@ -106,6 +106,22 @@ driver's age, residence country, and years holding a licence. Choose either
 provider or both. Account settings save each user's preferred car providers
 separately from flight and hotel preferences.
 
+From the CLI, `flight-finder cars preferences` shows the saved provider order,
+effective defaults and preference revision. Use
+`flight-finder cars preferences --providers autoeurope,discovercars --revision 0`
+with the revision you just read, or `--reset --revision 0` to inherit both
+providers. These settings affect new car searches, not existing trackers.
+CLI search files may omit `sources` to use these preferences; an explicit
+`sources` list takes precedence and is retained unchanged in the search receipt.
+Single-user installations keep both defaults; each search can select its own
+sources. Saving preferences requires a personal account.
+
+Preference changes retain a recovery receipt before sending the request. After
+a lost acknowledgement, use `cars retry <receipt>` with that receipt. A stale
+revision displays current preferences without claiming the original request
+succeeded. Review them before making a new change; never replace the revision
+inside an old receipt.
+
 The structured form works without AI. An optional natural-language request
 produces a draft for review. Location suggestions still require a catalog
 selection, and missing driver details remain empty until you supply them.

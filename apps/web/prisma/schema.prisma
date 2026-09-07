@@ -181,6 +181,7 @@ model User {
   preferredAggregators String[] @default([]) // ordered fallback chain after airline_direct; empty = inherit admin default
   cabinClass        String?  // override; null falls back to "economy"
   preferredCarProviders CarProvider[] @default([])
+  carPreferencesRevision Int @default(0)
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 

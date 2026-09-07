@@ -13,6 +13,10 @@ import { GET as searches, POST as startSearch } from '@/app/api/cars/search/rout
 import { GET as locations } from '@/app/api/cars/locations/route';
 import { GET as session } from '@/app/api/cars/session/route';
 import { invalidateMultiUserCache } from '../multi-user';
+import { GET as preferences } from '@/app/api/cars/preferences/route';
+import { PATCH as setPreferences } from '@/app/api/cars/preferences/[id]/route';
+import { PATCH as accountSettings } from '@/app/api/account/settings/route';
+import { NextRequest } from 'next/server';
 
 const boundary = vi.hoisted(() => ({ token: '' }));
 vi.mock('next/headers', () => ({ cookies: async () => ({ get: () => boundary.token ? { value: boundary.token } : undefined }) }));
@@ -50,6 +54,59 @@ describe.skipIf(process.env.CAR_HTTP_INTEGRATION_TESTS !== '1')('car HTTP owners
   async function completed() {
     return prisma.carSearchRun.create({ data: { userId: owner, request: carJson(carSearchFixture()), result: carJson(carReportFixture()), status: 'success', completedAt: new Date() } });
   }
+  const preferenceRequest = (providers: unknown, revision?: number) => new Request('http://localhost/api/cars/preferences', { method: 'PATCH', headers: { 'Content-Type': 'application/json', ...(revision === undefined ? {} : { 'X-Car-Revision': String(revision) }) }, body: JSON.stringify({ providers }) });
+  const accountRequest = (body: unknown) => new NextRequest('http://localhost/api/account/settings', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  it('saves ordered car preferences and resets inheritance without touching flight preferences', async () => {
+    await prisma.user.update({ where: { id: owner }, data: { defaultCurrency: 'GBP', preferredAirlines: ['Delta'], preferredAggregators: ['google_flights'] } });
+    expect((await (await preferences()).json()).data).toMatchObject({ scope: `user:${owner}`, providers: [], effectiveProviders: ['discovercars', 'autoeurope'], revision: 0 });
+    const response = await setPreferences(preferenceRequest(['autoeurope', 'discovercars'], 0), context(owner));
+    expect(response.status).toBe(200);
+    expect(response.headers.get('cache-control')).toBe('private, no-store');
+    expect((await response.json()).data).toMatchObject({ providers: ['autoeurope', 'discovercars'], revision: 1 });
+    expect((await (await setPreferences(preferenceRequest([], 1), context(owner))).json()).data).toMatchObject({ providers: [], effectiveProviders: ['discovercars', 'autoeurope'], revision: 2 });
+    expect(await prisma.user.findUnique({ where: { id: owner } })).toMatchObject({ defaultCurrency: 'GBP', preferredAirlines: ['Delta'], preferredAggregators: ['google_flights'] });
+  });
+  it('rejects stale retries even when preferences changed away and back to the original values', async () => {
+    await setPreferences(preferenceRequest(['autoeurope'], 0), context(owner));
+    await setPreferences(preferenceRequest([], 1), context(owner));
+    expect((await setPreferences(preferenceRequest(['autoeurope'], 0), context(owner))).status).toBe(412);
+    expect((await (await preferences()).json()).data).toMatchObject({ providers: [], revision: 2 });
+  });
+  it('advances the revision on unchanged web choices but not unrelated account settings', async () => {
+    expect((await accountSettings(accountRequest({ preferredCarProviders: [] }))).status).toBe(200);
+    expect((await (await preferences()).json()).data.revision).toBe(1);
+    expect((await accountSettings(accountRequest({ defaultCurrency: 'EUR' }))).status).toBe(200);
+    expect((await (await preferences()).json()).data.revision).toBe(1);
+    expect((await setPreferences(preferenceRequest(['discovercars'], 0), context(owner))).status).toBe(412);
+  });
+  it('serializes concurrent web and CLI preference updates', async () => {
+    const [web, cli] = await Promise.all([accountSettings(accountRequest({ preferredCarProviders: ['autoeurope'] })), setPreferences(preferenceRequest(['discovercars'], 0), context(owner))]);
+    expect(web.status).toBe(200);
+    expect([200, 412]).toContain(cli.status);
+    expect((await (await preferences()).json()).data).toMatchObject({ providers: ['autoeurope'], revision: cli.status === 200 ? 2 : 1 });
+  });
+  it('does not let administrators alter another account or inspect its revision', async () => {
+    await prisma.user.update({ where: { id: owner }, data: { isAdmin: true } });
+    expect((await setPreferences(preferenceRequest(['autoeurope'], 0), context(other))).status).toBe(404);
+    expect(await prisma.user.findUnique({ where: { id: other } })).toMatchObject({ preferredCarProviders: [], carPreferencesRevision: 0 });
+  });
+  it.each([[['unknown'], 0, 400], [['autoeurope', 'autoeurope'], 0, 400], [[], undefined, 428], [[], 2147483647, 400]] as const)('rejects invalid or unfenced preference updates %#', async (providers, revision, status) => {
+    expect((await setPreferences(preferenceRequest(providers, revision), context(owner))).status).toBe(status);
+    expect((await (await preferences()).json()).data.revision).toBe(0);
+  });
+  it('keeps single-user defaults read-only and public preferences unavailable', async () => {
+    await prisma.extractionConfig.update({ where: { id: 'singleton' }, data: { multiUserMode: false } });
+    await invalidateMultiUserCache();
+    try {
+      expect((await (await preferences()).json()).data).toMatchObject({ scope: 'single', providers: [], revision: null, savingAllowed: false });
+      expect((await setPreferences(preferenceRequest(['autoeurope'], 0), context(owner))).status).toBe(404);
+      vi.stubEnv('SELF_HOSTED', 'false');
+      expect((await preferences()).status).toBe(404);
+    } finally {
+      await prisma.extractionConfig.update({ where: { id: 'singleton' }, data: { multiUserMode: true } });
+      await invalidateMultiUserCache();
+    }
+  });
   async function tracker() {
     const run = await completed();
     return createCarTracker({ searchId: run.id, offerId: 'verified-quote' }, { userId: owner, isAdmin: false });

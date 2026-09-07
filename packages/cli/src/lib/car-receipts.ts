@@ -6,8 +6,9 @@ import { CarClient, CarScopeError } from './car-client.js';
 import { carCreationInput } from '../../../../apps/web/src/lib/cars/creation-input.js';
 import { carInputFields, normalizeCarSearchInput } from '../../../../apps/web/src/lib/cars/public-input.js';
 import { carText, validateCarOptions } from '../../../../apps/web/src/lib/cars/validation.js';
+import { validateCarProviders } from '../../../../apps/web/src/lib/cars/preferences.js';
 
-type Kind = 'search' | 'track' | 'refresh' | 'edit' | 'delete' | 'cancel';
+type Kind = 'search' | 'track' | 'refresh' | 'edit' | 'delete' | 'cancel' | 'preferences';
 export interface CarOperation { kind: Kind; id: string | null; body: Record<string, unknown> | null; revision: number | null }
 export interface CarReceipt { version: 1; key: string; origin: string; scope: string; createdAt: string; operation: CarOperation }
 const MAX_BYTES = 128 * 1024;
@@ -16,6 +17,7 @@ const fields: Record<Kind, readonly string[]> = {
   search: ['pickup', 'dropoff', 'pickupAt', 'dropoffAt', 'driver', 'currency', 'sources', 'extras', 'filters'],
   track: ['searchId', 'offerId', 'label', 'mode', 'target', 'notifyLows', 'scrapeInterval'],
   refresh: [], edit: ['active', 'target', 'notifyLows', 'scrapeInterval', 'userId', 'label'], delete: [], cancel: [],
+  preferences: ['providers'],
 };
 function object(raw: unknown): Record<string, unknown> {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error('Invalid car recovery record');
@@ -25,6 +27,7 @@ function exact(value: Record<string, unknown>, allowed: readonly string[]) {
   if (Object.keys(value).some(key => !allowed.includes(key))) throw new Error('Unexpected field in car recovery record');
 }
 function normalizePayload(body: Record<string, unknown>, kind: Kind): Record<string, unknown> {
+  if (kind === 'preferences') return { providers: validateCarProviders(body.providers, true) };
   if (kind === 'search') return normalizeCarSearchInput(body);
   if (body.target != null) carInputFields(body.target, ['currency', 'minor']);
   if (kind === 'track') {
@@ -49,7 +52,7 @@ function operation(raw: unknown, normalize: boolean): CarOperation {
   const kind = value.kind as Kind, creates = kind === 'search' || kind === 'track';
   if (creates ? value.id !== null : typeof value.id !== 'string' || !/^[A-Za-z0-9_-]{1,200}$/.test(value.id)) throw new Error('Invalid car recovery target');
   const revision = value.revision;
-  if (['refresh', 'edit', 'delete'].includes(kind) ? !Number.isSafeInteger(revision) || Number(revision) < 0 || Number(revision) > 2147483647 : revision !== null) throw new Error('Invalid car recovery revision');
+  if (['refresh', 'edit', 'delete', 'preferences'].includes(kind) ? !Number.isSafeInteger(revision) || Number(revision) < 0 || Number(revision) > 2147483647 : revision !== null) throw new Error('Invalid car recovery revision');
   let body = value.body === null ? null : object(value.body);
   if (fields[kind].length ? body === null : body !== null) throw new Error('Invalid car recovery payload');
   if (body) {
@@ -69,7 +72,9 @@ function receipt(raw: unknown, normalize = false): CarReceipt {
     || typeof value.origin !== 'string' || new CarClient(value.origin).origin !== value.origin
     || typeof value.scope !== 'string' || !/^(?:single|user:[A-Za-z0-9_-]{1,200})$/.test(value.scope)
     || typeof value.createdAt !== 'string' || !Number.isFinite(Date.parse(value.createdAt))) throw new Error('Invalid car recovery identity');
-  return { version: 1, key: value.key, origin: value.origin, scope: value.scope, createdAt: value.createdAt, operation: operation(value.operation, normalize) };
+  const intent = operation(value.operation, normalize);
+  if (intent.kind === 'preferences' && value.scope !== `user:${intent.id}`) throw new Error('Car preferences can only change the receipt account');
+  return { version: 1, key: value.key, origin: value.origin, scope: value.scope, createdAt: value.createdAt, operation: intent };
 }
 async function privateDescriptor(file: FileHandle, directory: boolean) {
   const stat = await file.stat();

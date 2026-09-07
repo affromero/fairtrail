@@ -7,6 +7,7 @@ import { carRecord, carText } from '../../../../apps/web/src/lib/cars/validation
 import { validateCarTrackerView } from '../../../../apps/web/src/lib/cars/tracker-view.js';
 import { validateCarDetailView } from '../../../../apps/web/src/lib/cars/detail-view.js';
 import { carRunIsActive, validateCarRunView } from '../../../../apps/web/src/lib/cars/run-view.js';
+import { validateCarPreferencesView } from '../../../../apps/web/src/lib/cars/preference-view.js';
 
 const statuses = ['queued', 'running', 'success', 'partial', 'unavailable', 'failed', 'cancelled'];
 export class CarMutationError extends Error {
@@ -16,6 +17,11 @@ export class CarMutationError extends Error {
 }
 function acknowledgement(raw: unknown, receipt: CarReceipt) {
   const value = carRecord(raw), { kind, id, revision, body } = receipt.operation;
+  if (kind === 'preferences') {
+    const preferences = validateCarPreferencesView(value);
+    if (preferences.scope !== receipt.scope || preferences.userId !== id || preferences.revision !== revision! + 1 || !isDeepStrictEqual(preferences.providers, body!.providers)) throw new Error('Car preference acknowledgement belongs to another account, revision or selection');
+    return preferences;
+  }
   if (kind === 'track' || kind === 'edit') {
     const tracker = validateCarTrackerView(value.tracker);
     if (kind === 'track') {
@@ -52,9 +58,9 @@ export async function replayCarMutation(path: string, client: CarClient, signal?
     receipt = await readCarReceipt(path, client, signal, expectedReceipt?.scope);
     if (expectedReceipt && !isDeepStrictEqual(receipt, expectedReceipt)) throw new Error('Recovery receipt changed after review; review it again before retrying');
     const { kind, id, body, revision } = receipt.operation;
-    const endpoint = kind === 'search' ? '/api/cars/search' : kind === 'track' ? '/api/cars' : kind === 'cancel' ? `/api/cars/search/${id}` : `/api/cars/${id}${kind === 'refresh' ? '/scrape' : ''}`;
+    const endpoint = kind === 'preferences' ? `/api/cars/preferences/${id}` : kind === 'search' ? '/api/cars/search' : kind === 'track' ? '/api/cars' : kind === 'cancel' ? `/api/cars/search/${id}` : `/api/cars/${id}${kind === 'refresh' ? '/scrape' : ''}`;
     const raw = await client.request<unknown>(endpoint, {
-      method: kind === 'edit' ? 'PATCH' : kind === 'delete' || kind === 'cancel' ? 'DELETE' : 'POST',
+      method: kind === 'edit' || kind === 'preferences' ? 'PATCH' : kind === 'delete' || kind === 'cancel' ? 'DELETE' : 'POST',
       ...(body === null ? {} : { body }), ...(revision === null ? {} : { revision }), idempotencyKey: receipt.key, signal,
     });
     signal?.throwIfAborted();
@@ -66,7 +72,13 @@ export async function replayCarMutation(path: string, client: CarClient, signal?
       : definitive && status === 412 ? 'stale' : definitive && [400, 409, 413, 415, 428, 429].includes(status ?? 0) ? 'rejected' : 'unconfirmed';
     let current: unknown, reconciliationError = '';
     if (outcome === 'stale' && receipt?.operation.id && receipt.operation.kind !== 'cancel') {
-      try { current = validateCarDetailView(await client.request(`/api/cars/${receipt.operation.id}`, { signal }), receipt.operation.id); }
+      try {
+        if (receipt.operation.kind === 'preferences') {
+          const preferences = validateCarPreferencesView(await client.request('/api/cars/preferences', { signal }));
+          if (preferences.scope !== receipt.scope) throw new CarScopeError();
+          current = preferences;
+        } else current = validateCarDetailView(await client.request(`/api/cars/${receipt.operation.id}`, { signal }), receipt.operation.id);
+      }
       catch (readError) { reconciliationError = ` Current settings could not be verified: ${readError instanceof Error ? readError.message : String(readError)}.`; }
     }
     const explanation = outcome === 'removed' ? 'The server retained a tombstone; this receipt cannot create a replacement.'

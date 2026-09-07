@@ -629,6 +629,22 @@ Providers are `discovercars` and `autoeurope`. Account settings expose an ordere
 duplicate or unsupported values are rejected. Existing flight and hotel provider
 preferences are separate.
 
+`GET /api/cars/preferences` returns `{ scope, userId, providers,
+effectiveProviders, revision, savingAllowed }` for the current account only.
+`providers: []` means inheritance; `effectiveProviders` contains the default
+pair in order. Single-user mode returns `scope: "single"`, `userId: null`,
+`revision: null` and `savingAllowed: false` without creating global preferences.
+
+`PATCH /api/cars/preferences/{userId}` accepts only `{ "providers": [...] }`
+and requires `X-Car-Revision` from the preference read. Only the account owner
+may update it; administrators cannot change another user's preferences here.
+Every accepted update advances the revision, even if the selection is unchanged.
+Missing revisions return 428; stale revisions return 412 without writing.
+The account-settings endpoint also advances `carPreferencesRevision` when
+`preferredCarProviders` is submitted, but unrelated settings leave it unchanged.
+An uncertain retry must retain the original revision. A 412 and a subsequent
+read do not prove that the original operation succeeded.
+
 Amounts use `{ currency, minor }`, with a safe integer number of the currency's
 minor units: `{ "currency": "GBP", "minor": 9000 }` means £90.00. Do not assume
 every currency has two decimal places. Missing retained prices are `null`, not
