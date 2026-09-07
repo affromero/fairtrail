@@ -69,8 +69,10 @@ export function extractDiscoverCarsOffer(capture: DiscoverCarsCapture, search: C
     if (maxAge && noMaximumAge) throw new CarError('Supplier maximum age conditions conflict');
     if (!minAge || (!maxAge && !noMaximumAge) || !licence) throw new CarError('Supplier age or licence conditions are incomplete');
     let coverageTerms = section('protection');
+    if (search.driver.residenceCountry === 'US' && /USA residents must use their own Third Party Liability and Collision Damage Waiver insurance policies\./i.test(coverageTerms)) throw new CarError('US residents must provide their own liability and collision insurance; coverage eligibility could not be verified');
     if (/need to purchase insurance at the counter/i.test(coverageTerms)) throw new CarError('Required collision or theft cover is not included; own-cover proof or an unpriced counter purchase is required');
     if (search.extras.childSeats.length || search.extras.additionalDrivers.length) throw new CarError(`Selected local extras are request-only: ${section('optional-extras-and-services')}`);
+    if (raw.coverage === null || raw.coverage === undefined) throw new CarError('The provider did not disclose whether optional protection was selected; this quote could not be verified');
     if (carRecord(raw.coverage).isChecked !== false) throw new CarError('Provider protection selection is not verified as unselected');
     if (rows(raw.extras).some(item => item.selectedCount !== 0)) throw new CarError('Provider added an unrequested extra');
     const included = rows(raw.includedOptions);

@@ -45,6 +45,25 @@ function offer(capture = fixture()) {
   return result;
 }
 describe('verified DiscoverCars rental contracts', () => {
+  it.each(['null', 'omitted'])('explains %s optional-selection metadata without certifying the quote', absence => {
+    const capture: DiscoverCarsCapture = fixture();
+    if (absence === 'null') capture.offer.coverage = null;
+    else delete capture.offer.coverage;
+    const result = extractDiscoverCarsOffer(capture, search);
+    expect(result).not.toHaveProperty('contract');
+    expect(result).toMatchObject({ reasons: [expect.stringMatching(/did not disclose whether optional protection was selected/)] });
+  });
+  it('explains own-insurance requirements only for the residence to which they apply', () => {
+    const capture = fixture();
+    capture.sections.find(row => row.title === 'protection')!.text += ' USA residents must use their own Third Party Liability and Collision Damage Waiver insurance policies.';
+    expect(extractDiscoverCarsOffer(capture, search)).toHaveProperty('contract');
+    const query = encodeURIComponent(Buffer.from(JSON.stringify({ ...request, ResidenceCountry: 'US' })).toString('base64'));
+    capture.url = capture.url.split('?')[0] + `?sq=${query}`;
+    capture.currencyContext.sourceUrl = capture.currencyContext.sourceUrl.split('?')[0] + `?sq=${query}`;
+    const result = extractDiscoverCarsOffer(capture, { ...search, driver: { ...search.driver, residenceCountry: 'US' } });
+    expect(result).not.toHaveProperty('contract');
+    expect(result).toMatchObject({ reasons: [expect.stringMatching(/US residents must provide their own/)] });
+  });
   it('accepts explicit uncapped maximum age while still enforcing minimum age and licence tenure', () => {
     const capture = fixture();
     capture.sections.find(row => row.title === 'document')!.text = 'Minimum rental age is 23 years. There is no maximum age. Licence issued at least 2 year(s) before the rental.';
