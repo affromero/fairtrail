@@ -162,15 +162,15 @@ describe.skipIf(!enabled)('shared travel jobs against isolated PostgreSQL', () =
     await expect(prisma.travelAlertDelivery.create({ data: { eventKey: 'no-domain', message: json } })).rejects.toThrow();
   });
   it('enforces one active car refresh and safe integer prices at the database boundary', async () => {
-    const tracker = await prisma.carTracker.create({ data: { label: 'DB constraints', currency: 'USD', search: json } });
+    const tracker = await prisma.carTracker.create({ data: { userId: ownerId, label: 'DB constraints', currency: 'USD', search: json } });
     await prisma.carSearchRun.create({ data: { trackerId: tracker.id, request: json } });
     await expect(prisma.carSearchRun.create({ data: { trackerId: tracker.id, request: json } })).rejects.toThrow();
     await expect(prisma.carTracker.update({ where: { id: tracker.id }, data: { targetMinor: -1n } })).rejects.toThrow();
     await expect(prisma.carTracker.update({ where: { id: tracker.id }, data: { targetMinor: 9007199254740992n } })).rejects.toThrow();
   });
   it('rejects a snapshot that references another tracker’s search run', async () => {
-    const first = await prisma.carTracker.create({ data: { label: 'First rental', currency: 'USD', search: json } });
-    const second = await prisma.carTracker.create({ data: { label: 'Second rental', currency: 'USD', search: json } });
+    const first = await prisma.carTracker.create({ data: { userId: ownerId, label: 'First rental', currency: 'USD', search: json } });
+    const second = await prisma.carTracker.create({ data: { userId: ownerId, label: 'Second rental', currency: 'USD', search: json } });
     const run = await prisma.carSearchRun.create({ data: { trackerId: first.id, request: json } });
     await expect(prisma.carSnapshot.create({ data: { trackerId: second.id, runId: run.id, source: 'discovercars', offer: json, currency: 'USD', totalMinor: 10000n, eligible: true, contractHash: 'a'.repeat(64), observedAt: new Date() } })).rejects.toThrow();
     expect(await prisma.carSnapshot.count({ where: { trackerId: second.id } })).toBe(0);

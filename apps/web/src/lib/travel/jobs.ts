@@ -17,13 +17,16 @@ const clearClaim = { leaseResource: null, leaseOwner: null, leaseGeneration: nul
 export function travelResource(kind: TravelJob['kind']): string {
   return kind === 'flight_batch' || kind === 'flight_query' ? 'vpn' : 'browser';
 }
+export async function lockTravelResource(tx: Prisma.TransactionClient, kind: TravelJob['kind']): Promise<void> {
+  const resource = travelResource(kind);
+  await tx.$executeRaw`INSERT INTO "TravelLease" (id, owner, "expiresAt") VALUES (${resource}, ${randomUUID()}, ${new Date(0)}) ON CONFLICT (id) DO NOTHING`;
+  await tx.$queryRaw`SELECT id FROM "TravelLease" WHERE id = ${resource} FOR UPDATE`;
+}
 export async function enqueueTravelJob(request: TravelJobRequest, tx?: Prisma.TransactionClient): Promise<TravelJob> {
   if (!tx) return prisma.$transaction(transaction => enqueueTravelJob(request, transaction));
   // Follow the same resource-first lock order as result commits. This also
   // serializes enqueue with a generation change without taking over the lease.
-  const resource = travelResource(request.kind);
-  await tx.$executeRaw`INSERT INTO "TravelLease" (id, owner, "expiresAt") VALUES (${resource}, ${randomUUID()}, ${new Date(0)}) ON CONFLICT (id) DO NOTHING`;
-  await tx.$queryRaw`SELECT id FROM "TravelLease" WHERE id = ${resource} FOR UPDATE`;
+  await lockTravelResource(tx, request.kind);
   let activeKey: string = request.kind;
   let owner: { userId: string | null } | null = null;
   if (request.kind === 'flight_query') {

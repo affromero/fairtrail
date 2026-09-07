@@ -1,0 +1,227 @@
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { prisma } from '@/lib/prisma';
+import { acquireTravelLease, claimTravelJob, completeTravelJob, releaseTravelLease, type TravelLeaseToken } from '../travel/jobs';
+import { cancelCarSearch, carJson, carMinorNumber, carTrackerDto, createCarSearch, createCarTracker, deleteCarTracker, editCarTracker, getCarSearch, getCarTracker, listCarTrackers, refreshCarTracker } from './store';
+import { validateCarSearch } from './validation';
+import { carContractHash } from './selection';
+import type { CarActor } from './access';
+import type { CarEvidence, CarOffer } from './types';
+
+const location = { name: 'Example Airport', country: 'GB', timeZone: 'Europe/London', providerIds: { discovercars: '1712', autoeurope: '547' } };
+const criteria = () => validateCarSearch({ pickup: location, dropoff: location, pickupAt: { date: '2027-05-15', time: '11:00' }, dropoffAt: { date: '2027-05-18', time: '11:00' }, driver: { age: 35, licenceYears: 2, residenceCountry: 'GB' }, currency: 'GBP', sources: ['discovercars', 'autoeurope'], filters: { maxTotal: { currency: 'GBP', minor: 15000 } } });
+function offer(observedAt = new Date().toISOString()): CarOffer {
+  const search = criteria();
+  const evidence = <T>(value: T): CarEvidence<T> => ({ value, status: 'confirmed', text: 'Verified provider terms', sourceUrl: 'https://www.discovercars.com/offer/example', observedAt });
+  return {
+    id: 'verified-quote', supplier: 'Example supplier', bookingUrl: 'https://www.discovercars.com/offer/example', observedAt,
+    contract: { source: 'discovercars', supplierId: '320', pickupLocationId: '1712', dropoffLocationId: '1712', pickupStationId: 'station-1', dropoffStationId: 'station-1', pickupAt: search.pickupAt, dropoffAt: search.dropoffAt, driver: search.driver, additionalDrivers: [], currency: 'GBP', vehicleClass: 'CDAR', transmission: 'automatic', seats: 5, model: 'Example car', modelGuaranteed: false, fuelPolicy: 'Full to full', mileagePolicy: 'Unlimited', cancellationPolicy: 'Free until 48 hours before pickup', coverageProductIds: ['cdw'], coverageTerms: 'Collision cover with excess', rentalRequirements: '[]', extras: [] },
+    available: evidence(true), requestVerified: evidence(true), driverEligible: evidence(true), requirements: [], requirementsComplete: evidence(true), mandatoryChargesComplete: evidence(true), taxesIncluded: evidence(true), unlimitedMileage: evidence(true), freeCancellation: evidence(true),
+    total: evidence({ currency: 'GBP', minor: 10000 }), charges: [{ id: 'rental', label: 'Rental including taxes', kind: 'rental', payment: 'now', amount: evidence({ currency: 'GBP', minor: 10000 }) }],
+    deposit: { ...evidence(null), status: 'unknown' }, excess: { ...evidence(null), status: 'unknown' }, extras: [],
+  };
+}
+
+describe.skipIf(process.env.CAR_STORE_INTEGRATION_TESTS !== '1')('car ownership and persistence against isolated PostgreSQL', () => {
+  let owner: CarActor, other: CarActor;
+  const leases: TravelLeaseToken[] = [];
+  beforeAll(() => {
+    const url = new URL(process.env.DATABASE_URL ?? 'http://invalid');
+    if (url.hostname !== '127.0.0.1' || url.port !== '55440' || url.pathname !== '/car_test') throw new Error('Car store tests require disposable localhost:55440/car_test');
+  });
+  beforeEach(async () => {
+    const suffix = crypto.randomUUID();
+    owner = { userId: (await prisma.user.create({ data: { username: `car-store-owner-${suffix}` } })).id, isAdmin: false };
+    other = { userId: (await prisma.user.create({ data: { username: `car-store-other-${suffix}` } })).id, isAdmin: false };
+  });
+  afterEach(async () => {
+    for (const lease of leases.splice(0)) await releaseTravelLease(lease);
+    if (!owner || !other) return;
+    const userIds = [owner.userId!, other.userId!];
+    await prisma.travelJob.deleteMany({ where: { userId: { in: userIds } } });
+    await prisma.user.deleteMany({ where: { id: { in: userIds } } });
+  });
+  afterAll(async () => { await prisma.$disconnect(); });
+
+  async function completedSearch(value = offer()) {
+    return prisma.carSearchRun.create({ data: { userId: owner.userId, request: carJson(criteria()), result: carJson({ offers: [value], candidates: [], errors: [] }), status: 'success', completedAt: new Date() } });
+  }
+  async function tracker(mode: 'best' | 'contract' = 'best') {
+    const run = await completedSearch();
+    return createCarTracker({ searchId: run.id, offerId: 'verified-quote', mode, target: { currency: 'GBP', minor: 9000 } }, owner);
+  }
+  async function running(id: string) {
+    const run = await refreshCarTracker(id, owner);
+    const job = await prisma.travelJob.findUniqueOrThrow({ where: { carRunId: run!.id } });
+    const lease = await acquireTravelLease('browser');
+    if (!lease) throw new Error('Expected isolated browser lease');
+    leases.push(lease);
+    await claimTravelJob(job.id, lease);
+    await prisma.carSearchRun.update({ where: { id: run!.id }, data: { status: 'running' } });
+    return { run: run!, job, lease };
+  }
+
+  it('serializes concurrent search quotas and creates each accepted run with one shared job', async () => {
+    const results = await Promise.allSettled(Array.from({ length: 5 }, () => createCarSearch(criteria(), owner)));
+    expect(results.filter(result => result.status === 'fulfilled')).toHaveLength(3);
+    expect(results.filter(result => result.status === 'rejected').map(result => result.reason)).toEqual([expect.objectContaining({ status: 429 }), expect.objectContaining({ status: 429 })]);
+    const runs = await prisma.carSearchRun.findMany({ where: { userId: owner.userId }, include: { travelJob: true } });
+    expect(runs).toHaveLength(3);
+    expect(runs.every(run => run.travelJob?.userId === owner.userId && run.travelJob.status === 'queued')).toBe(true);
+  });
+
+  it('creates best tracking without narrowing provider preferences or retaining the discovery ceiling', async () => {
+    const row = await tracker();
+    expect(carTrackerDto(row)).toMatchObject({ selection: null, options: { mode: 'best' }, search: { sources: ['discovercars', 'autoeurope'], filters: { maxTotal: null } } });
+    const queued = await prisma.carSearchRun.findFirstOrThrow({ where: { trackerId: row.id }, include: { travelJob: true } });
+    expect(queued).toMatchObject({ trackerRevision: 0, status: 'queued', travelJob: { kind: 'car_search', userId: owner.userId } });
+  });
+
+  it('derives exact contract identity from the owned result rather than client prices or hashes', async () => {
+    const run = await completedSearch();
+    const row = await createCarTracker({ searchId: run.id, offerId: 'verified-quote', mode: 'contract', contractHash: 'forged', price: 1 }, owner);
+    expect(row.selection).toEqual({ source: 'discovercars', contractHash: carContractHash(offer().contract) });
+    expect(row.latestPriceMinor).toBeNull();
+  });
+
+  it('rolls back tracker creation if its first refresh cannot be enqueued', async () => {
+    const run = await completedSearch();
+    await Promise.all(Array.from({ length: 3 }, () => createCarSearch(criteria(), owner)));
+    await expect(createCarTracker({ searchId: run.id, offerId: 'verified-quote' }, owner)).rejects.toMatchObject({ status: 429 });
+    expect(await prisma.carTracker.count({ where: { userId: owner.userId } })).toBe(0);
+    expect(await prisma.carSearchRun.count({ where: { userId: owner.userId, trackerId: { not: null } } })).toBe(0);
+  });
+
+  it('rejects stale, absent and foreign persisted quotes without creating trackers', async () => {
+    const stale = await completedSearch(offer(new Date(Date.now() - 16 * 60_000).toISOString()));
+    const current = await completedSearch();
+    await expect(createCarTracker({ searchId: stale.id, offerId: 'verified-quote' }, owner)).rejects.toMatchObject({ status: 409 });
+    await expect(createCarTracker({ searchId: current.id, offerId: 'invented' }, owner)).rejects.toThrow(/returned/);
+    await expect(createCarTracker({ searchId: current.id, offerId: 'verified-quote' }, other)).rejects.toMatchObject({ status: 404 });
+    expect(await prisma.carTracker.count({ where: { userId: owner.userId } })).toBe(0);
+  });
+
+  it('returns the same active refresh for concurrent callers and uses the tracker owner for an administrator', async () => {
+    const row = await tracker();
+    const runs = await Promise.all(Array.from({ length: 4 }, () => refreshCarTracker(row.id, { ...other, isAdmin: true })));
+    expect(new Set(runs.map(run => run!.id)).size).toBe(1);
+    expect(runs.every(run => run!.userId === owner.userId && run!.trackerRevision === row.revision)).toBe(true);
+    expect(await prisma.travelJob.count({ where: { carRun: { trackerId: row.id } } })).toBe(1);
+  });
+
+  it('hides another user’s searches and trackers from reads, lists and mutations', async () => {
+    const row = await tracker();
+    const run = await refreshCarTracker(row.id, owner);
+    await expect(getCarTracker(row.id, other)).rejects.toMatchObject({ status: 404 });
+    await expect(getCarSearch(run!.id, other)).rejects.toMatchObject({ status: 404 });
+    await expect(editCarTracker(row.id, { active: false }, other)).rejects.toMatchObject({ status: 404 });
+    await expect(deleteCarTracker(row.id, other)).rejects.toMatchObject({ status: 404 });
+    expect(await listCarTrackers(other)).toEqual([]);
+  });
+
+  it('keeps administrators’ normal lists personal and requires explicit authorized administration listing', async () => {
+    const row = await tracker();
+    const admin = { ...other, isAdmin: true };
+    expect(await listCarTrackers(admin)).toEqual([]);
+    expect(await listCarTrackers(admin, 100, true)).toEqual(expect.arrayContaining([expect.objectContaining({ id: row.id })]));
+    await expect(listCarTrackers(other, 100, true)).rejects.toMatchObject({ status: 403 });
+    expect(await listCarTrackers({ userId: null, isAdmin: true })).toEqual(expect.arrayContaining([expect.objectContaining({ id: row.id })]));
+  });
+
+  it.each(['search', 'result'] as const)('rejects corrupt persisted %s without partial tracker creation', async field => {
+    const run = await completedSearch();
+    await prisma.carSearchRun.update({ where: { id: run.id }, data: field === 'search' ? { request: { pickup: 'corrupt' } } : { result: { offers: [{ id: 'verified-quote' }] } } });
+    await expect(createCarTracker({ searchId: run.id, offerId: 'verified-quote' }, owner)).rejects.toThrow();
+    expect(await prisma.carTracker.count({ where: { userId: owner.userId } })).toBe(0);
+    expect(await prisma.travelJob.count({ where: { userId: owner.userId } })).toBe(0);
+  });
+
+  it.each(['pause', 'target', 'reassign'] as const)('fences a running result and cancels pending deliveries after %s', async change => {
+    const row = await tracker();
+    const active = await running(row.id);
+    await prisma.carTracker.update({ where: { id: row.id }, data: { historicalLowMinor: 8500 } });
+    const delivery = await prisma.travelAlertDelivery.create({ data: { carTrackerId: row.id, eventKey: crypto.randomUUID(), message: {} } });
+    const input = change === 'pause' ? { active: false } : change === 'target' ? { target: { currency: 'GBP', minor: 8000 } } : { userId: other.userId };
+    const edited = await editCarTracker(row.id, input, { ...owner, isAdmin: true });
+    expect(edited.revision).toBe(row.revision + 1);
+    expect(edited.historicalLowMinor).toBe(8500n);
+    const lateEvent = `late-${crypto.randomUUID()}`;
+    await expect(completeTravelJob(active.job.id, active.lease, async tx => {
+      await tx.carSnapshot.create({ data: { trackerId: row.id, runId: active.run.id, source: 'discovercars', offer: carJson(offer()), currency: 'GBP', totalMinor: 1, eligible: true, contractHash: carContractHash(offer().contract), observedAt: new Date() } });
+      await tx.travelAlertDelivery.create({ data: { carTrackerId: row.id, eventKey: lateEvent, message: {} } });
+      return tx.carTracker.update({ where: { id: row.id }, data: { latestPriceMinor: 1 } });
+    })).rejects.toThrow(/cancelled|completed|reclaimed/);
+    expect(await prisma.carSnapshot.count({ where: { trackerId: row.id } })).toBe(0);
+    expect(await prisma.travelAlertDelivery.findUnique({ where: { eventKey: lateEvent } })).toBeNull();
+    expect(await prisma.carSearchRun.findUnique({ where: { id: active.run.id } })).toMatchObject({ status: 'cancelled', completedAt: expect.any(Date), error: expect.stringMatching(/cancelled/) });
+    expect(await prisma.travelAlertDelivery.findUnique({ where: { id: delivery.id } })).toMatchObject({ pending: false });
+    expect((await getCarTracker(row.id, { ...owner, isAdmin: true })).latestPriceMinor).toBeNull();
+    if (change === 'reassign') expect((await prisma.carSearchRun.findUniqueOrThrow({ where: { id: active.run.id } })).userId).toBe(owner.userId);
+  });
+
+  it('preserves historical lows on notification changes and rearms only a changed target', async () => {
+    const row = await tracker();
+    await prisma.carTracker.update({ where: { id: row.id }, data: { historicalLowMinor: 8500, targetArmed: false } });
+    expect(await editCarTracker(row.id, { notifyLows: false }, owner)).toMatchObject({ historicalLowMinor: 8500n, targetArmed: false });
+    expect(await editCarTracker(row.id, { target: { currency: 'GBP', minor: 8000 } }, owner)).toMatchObject({ historicalLowMinor: 8500n, targetArmed: true });
+  });
+
+  it('rejects manual refresh while paused and cancels standalone searches idempotently', async () => {
+    const row = await tracker();
+    await editCarTracker(row.id, { active: false }, owner);
+    await expect(refreshCarTracker(row.id, owner)).rejects.toMatchObject({ status: 409 });
+    expect(await refreshCarTracker(row.id, owner, true)).toBeNull();
+    const run = await createCarSearch(criteria(), owner);
+    await expect(cancelCarSearch(run.id, other)).rejects.toMatchObject({ status: 404 });
+    await cancelCarSearch(run.id, owner);
+    expect(await cancelCarSearch(run.id, owner)).toMatchObject({ status: 'cancelled' });
+    expect(await prisma.travelJob.findUnique({ where: { carRunId: run.id } })).toMatchObject({ status: 'cancelled', activeKey: null });
+  });
+
+  it('prevents a deleted tracker’s active worker from persisting a late result', async () => {
+    const row = await tracker();
+    const active = await running(row.id);
+    await deleteCarTracker(row.id, owner);
+    await expect(completeTravelJob(active.job.id, active.lease, tx => tx.carTracker.update({ where: { id: row.id }, data: { latestPriceMinor: 1 } }))).rejects.toThrow(/cancelled|completed|reclaimed/);
+    expect(await prisma.carTracker.findUnique({ where: { id: row.id } })).toBeNull();
+    expect(await prisma.carSearchRun.count({ where: { trackerId: row.id } })).toBe(0);
+  });
+
+  it('serializes an edit racing a committed observation without allowing a second stale write', async () => {
+    const row = await tracker();
+    const active = await running(row.id);
+    let markWriting!: () => void, releaseWriting!: () => void;
+    const writing = new Promise<void>(resolve => { markWriting = resolve; });
+    const release = new Promise<void>(resolve => { releaseWriting = resolve; });
+    const completion = completeTravelJob(active.job.id, active.lease, async tx => {
+      markWriting(); await release;
+      await tx.carSearchRun.update({ where: { id: active.run.id }, data: { status: 'success', completedAt: new Date() } });
+      return tx.carTracker.update({ where: { id: row.id }, data: { latestPriceMinor: 10000 } });
+    });
+    await writing;
+    const edit = editCarTracker(row.id, { active: false }, owner);
+    releaseWriting();
+    await completion;
+    expect(await edit).toMatchObject({ active: false, revision: 1, latestPriceMinor: 10000n });
+    await expect(completeTravelJob(active.job.id, active.lease, tx => tx.carTracker.update({ where: { id: row.id }, data: { latestPriceMinor: 1 } }))).rejects.toThrow(/cancelled|completed|reclaimed/);
+    expect((await getCarTracker(row.id, owner)).latestPriceMinor).toBe(10000n);
+  });
+
+  it('serializes safe monetary values and rejects corrupt stored amounts or selections', async () => {
+    const row = await tracker();
+    expect(JSON.parse(JSON.stringify(carTrackerDto({ ...row, latestPriceMinor: 12345n })))).toMatchObject({ latestPriceMinor: 12345, options: { target: { currency: 'GBP', minor: 9000 } } });
+    expect(() => carMinorNumber(9007199254740992n)).toThrow(/range/);
+    expect(() => carMinorNumber(-1n)).toThrow(/range/);
+    expect(() => carTrackerDto({ ...row, mode: 'contract', selection: null })).toThrow(/selection/);
+  });
+
+  it('leaves flight and hotel configuration unchanged through the full tracker lifecycle', async () => {
+    const flight = await prisma.query.create({ data: { userId: owner.userId, rawInput: 'Compatibility sentinel', origin: 'LHR', originName: 'London', destination: 'JFK', destinationName: 'New York', dateFrom: new Date('2027-05-01'), dateTo: new Date('2027-05-10'), expiresAt: new Date('2027-05-01'), currency: 'GBP', cabinClass: 'business', vpnCountries: ['DE'], scrapeInterval: 6 } });
+    const hotel = await prisma.hotelTracker.create({ data: { userId: owner.userId, hotelName: 'Compatibility hotel', search: { unchanged: true }, selection: {}, options: { scrapeInterval: 6 } } });
+    const row = await tracker();
+    await editCarTracker(row.id, { scrapeInterval: 12 }, owner);
+    await refreshCarTracker(row.id, owner);
+    await deleteCarTracker(row.id, owner);
+    expect(await prisma.query.findUnique({ where: { id: flight.id } })).toEqual(flight);
+    expect(await prisma.hotelTracker.findUnique({ where: { id: hotel.id } })).toEqual(hotel);
+  });
+});
