@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { prisma } from '@/lib/prisma';
-import { acquireTravelLease, cancelTravelJob, claimTravelJob, completeTravelJob, enqueueTravelJob, failTravelJob, recoverTravelJobs, releaseTravelLease, renewTravelLease } from './jobs';
+import { acquireTravelLease, cancelTravelJob, claimTravelJob, completeTravelJob, enqueueTravelJob, failTravelJob, lockTravelAdmission, lockTravelResource, recoverTravelJobs, releaseTravelLease, renewTravelLease } from './jobs';
 import type { TravelLeaseToken } from './jobs';
 
 const enabled = process.env.TRAVEL_INTEGRATION_TESTS === '1';
@@ -95,6 +95,51 @@ describe.skipIf(!enabled)('shared travel jobs against isolated PostgreSQL', () =
     const current = tokens.find(t => t !== null)!;
     await releaseTravelLease(current);
     expect((await lease()).generation).toBeGreaterThan(current.generation);
+  });
+  it('serializes short admission transactions across different execution resources', async () => {
+    const active = new Set<string>();
+    let overlapped = false;
+    await Promise.all((['car_search', 'flight_batch'] as const).map(kind => prisma.$transaction(async tx => {
+      await lockTravelResource(tx, kind);
+      if (active.size) overlapped = true;
+      active.add(kind);
+      await new Promise(resolve => setTimeout(resolve, 30));
+      active.delete(kind);
+    })));
+    expect(overlapped).toBe(false);
+    expect(await acquireTravelLease('browser')).not.toBeNull();
+    expect(await acquireTravelLease('vpn')).not.toBeNull();
+  });
+  it('releases transaction admission after rollback without leaking a session lock', async () => {
+    await expect(prisma.$transaction(async tx => {
+      await lockTravelAdmission(tx);
+      await tx.query.update({ where: { id: queryId }, data: { label: 'Must roll back' } });
+      throw new Error('Admission transaction interrupted');
+    })).rejects.toThrow(/interrupted/);
+    expect((await prisma.query.findUniqueOrThrow({ where: { id: queryId } })).label).toBe('Unchanged');
+    const current = await lease();
+    expect(await renewTravelLease(current)).toBe(true);
+    await releaseTravelLease(current);
+    expect((await lease()).generation).toBeGreaterThan(current.generation);
+  });
+  it('lets cancellation win before a late result reaches domain persistence', async () => {
+    const job = await enqueueTravelJob({ kind: 'flight_query', queryId, userId: ownerId });
+    const token = await lease(); await claimTravelJob(job.id, token);
+    let locked!: () => void, release!: () => void;
+    const admitted = new Promise<void>(resolve => { locked = resolve; });
+    const pending = new Promise<void>(resolve => { release = resolve; });
+    const cancellation = prisma.$transaction(async tx => {
+      await lockTravelAdmission(tx); locked(); await pending;
+      return cancelTravelJob(job.id, ownerId, false, tx);
+    });
+    await admitted;
+    const completing = completeTravelJob(job.id, token, tx => tx.query.update({ where: { id: queryId }, data: { label: 'Cancelled result' } }));
+    const rejected = expect(completing).rejects.toThrow(/cancelled/);
+    release();
+    expect(await cancellation).toBe(true);
+    await rejected;
+    expect((await prisma.query.findUniqueOrThrow({ where: { id: queryId } })).label).toBe('Unchanged');
+    expect((await prisma.travelJob.findUniqueOrThrow({ where: { id: job.id } })).status).toBe('cancelled');
   });
   it('cannot renew or release a replacement worker lease with an expired token', async () => {
     const old = await lease();

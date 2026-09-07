@@ -1,7 +1,7 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { prisma } from '@/lib/prisma';
 import { carOfferFixture, carReportFixture, carSearchFixture } from '@/test/car-fixtures';
-import { acquireTravelLease, claimTravelJob, releaseTravelLease, type TravelLeaseToken } from '../travel/jobs';
+import { acquireTravelLease, claimTravelJob, lockTravelAdmission, releaseTravelLease, type TravelLeaseToken } from '../travel/jobs';
 import { carJson, createCarSearch, createCarTracker, editCarTracker, refreshCarTracker } from './store';
 import { failCarRun, finishCarRun, saveCarProgress, startCarRun } from './persistence';
 import type { CarActor } from './access';
@@ -140,12 +140,16 @@ describe.skipIf(process.env.CAR_PERSISTENCE_INTEGRATION_TESTS !== '1')('fenced c
     expect(await prisma.travelAlertDelivery.count({ where: { carTrackerId: row.id } })).toBe(0);
   });
 
-  it('bounds progress lock waits and leaves no deferred update after the lock is released', async () => {
+  it.each(['resource', 'admission'])('bounds progress %s lock waits and leaves no deferred update after release', async kind => {
     const active = await start();
     let markLocked!: () => void, releaseLock!: () => void;
     const locked = new Promise<void>(resolve => { markLocked = resolve; });
     const release = new Promise<void>(resolve => { releaseLock = resolve; });
-    const holder = prisma.$transaction(async tx => { await tx.$queryRaw`SELECT id FROM "TravelLease" WHERE id = 'browser' FOR UPDATE`; markLocked(); await release; });
+    const holder = prisma.$transaction(async tx => {
+      if (kind === 'admission') await lockTravelAdmission(tx);
+      else await tx.$queryRaw`SELECT id FROM "TravelLease" WHERE id = 'browser' FOR UPDATE`;
+      markLocked(); await release;
+    });
     await locked;
     try { await expect(saveCarProgress(active.job.id, lease!, carReportFixture(), new AbortController().signal)).rejects.toThrow(/lock timeout/); }
     finally { releaseLock(); await holder; }

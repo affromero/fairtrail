@@ -14,10 +14,19 @@ export interface TravelLeaseToken { id: string; owner: string; generation: numbe
 const DEFAULT_LEASE_MS = 120_000;
 const clearClaim = { leaseResource: null, leaseOwner: null, leaseGeneration: null, activeKey: null };
 
+/** Permanent control-plane lock, independent of the current VPN topology.
+ * 761932105 is reserved for travel admission (761932104 protects schema setup).
+ * Hold only within short database transactions, never during provider execution.
+ */
+export async function lockTravelAdmission(tx: Prisma.TransactionClient): Promise<void> {
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(761932105)`;
+}
+
 export function travelResource(kind: TravelJob['kind']): string {
   return kind === 'flight_batch' || kind === 'flight_query' ? 'vpn' : 'browser';
 }
 export async function lockTravelResource(tx: Prisma.TransactionClient, kind: TravelJob['kind']): Promise<void> {
+  await lockTravelAdmission(tx);
   const resource = travelResource(kind);
   await tx.$executeRaw`INSERT INTO "TravelLease" (id, owner, "expiresAt") VALUES (${resource}, ${randomUUID()}, ${new Date(0)}) ON CONFLICT (id) DO NOTHING`;
   await tx.$queryRaw`SELECT id FROM "TravelLease" WHERE id = ${resource} FOR UPDATE`;
@@ -77,26 +86,37 @@ export async function acquireTravelLease(id: string, milliseconds = DEFAULT_LEAS
   if (id !== 'vpn' && id !== 'browser') throw new TravelJobError('Unknown travel resource', 400);
   const owner = randomUUID();
   duration(milliseconds);
-  await prisma.$executeRaw`
-    INSERT INTO "TravelLease" (id, owner, "expiresAt") VALUES (${id}, ${owner}, ${new Date(0)})
-    ON CONFLICT (id) DO NOTHING`;
-  const leases = await prisma.$queryRaw<TravelLease[]>`
-    UPDATE "TravelLease" SET "owner" = ${owner}, "generation" = "generation" + 1,
-      "expiresAt" = clock_timestamp() + ${duration(milliseconds)} * interval '1 millisecond'
-    WHERE "id" = ${id} AND "expiresAt" <= clock_timestamp() RETURNING *`;
-  return leases[0] ? { id, owner, generation: leases[0].generation } : null;
+  return prisma.$transaction(async tx => {
+    await lockTravelAdmission(tx);
+    await tx.$executeRaw`
+      INSERT INTO "TravelLease" (id, owner, "expiresAt") VALUES (${id}, ${owner}, ${new Date(0)})
+      ON CONFLICT (id) DO NOTHING`;
+    const leases = await tx.$queryRaw<TravelLease[]>`
+      UPDATE "TravelLease" SET "owner" = ${owner}, "generation" = "generation" + 1,
+        "expiresAt" = clock_timestamp() + ${milliseconds} * interval '1 millisecond'
+      WHERE "id" = ${id} AND "expiresAt" <= clock_timestamp() RETURNING *`;
+    return leases[0] ? { id, owner, generation: leases[0].generation } : null;
+  });
 }
 export async function renewTravelLease(lease: TravelLeaseToken, milliseconds = DEFAULT_LEASE_MS): Promise<boolean> {
-  const count = await prisma.$executeRaw`
-    UPDATE "TravelLease" SET "expiresAt" = clock_timestamp() + ${duration(milliseconds)} * interval '1 millisecond'
-    WHERE "id" = ${lease.id} AND "owner" = ${lease.owner} AND "generation" = ${lease.generation}
-      AND "expiresAt" > clock_timestamp()`;
-  return count === 1;
+  duration(milliseconds);
+  return prisma.$transaction(async tx => {
+    await lockTravelAdmission(tx);
+    const count = await tx.$executeRaw`
+      UPDATE "TravelLease" SET "expiresAt" = clock_timestamp() + ${milliseconds} * interval '1 millisecond'
+      WHERE "id" = ${lease.id} AND "owner" = ${lease.owner} AND "generation" = ${lease.generation}
+        AND "expiresAt" > clock_timestamp()`;
+    return count === 1;
+  });
 }
 export async function releaseTravelLease(lease: TravelLeaseToken): Promise<void> {
-  await prisma.travelLease.updateMany({ where: { id: lease.id, owner: lease.owner, generation: lease.generation }, data: { expiresAt: new Date(0) } });
+  await prisma.$transaction(async tx => {
+    await lockTravelAdmission(tx);
+    await tx.travelLease.updateMany({ where: { id: lease.id, owner: lease.owner, generation: lease.generation }, data: { expiresAt: new Date(0) } });
+  });
 }
 export async function lockTravelLease(tx: Prisma.TransactionClient, lease: TravelLeaseToken): Promise<void> {
+  await lockTravelAdmission(tx);
   const current = await tx.$queryRaw<{ id: string }[]>`
     SELECT "id" FROM "TravelLease" WHERE "id" = ${lease.id} AND "owner" = ${lease.owner}
       AND "generation" = ${lease.generation} AND "expiresAt" > clock_timestamp() FOR UPDATE`;
@@ -138,7 +158,9 @@ export async function failTravelJob(id: string, lease: TravelLeaseToken, error: 
     await tx.travelJob.update({ where: { id }, data: { ...clearClaim, status: 'failed', error: (error instanceof Error ? error.message : String(error)).slice(0,4000), completedAt: new Date() } });
   });
 }
-export async function cancelTravelJob(id: string, userId: string | null, isAdmin: boolean, tx: Prisma.TransactionClient = prisma): Promise<boolean> {
+export async function cancelTravelJob(id: string, userId: string | null, isAdmin: boolean, tx?: Prisma.TransactionClient): Promise<boolean> {
+  if (!tx) return prisma.$transaction(transaction => cancelTravelJob(id, userId, isAdmin, transaction));
+  await lockTravelAdmission(tx);
   const changed = await tx.travelJob.updateMany({
     where: { id, status: { in: ['queued', 'running'] }, ...(isAdmin ? {} : { userId }) },
     data: { ...clearClaim, status: 'cancelled', cancelledAt: new Date(), completedAt: new Date() },
