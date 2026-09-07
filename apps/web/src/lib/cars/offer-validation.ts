@@ -19,17 +19,17 @@ function list(raw: unknown, max: number, label: string): unknown[] {
   if (!Array.isArray(raw) || raw.length > max) throw new CarError(`Invalid ${label}`);
   return raw;
 }
-function timestamp(raw: unknown, now: Date): string {
+export function carObservationTime(raw: unknown, now: Date): string {
   const text = carText(raw, 30, 'observation time');
   if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/.test(text) || !Number.isFinite(Date.parse(text)) || Date.parse(text) > now.getTime() + 5000) throw new CarError('Invalid or future observation time');
   const canonical = new Date(text).toISOString();
   if (canonical !== text && canonical.replace('.000Z', 'Z') !== text) throw new CarError('Invalid observation calendar date');
   return canonical;
 }
-function evidence<T>(raw: unknown, source: CarSource, observedAt: string, parse: (value: unknown) => T): CarEvidence<T> {
+export function carEvidence<T>(raw: unknown, source: CarSource, observedAt: string, parse: (value: unknown) => T): CarEvidence<T> {
   const r = carRecord(raw);
   if (r.status !== 'confirmed' && r.status !== 'estimated' && r.status !== 'unknown') throw new CarError('Invalid evidence status');
-  const captured = timestamp(r.observedAt, new Date(observedAt));
+  const captured = carObservationTime(r.observedAt, new Date(observedAt));
   if (Math.abs(Date.parse(captured) - Date.parse(observedAt)) > 5 * 60_000) throw new CarError('Evidence belongs to a different observation');
   if (r.value === undefined || (r.status === 'confirmed' && r.value === null)) throw new CarError('Missing evidence value');
   return { value: r.value === null ? null : parse(r.value), status: r.status, text: carText(r.text, 12000, 'evidence text'), sourceUrl: carProviderUrl(r.sourceUrl, source), observedAt: captured };
@@ -66,8 +66,8 @@ export function validateCarContract(raw: unknown): CarContract {
 export function validateCarOffer(raw: unknown, now = new Date()): CarOffer {
   const r = carRecord(raw);
   const contract = validateCarContract(r.contract);
-  const observedAt = timestamp(r.observedAt, now);
-  const proof = <T>(value: unknown, parse: (value: unknown) => T) => evidence(value, contract.source, observedAt, parse);
+  const observedAt = carObservationTime(r.observedAt, now);
+  const proof = <T>(value: unknown, parse: (value: unknown) => T) => carEvidence(value, contract.source, observedAt, parse);
   const monetary = (value: unknown) => validateCarMoney(value);
   const charges: CarCharge[] = list(r.charges, 100, 'price breakdown').map(rawCharge => {
     const c = carRecord(rawCharge);
@@ -83,12 +83,7 @@ export function validateCarOffer(raw: unknown, now = new Date()): CarOffer {
   const quotedIdentities = identities(extras);
   if (new Set(quotedIdentities).size !== quotedIdentities.length || JSON.stringify(identities(contract.extras)) !== JSON.stringify(quotedIdentities)) throw new CarError('Quoted extras disagree with the rental contract');
   if (extras.some(e => e.kind === 'protection' && !contract.coverageProductIds.includes(e.productId))) throw new CarError('Quoted protection disagrees with contract coverage');
-  const requirements: CarRequirement[] = list(r.requirements, 30, 'supplier requirements').map(rawRequirement => {
-    const item = carRecord(rawRequirement);
-    const kind = CAR_REQUIREMENT_KINDS.find(value => value === item.kind);
-    if (!kind || (item.appliesTo !== 'main_driver' && item.appliesTo !== 'all_drivers' && item.appliesTo !== 'rental')) throw new CarError('Invalid supplier requirement');
-    return { kind, appliesTo: item.appliesTo, condition: carText(item.condition, 1000, 'requirement applicability'), evidence: proof(item.evidence, value => carText(value, 12000, 'supplier requirement')) };
-  });
+  const requirements = validateCarRequirements(r.requirements, contract.source, observedAt);
   if (contract.rentalRequirements !== carRequirementTerms(requirements)) throw new CarError('Supplier requirements disagree with the rental contract');
   return {
     id: carText(r.id, 200, 'offer ID'), supplier: carText(r.supplier, 200, 'supplier'), contract, bookingUrl: carProviderUrl(r.bookingUrl, contract.source), observedAt,
@@ -98,4 +93,13 @@ export function validateCarOffer(raw: unknown, now = new Date()): CarOffer {
     unlimitedMileage: proof(r.unlimitedMileage, boolean), freeCancellation: proof(r.freeCancellation, boolean),
     total: proof(r.total, monetary), charges, deposit: proof(r.deposit, monetary), excess: proof(r.excess, monetary), extras,
   };
+}
+
+export function validateCarRequirements(raw: unknown, source: CarSource, observedAt: string): CarRequirement[] {
+  return list(raw, 30, 'supplier requirements').map(rawRequirement => {
+    const item = carRecord(rawRequirement);
+    const kind = CAR_REQUIREMENT_KINDS.find(value => value === item.kind);
+    if (!kind || (item.appliesTo !== 'main_driver' && item.appliesTo !== 'all_drivers' && item.appliesTo !== 'rental')) throw new CarError('Invalid supplier requirement');
+    return { kind, appliesTo: item.appliesTo, condition: carText(item.condition, 1000, 'requirement applicability'), evidence: carEvidence(item.evidence, source, observedAt, value => carText(value, 12000, 'supplier requirement')) };
+  });
 }

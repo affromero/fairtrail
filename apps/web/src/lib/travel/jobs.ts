@@ -130,9 +130,11 @@ export async function completeTravelJob<T>(id: string, lease: TravelLeaseToken, 
     return result;
   });
 }
-export async function failTravelJob(id: string, lease: TravelLeaseToken, error: unknown): Promise<void> {
+export async function failTravelJob(id: string, lease: TravelLeaseToken, error: unknown, persist?: (tx: Prisma.TransactionClient, job: TravelJob) => Promise<void>): Promise<void> {
   await prisma.$transaction(async tx => {
-    await guardTravelJob(tx, id, lease);
+    const job = await guardTravelJob(tx, id, lease);
+    await persist?.(tx, job);
+    await lockTravelLease(tx, lease);
     await tx.travelJob.update({ where: { id }, data: { ...clearClaim, status: 'failed', error: (error instanceof Error ? error.message : String(error)).slice(0,4000), completedAt: new Date() } });
   });
 }

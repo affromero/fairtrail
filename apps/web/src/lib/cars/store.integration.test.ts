@@ -2,24 +2,9 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import { prisma } from '@/lib/prisma';
 import { acquireTravelLease, claimTravelJob, completeTravelJob, releaseTravelLease, type TravelLeaseToken } from '../travel/jobs';
 import { cancelCarSearch, carJson, carMinorNumber, carTrackerDto, createCarSearch, createCarTracker, deleteCarTracker, editCarTracker, getCarSearch, getCarTracker, listCarTrackers, refreshCarTracker } from './store';
-import { validateCarSearch } from './validation';
+import { carOfferFixture as offer, carSearchFixture as criteria } from '@/test/car-fixtures';
 import { carContractHash } from './selection';
 import type { CarActor } from './access';
-import type { CarEvidence, CarOffer } from './types';
-
-const location = { name: 'Example Airport', country: 'GB', timeZone: 'Europe/London', providerIds: { discovercars: '1712', autoeurope: '547' } };
-const criteria = () => validateCarSearch({ pickup: location, dropoff: location, pickupAt: { date: '2027-05-15', time: '11:00' }, dropoffAt: { date: '2027-05-18', time: '11:00' }, driver: { age: 35, licenceYears: 2, residenceCountry: 'GB' }, currency: 'GBP', sources: ['discovercars', 'autoeurope'], filters: { maxTotal: { currency: 'GBP', minor: 15000 } } });
-function offer(observedAt = new Date().toISOString()): CarOffer {
-  const search = criteria();
-  const evidence = <T>(value: T): CarEvidence<T> => ({ value, status: 'confirmed', text: 'Verified provider terms', sourceUrl: 'https://www.discovercars.com/offer/example', observedAt });
-  return {
-    id: 'verified-quote', supplier: 'Example supplier', bookingUrl: 'https://www.discovercars.com/offer/example', observedAt,
-    contract: { source: 'discovercars', supplierId: '320', pickupLocationId: '1712', dropoffLocationId: '1712', pickupStationId: 'station-1', dropoffStationId: 'station-1', pickupAt: search.pickupAt, dropoffAt: search.dropoffAt, driver: search.driver, additionalDrivers: [], currency: 'GBP', vehicleClass: 'CDAR', transmission: 'automatic', seats: 5, model: 'Example car', modelGuaranteed: false, fuelPolicy: 'Full to full', mileagePolicy: 'Unlimited', cancellationPolicy: 'Free until 48 hours before pickup', coverageProductIds: ['cdw'], coverageTerms: 'Collision cover with excess', rentalRequirements: '[]', extras: [] },
-    available: evidence(true), requestVerified: evidence(true), driverEligible: evidence(true), requirements: [], requirementsComplete: evidence(true), mandatoryChargesComplete: evidence(true), taxesIncluded: evidence(true), unlimitedMileage: evidence(true), freeCancellation: evidence(true),
-    total: evidence({ currency: 'GBP', minor: 10000 }), charges: [{ id: 'rental', label: 'Rental including taxes', kind: 'rental', payment: 'now', amount: evidence({ currency: 'GBP', minor: 10000 }) }],
-    deposit: { ...evidence(null), status: 'unknown' }, excess: { ...evidence(null), status: 'unknown' }, extras: [],
-  };
-}
 
 describe.skipIf(process.env.CAR_STORE_INTEGRATION_TESTS !== '1')('car ownership and persistence against isolated PostgreSQL', () => {
   let owner: CarActor, other: CarActor;

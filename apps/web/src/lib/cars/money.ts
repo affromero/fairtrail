@@ -31,3 +31,12 @@ export function sumCarMoney(amounts: CarMoney[], currency: string): CarMoney {
   if (minor > BigInt(Number.MAX_SAFE_INTEGER)) throw new CarError('Total exceeds the supported amount');
   return { currency, minor: Number(minor) };
 }
+
+/** Keep fractional minor units exact even near Number.MAX_SAFE_INTEGER. */
+export function formatCarMoney(raw: CarMoney, locale = 'en'): string {
+  const amount = validateCarMoney(raw), precision = currencyPrecision(amount.currency);
+  const scale = 10n ** BigInt(precision), minor = BigInt(amount.minor);
+  const fraction = precision ? new Intl.NumberFormat(locale, { useGrouping: false, minimumIntegerDigits: precision }).format(Number(minor % scale)) : '';
+  return new Intl.NumberFormat(locale, { style: 'currency', currency: amount.currency }).formatToParts(minor / scale)
+    .map(part => part.type === 'fraction' ? fraction : part.value).join('');
+}

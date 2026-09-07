@@ -58,6 +58,9 @@ jobs:
       - run: npm run test --workspace=@flight-finder/web -- src/lib/cars/store.integration.test.ts
         env:
           CAR_STORE_INTEGRATION_TESTS: '1'
+      - run: npm run test --workspace=@flight-finder/web -- src/lib/cars/persistence.integration.test.ts
+        env:
+          CAR_PERSISTENCE_INTEGRATION_TESTS: '1'
 
   migration-rollback:
     runs-on: ubuntu-latest

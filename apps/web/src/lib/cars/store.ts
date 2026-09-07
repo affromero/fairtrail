@@ -30,7 +30,7 @@ export function carTrackerDto(row: CarTracker) {
   };
 }
 
-async function lockTracker(tx: Prisma.TransactionClient, id: string, actor: CarActor): Promise<CarTracker> {
+export async function lockCarTracker(tx: Prisma.TransactionClient, id: string, actor: CarActor): Promise<CarTracker> {
   await lockTravelResource(tx, 'car_search');
   const rows = await tx.$queryRaw<CarTracker[]>`SELECT * FROM "CarTracker" WHERE id = ${id} FOR UPDATE`;
   const row = rows[0] ?? null;
@@ -103,7 +103,7 @@ export async function createCarTracker(raw: unknown, actor: CarActor) {
 
 export async function refreshCarTracker(id: string, actor: CarActor, dueOnly = false) {
   return prisma.$transaction(async tx => {
-    const tracker = await lockTracker(tx, id, actor);
+    const tracker = await lockCarTracker(tx, id, actor);
     if (dueOnly && (!tracker.active || tracker.nextCheckAt > new Date())) return null;
     if (!tracker.active) throw new CarError('Resume this car tracker before refreshing', 409);
     const existing = await tx.carSearchRun.findFirst({ where: { trackerId: id, status: { in: ['queued', 'running'] } } });
@@ -129,7 +129,7 @@ export async function editCarTracker(id: string, raw: unknown, actor: CarActor) 
   if (input.active !== undefined && typeof input.active !== 'boolean') throw new CarError('active must be a boolean');
   if (input.userId !== undefined && !actor.isAdmin) throw new CarError('Only administrators can reassign car trackers', 403);
   return prisma.$transaction(async tx => {
-    const tracker = await lockTracker(tx, id, actor);
+    const tracker = await lockCarTracker(tx, id, actor);
     const previous = carTrackerDto(tracker);
     const options = validateCarOptions({ ...previous.options, ...input }, tracker.currency);
     const userId = input.userId === undefined ? tracker.userId : carText(input.userId, 200, 'tracker owner');
@@ -159,7 +159,7 @@ export async function cancelCarSearch(id: string, actor: CarActor) {
 
 export async function deleteCarTracker(id: string, actor: CarActor): Promise<void> {
   await prisma.$transaction(async tx => {
-    await lockTracker(tx, id, actor);
+    await lockCarTracker(tx, id, actor);
     await cancelTrackerWork(tx, id, 'Car tracker deleted');
     await tx.carTracker.delete({ where: { id } });
   });
