@@ -6,6 +6,7 @@ import { SearchBar } from '@/components/SearchBar';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { SavedTrackers } from '@/components/SavedTrackers';
 import { HotelTrackers } from '@/components/hotels/HotelTrackers';
+import { CarTrackers } from '@/components/cars/CarTrackers';
 import { TravelNav } from '@/components/hotels/TravelNav';
 import { SetupRedirect } from '@/components/SetupRedirect';
 import { UsageStats } from '@/components/UsageStats';
@@ -121,6 +122,7 @@ export default async function HomePage() {
             <PriceAlerts />
             <SavedTrackers isAuthenticated={multiUserEnabled && !!user} />
             <HotelTrackers />
+            <CarTrackers key={user?.id ?? 'single'} />
             <UsageStats />
           </>
         ) : (

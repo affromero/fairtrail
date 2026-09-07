@@ -1,5 +1,17 @@
 {
   "Cars": {
+    "carsNav": "Voitures",
+    "carsTitle": "Suivi des locations de voiture",
+    "savedTrackers": "Vos locations enregistrées",
+    "allTrackers": "Toutes les locations enregistrées",
+    "refreshList": "Actualiser la liste des locations",
+    "listHistoricalHelp": "Les prix sont des observations enregistrées, pas une disponibilité actuelle. Ouvrez un suivi pour consulter les dates de vérification, les conditions et les paramètres.",
+    "loadingTrackers": "Chargement des locations enregistrées…",
+    "listAccessLost": "L’accès à ces locations privées est indisponible. Reconnectez-vous ou vérifiez votre compte.",
+    "listFailed": "La liste des locations n’a pas pu être actualisée. Les lignes affichées sont la dernière vue confirmée.",
+    "retryList": "Réessayer la liste des locations",
+    "noSavedTrackers": "Aucun suivi de location enregistré. Les locations que vous choisissez de suivre apparaîtront ici.",
+    "loadMoreTrackers": "Charger d’autres locations",
     "currentStateAccepted": "Paramètres enregistrés actuels acceptés. L’action précédente n’a pas été réappliquée.",
     "closePending": "Suspendre et clôturer l’action en attente",
     "closePendingHelp": "L’action initiale peut encore être en cours. Cette récupération tente de suspendre le suivi et, si elle réussit, annule les vérifications actives et les alertes en attente. Si un autre changement aboutit avant, son résultat sera affiché sans être écrasé automatiquement.",

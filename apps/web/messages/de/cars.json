@@ -1,5 +1,17 @@
 {
   "Cars": {
+    "carsNav": "Mietwagen",
+    "carsTitle": "Mietwagenpreise beobachten",
+    "savedTrackers": "Ihre gespeicherten Mietwagen",
+    "allTrackers": "Alle gespeicherten Mietwagen",
+    "refreshList": "Mietwagenliste aktualisieren",
+    "listHistoricalHelp": "Preise sind gespeicherte Beobachtungen, keine aktuelle Verfügbarkeit. Öffnen Sie eine Beobachtung für Prüfzeitpunkte, Mietbedingungen und Einstellungen.",
+    "loadingTrackers": "Gespeicherte Mietwagen werden geladen…",
+    "listAccessLost": "Der Zugriff auf diese privaten Mietwagen ist nicht verfügbar. Melden Sie sich erneut an oder prüfen Sie Ihr Konto.",
+    "listFailed": "Die Mietwagenliste konnte nicht aktualisiert werden. Angezeigte Einträge entsprechen dem zuletzt bestätigten Stand.",
+    "retryList": "Mietwagenliste erneut laden",
+    "noSavedTrackers": "Keine Mietwagenbeobachtungen gespeichert. Mietwagen, die Sie beobachten, erscheinen hier.",
+    "loadMoreTrackers": "Weitere Mietwagen laden",
     "currentStateAccepted": "Aktuell gespeicherte Einstellungen übernommen. Die frühere Aktion wurde nicht erneut angewendet.",
     "closePending": "Pausieren und ausstehende Aktion abschließen",
     "closePendingHelp": "Die ursprüngliche Aktion kann noch laufen. Diese Wiederherstellung versucht, die Beobachtung zu pausieren. Bei Erfolg werden aktive Prüfungen und ausstehende Alarme abgebrochen. Wird eine andere Änderung zuerst gespeichert, sehen Sie deren Ergebnis; es wird nicht automatisch überschrieben.",

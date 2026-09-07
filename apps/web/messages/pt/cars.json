@@ -1,5 +1,17 @@
 {
   "Cars": {
+    "carsNav": "Carros",
+    "carsTitle": "Acompanhamento de carros de aluguel",
+    "savedTrackers": "Seus aluguéis salvos",
+    "allTrackers": "Todos os aluguéis salvos",
+    "refreshList": "Atualizar lista de aluguéis",
+    "listHistoricalHelp": "Os preços são observações salvas, não disponibilidade atual. Abra um acompanhamento para ver datas de verificação, condições e configurações.",
+    "loadingTrackers": "Carregando aluguéis salvos…",
+    "listAccessLost": "O acesso a estes aluguéis privados está indisponível. Entre novamente ou confira sua conta.",
+    "listFailed": "Não foi possível atualizar a lista de aluguéis. As linhas exibidas são a última visualização confirmada.",
+    "retryList": "Tentar lista de aluguéis novamente",
+    "noSavedTrackers": "Nenhum acompanhamento de aluguel salvo. Os aluguéis que você escolher acompanhar aparecerão aqui.",
+    "loadMoreTrackers": "Carregar mais aluguéis",
     "currentStateAccepted": "Configurações salvas atuais aceitas. A ação anterior não foi reaplicada.",
     "closePending": "Pausar e encerrar a ação pendente",
     "closePendingHelp": "A ação original pode ainda estar em andamento. Esta recuperação tenta pausar o acompanhamento e, se tiver sucesso, cancela verificações ativas e alertas pendentes. Se outra alteração for aplicada primeiro, você verá seu resultado; ela não será sobrescrita automaticamente.",

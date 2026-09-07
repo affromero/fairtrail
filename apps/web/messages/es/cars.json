@@ -1,5 +1,17 @@
 {
   "Cars": {
+    "carsNav": "Coches",
+    "carsTitle": "Seguimiento de coches de alquiler",
+    "savedTrackers": "Tus alquileres guardados",
+    "allTrackers": "Todos los alquileres guardados",
+    "refreshList": "Actualizar lista de alquileres",
+    "listHistoricalHelp": "Los precios son observaciones guardadas, no disponibilidad actual. Abre un seguimiento para ver las fechas de verificación, las condiciones y la configuración.",
+    "loadingTrackers": "Cargando alquileres guardados…",
+    "listAccessLost": "No tienes acceso a estos alquileres privados. Inicia sesión de nuevo o comprueba tu cuenta.",
+    "listFailed": "No se pudo actualizar la lista de alquileres. Las filas que se muestran son la última vista confirmada.",
+    "retryList": "Reintentar lista de alquileres",
+    "noSavedTrackers": "No hay seguimientos de alquiler guardados. Los alquileres que elijas seguir aparecerán aquí.",
+    "loadMoreTrackers": "Cargar más alquileres",
     "currentStateAccepted": "Configuración guardada actual aceptada. La acción anterior no se volvió a aplicar.",
     "closePending": "Pausar y cerrar la acción pendiente",
     "closePendingHelp": "La acción original puede seguir en curso. Esta recuperación intenta pausar el seguimiento y, si tiene éxito, cancela las comprobaciones activas y las alertas pendientes. Si otro cambio se aplica primero, verás su resultado; no se sobrescribirá automáticamente.",

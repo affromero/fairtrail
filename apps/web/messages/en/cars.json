@@ -1,5 +1,17 @@
 {
   "Cars": {
+    "carsNav": "Cars",
+    "carsTitle": "Rental car tracking",
+    "savedTrackers": "Your saved rentals",
+    "allTrackers": "All saved rentals",
+    "refreshList": "Refresh rental list",
+    "listHistoricalHelp": "Prices are retained observations, not current availability. Open a tracker for verification dates, rental conditions and settings.",
+    "loadingTrackers": "Loading saved rentals…",
+    "listAccessLost": "Access to these private rentals is unavailable. Sign in again or check your account.",
+    "listFailed": "The rental list could not be updated. Any rows shown are the last confirmed view.",
+    "retryList": "Retry rental list",
+    "noSavedTrackers": "No saved rental trackers. Rentals you choose to track will appear here.",
+    "loadMoreTrackers": "Load more rentals",
     "currentStateAccepted": "Current saved settings accepted. The earlier action was not reapplied.",
     "closePending": "Pause and close pending action",
     "closePendingHelp": "The original action may still be in flight. This recovery attempts to pause tracking and cancels active checks and pending alerts if it succeeds. If another change wins first, you will see its outcome instead; it will not be overwritten automatically.",

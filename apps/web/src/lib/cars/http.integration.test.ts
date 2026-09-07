@@ -101,6 +101,21 @@ describe.skipIf(process.env.CAR_HTTP_INTEGRATION_TESTS !== '1')('car HTTP owners
     expect((await (await list(request())).json()).data.trackers).toEqual([]);
     expect((await (await list(adminRequest)).json()).data.trackers).toMatchObject([{ id: row.id }]);
   });
+  it('returns owned rental pages with explicit continuation and rejects invalid pagination inputs', async () => {
+    const createdAt = new Date(Date.now() - 1000);
+    await prisma.carTracker.createMany({ data: [owner, other].flatMap(userId => Array.from({ length: 3 }, (_, index) => ({ id: `${userId}-${index}`, userId, label: `Rental ${index}`, search: carJson(carSearchFixture()), currency: 'GBP', createdAt }))) });
+    const first = await list(new Request('http://localhost/api/cars?limit=2'));
+    expect(first.status).toBe(200); expect(first.headers.get('cache-control')).toBe('private, no-store');
+    const page = (await first.json()).data;
+    expect(page.trackers.map((row: { id: string }) => row.id)).toEqual([`${owner}-2`, `${owner}-1`]);
+    const next = new Request(`http://localhost/api/cars?limit=2&cursor=${encodeURIComponent(page.nextCursor)}`);
+    expect((await (await list(next)).json()).data).toMatchObject({ trackers: [{ id: `${owner}-0` }], nextCursor: null });
+    for (const query of ['limit=0', 'limit=101', 'limit=1.5', 'limit=01', 'limit=', 'cursor=bad!']) expect((await list(new Request(`http://localhost/api/cars?${query}`))).status).toBe(400);
+    boundary.token = createUserSessionToken(other);
+    expect((await list(next)).status).toBe(400);
+    boundary.token = '';
+    expect((await list(next)).status).toBe(401);
+  });
   it('keeps old verified history readable without allowing it to become a fresh tracker quote', async () => {
     const row = await tracker(), observedAt = new Date(Date.now() - 30 * 86_400_000), offer = carOfferFixture(observedAt.toISOString());
     const run = await prisma.carSearchRun.create({ data: { userId: owner, trackerId: row.id, trackerRevision: 0, request: row.search!, result: carJson(carReportFixture([offer])), status: 'success', createdAt: observedAt, completedAt: observedAt } });

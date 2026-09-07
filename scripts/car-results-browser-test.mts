@@ -260,6 +260,68 @@ try {
   assert.equal((await db.query(`SELECT count(*) FROM "CarTracker" WHERE id='car-browser-tracker'`)).rows[0].count, '0');
   assert.equal(await administratorPage.getByText('Rental tracker deleted. No booking was cancelled.', { exact: true }).count(), 0);
   passed.push('Administrator reassignment revokes old-owner access and lost deletion acknowledgement resolves without false attribution');
+  await administratorPage.goto('/cars');
+  await administratorPage.getByText('No saved rental trackers. Rentals you choose to track will appear here.', { exact: true }).waitFor();
+  assert.match(await administratorPage.locator('meta[name="robots"]').getAttribute('content') ?? '', /noindex/);
+  await administratorPage.screenshot({ path: resolve(output, 'tracker-list-empty-1280.png') });
+  for (let index = 0; index < 27; index++) {
+    await db.query(`INSERT INTO "CarTracker" (id,"userId",label,search,currency,"latestPriceMinor","createdAt","updatedAt") VALUES ($1,'car-browser-alice',$2,$3,'GBP',$4,now(),now())`, [`car-browser-list-${String(index).padStart(2, '0')}`, `Saved rental ${String(index).padStart(2, '0')}`, search, index === 0 ? null : 10000 + index]);
+  }
+  await db.query(`INSERT INTO "CarTracker" (id,"userId",label,search,currency,"createdAt","updatedAt") VALUES ('car-browser-list-bob','car-browser-bob','Private Bob rental',$1,'GBP',now(),now())`, [search]);
+  await page.goto('/cars');
+  await page.getByRole('heading', { name: 'Rental car tracking', exact: true }).waitFor();
+  await page.getByRole('link', { name: /Saved rental 26/ }).waitFor();
+  assert.equal(await page.getByRole('link', { name: /Saved rental/ }).count(), 25);
+  assert.equal(await page.getByRole('link', { name: /Private Bob rental/ }).count(), 0);
+  assert.equal(await page.getByRole('link', { name: 'Cars', exact: true }).getAttribute('aria-current'), 'page');
+  await page.getByRole('button', { name: 'Load more rentals' }).click();
+  await page.getByRole('link', { name: /Saved rental 00/ }).waitFor();
+  assert.equal(await page.getByRole('link', { name: /Saved rental/ }).count(), 27);
+  assert.equal(await page.getByRole('button', { name: 'Load more rentals' }).count(), 0);
+  assert.match(await page.getByRole('link', { name: /Saved rental 00/ }).innerText(), /Unknown/);
+  for (const width of [1280, 390]) {
+    await page.setViewportSize({ width, height: 1000 });
+    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), `Rental dashboard fits ${width}`);
+    await page.evaluate(() => window.scrollTo(0, 0)); await page.mouse.move(0, 0);
+    await page.screenshot({ path: resolve(output, `tracker-list-${width}.png`) });
+  }
+  await page.getByRole('link', { name: /Saved rental 26/ }).focus(); await page.keyboard.press('Enter');
+  await page.getByRole('heading', { name: 'Saved rental 26', exact: true }).waitFor();
+  passed.push('Owned rental dashboard loads all pages with honest missing prices, accessible navigation and responsive layout');
+  await page.goto('/cars'); await page.getByRole('link', { name: /Saved rental 26/ }).waitFor();
+  await page.route('**/api/cars?*', route => route.abort());
+  await page.getByRole('button', { name: 'Refresh rental list' }).click();
+  await page.getByRole('alert').filter({ hasText: 'could not be updated' }).waitFor();
+  assert.equal(await page.getByRole('link', { name: /Saved rental/ }).count(), 25);
+  await page.screenshot({ path: resolve(output, 'tracker-list-interrupted-390.png') });
+  await page.unroute('**/api/cars?*');
+  await page.getByRole('button', { name: 'Retry rental list' }).click();
+  await page.getByRole('button', { name: 'Load more rentals' }).waitFor();
+  await alice.clearCookies(); await page.getByRole('button', { name: 'Load more rentals' }).click();
+  await page.getByRole('link', { name: 'Sign in', exact: true }).waitFor();
+  assert.equal(await page.getByRole('link', { name: /Saved rental/ }).count(), 0);
+  await page.screenshot({ path: resolve(output, 'tracker-list-session-expired-390.png') });
+  await login(alice, 'car-browser-alice');
+  passed.push('Dashboard retains its last view on transport failure and hides every row after session expiry');
+  for (const locale of ['es', 'fr', 'de', 'pt']) {
+    const copy = JSON.parse(await readFile(resolve(`apps/web/messages/${locale}/cars.json`), 'utf8')).Cars;
+    const localized = await context(privateUrl, locale); await login(localized, 'car-browser-alice');
+    const localizedPage = await localized.newPage(); await localizedPage.setViewportSize({ width: 390, height: 1000 }); await localizedPage.goto('/cars');
+    await localizedPage.getByRole('heading', { name: copy.carsTitle, exact: true }).waitFor();
+    await localizedPage.getByRole('link', { name: /Saved rental 26/ }).waitFor();
+    assert.ok(await localizedPage.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
+    await localizedPage.screenshot({ path: resolve(output, `tracker-list-${locale}-390.png`) });
+  }
+  await administratorPage.goto('/account');
+  const ownRentals = administratorPage.getByRole('region', { name: 'Your saved rentals' });
+  await ownRentals.getByRole('link', { name: /Private Bob rental/ }).waitFor();
+  assert.equal(await ownRentals.getByRole('link', { name: /Saved rental/ }).count(), 0);
+  await administratorPage.goto('/admin/queries');
+  await administratorPage.getByRole('region', { name: 'All saved rentals' }).getByRole('link', { name: /Saved rental 26/ }).waitFor();
+  assert.equal((await fetch(`${publicUrl}/cars`)).status, 404);
+  const anonymousList = await fetch(`${privateUrl}/cars`, { redirect: 'manual' });
+  assert.equal(anonymousList.status, 307); assert.match(anonymousList.headers.get('location') ?? '', /login/);
+  passed.push('Five locale dashboards and private account/admin entrypoints enforce scope; public and anonymous access stay closed');
   assert.deepEqual(errors, []); await writeFile(resolve(output, 'results.json'), JSON.stringify({ passed, errors }, null, 2));
   for (const name of passed) console.log(`PASS ${name}`);
 } catch (error) {
