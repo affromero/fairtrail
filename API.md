@@ -2,17 +2,21 @@
 
 > For agents, scripts, and CLI tools interacting with a local Flight Finder instance.
 
-Base URL: `http://localhost:3003` (or whatever `HOST_PORT` is set to in `.env`)
+Base URL: `http://localhost:3003` (or the `HOST_PORT` in your deployment configuration).
 
-All endpoints return JSON: `{ "data": {...} }` on success, `{ "error": "message" }` on failure.
+Endpoints using the API response helpers return JSON: `{ "ok": true, "data": ... }`
+on success and `{ "ok": false, "error": "message" }` on failure. Some older flight
+examples below omit the `ok` field for brevity. Check both the HTTP status and the envelope.
 
 Auth requirements depend on mode and endpoint family:
+
 - `/api/cron/scrape` always requires `Authorization: Bearer <CRON_SECRET>`.
 - `/api/admin/*` routes require an admin session cookie.
 - `/api/analytics/track` is gated to internal callers via `ADMIN_SESSION_SECRET`.
 - `/api/community/ingest` requires a registered community API key.
 - `/api/community/register` requires `COMMUNITY_REGISTRATION_OPEN=true` and passes rate limiting.
 - In multi user mode (`ExtractionConfig.multiUserMode = true`), `POST /api/queries`, `GET /api/alerts`, `GET /api/queries/active`, and `POST /api/queries/{id}/scrape` require a valid user session.
+- `/api/hotels/*` and `/api/cars/*`, including their collection routes, are self-hosted only and require a user session when accounts are enabled. Their ownership rules apply to every request.
 - All other endpoints listed below are public (no auth required).
 
 ---
@@ -205,7 +209,7 @@ Authorization: Bearer <CRON_SECRET>
 }
 ```
 
-The `CRON_SECRET` is auto-generated on first run and printed in Docker logs. You can also set it explicitly in `.env`.
+Configure `CRON_SECRET` through Doppler and pass it to the running instance.
 
 ---
 
@@ -371,6 +375,179 @@ matches require explicit `allowApproximateAlerts: true` to trigger alerts.
 Failed channel deliveries retry after five minutes; successful channels are
 remembered so a retry does not resend to them. An instance crash between sending
 and saving the delivery acknowledgement can still produce a duplicate.
+
+### Self-hosted car tracking
+
+Car routes require `SELF_HOSTED=true`; public instances return HTTP 404. When
+accounts are enabled, authenticate with `POST /api/auth/login` and include the
+`ft-session` cookie. Missing or revoked sessions return 401. Ordinary accounts
+can read and manage their own trackers and searches. A foreign or missing record
+returns 404. Administrators can manage other accounts' records, but their normal
+collection list remains personal. In single-user mode, the collection includes
+the instance's car trackers.
+
+Every car response sets `Cache-Control: private, no-store` and uses the `ok`/`data`
+or `ok`/`error` envelope described above. JSON writes require
+`Content-Type: application/json`; request bodies are limited to 64 KiB and a
+five-second read deadline. The browser pages `/cars`, `/cars/:id`, and
+`/cars/search/:id` require the same private access and are marked `noindex`.
+
+| Method and path | Successful response data |
+|---|---|
+| `GET /api/cars?limit=25&cursor=...` | `{ trackers, nextCursor }`; omit `cursor` for the first page |
+| `POST /api/cars` | HTTP 201 with `{ tracker, creationKey }` from a selected completed-search quote |
+| `GET /api/cars/:id` | `{ tracker, snapshots, runs, latestObservation, notificationsConfigured, canReassign }` |
+| `PATCH /api/cars/:id` | `{ tracker }` after saving supported settings |
+| `DELETE /api/cars/:id` | `{ id, deleted: true }` after deleting the tracker and its history |
+| `POST /api/cars/:id/scrape` | HTTP 202 with `{ id, status }` for a queued or already-active check |
+| `GET /api/cars/search/:id` | `{ id, trackerId, status, createdAt, completedAt, error, search, result }` |
+| `DELETE /api/cars/search/:id` | `{ id, status }`; completed searches retain their terminal status |
+
+Collection pages default to 25 trackers and accept `limit` from 1 to 100. They
+sort by creation time, then ID, both descending. Pass `nextCursor` unchanged to
+continue; `null` means there is no next page. A cursor remains usable if its last
+row is deleted. Newer insertions appear after restarting from the first page.
+Do not reuse a cursor for a different account or listing mode. Administrators
+request all accounts with `admin=true` on every page; other accounts receive 403.
+Malformed cursors and page sizes return 400. Ownership is checked independently
+of the cursor.
+
+#### Create a rental tracker safely
+
+Select an offer returned by a completed search owned by the caller, or accessible
+to an administrator. The server reads the stored quote, verifies its eligibility,
+and derives its contract identity. Client-supplied prices and contract hashes
+cannot establish eligibility. Quotes expire after 15 minutes. A failed,
+unfinished, expired, or unverifiable result cannot create a tracker.
+
+Generate a UUID v4 `Idempotency-Key` once and persist it with the exact request
+before sending:
+
+```http
+POST /api/cars
+Content-Type: application/json
+Idempotency-Key: 7d8ff006-24e2-4dfe-9965-cb635443239e
+Cookie: ft-session=<session>
+
+{
+  "searchId": "returned-search-id",
+  "offerId": "returned-offer-id",
+  "label": "London weekend",
+  "mode": "best",
+  "target": { "currency": "GBP", "minor": 9000 },
+  "notifyLows": true,
+  "scrapeInterval": 3
+}
+```
+
+`mode` is `best` or `contract`. Best-price tracking compares eligible offers from
+the saved provider selection while keeping the rental requirements fixed.
+Contract tracking follows the selected provider and contract terms. A tracker
+does not retain the initial search's budget ceiling; `target` controls its price
+alert. Defaults are `best`, no target, low-price notifications enabled, and a
+three-hour interval. Set `target` to `null` to remove it. Custom labels are nonempty and
+limited to 250 characters; `scrapeInterval` is an integer from 1 to 24 hours.
+
+If the response is lost, retry the same body with the same key. A replay returns
+the existing tracker, including any subsequently changed settings. Reusing a key
+for different creation inputs returns 409. Replaying a deleted tracker's key
+returns 410 and does not recreate it. Ownership still applies to a replay, so
+reassignment can make it inaccessible. Do not generate another key to work
+around an uncertain result. Creation and its first queued check commit together;
+the API permits at most three queued or running searches per owner and returns
+429 when this quota prevents a new check.
+
+#### Edit, delete and recover
+
+`PATCH` accepts only `active`, `label`, `target`, `notifyLows`, `scrapeInterval`,
+and administrator-only `userId`. Reassignment requires an existing account.
+Create a separate tracker to change its rental criteria or matching mode.
+Saving settings cancels active checks and pending alerts for the previous
+revision. Reassignment also transfers tracker access; existing search runs keep
+their original owners. Deleting a tracker removes its stored history and pending
+work. Neither operation cancels a rental booking with a provider.
+
+`GET /api/cars/:id` and successful `PATCH` responses include `X-Car-Revision` and
+the same numeric value in `tracker.revision`. Send the displayed revision on
+every edit or deletion:
+
+```http
+PATCH /api/cars/returned-tracker-id
+Content-Type: application/json
+X-Car-Revision: 4
+
+{ "active": false }
+```
+
+The header is optional for API compatibility, but omitting it allows an update
+without a revision check. A stale revision returns 412 before changing settings,
+cancelling work, or touching alerts. The revision protects settings; it is not
+an HTTP ETag for the price history, which can change independently.
+
+After an uncertain edit, read the tracker and compare its revision and requested
+settings. If retrying, reuse the original revision. Never apply that retry to a
+newer revision automatically. A 404 after an uncertain deletion means the record
+is inaccessible; it does not prove that this client deleted it. Only the matching
+successful deletion response acknowledges that operation.
+
+Manual refresh returns 202 when work is queued or already active. It does not
+mean the provider search has completed. Repeated calls reuse an active check;
+this is not durable deduplication after that check finishes. Poll the returned
+run ID and do not blindly repeat a lost refresh request. A paused tracker returns
+409 until resumed. Cancelling an already-finished run preserves its final status.
+
+#### Prices, evidence and history
+
+Providers are `discovercars` and `autoeurope`. Account settings expose an ordered
+`preferredCarProviders` list. An empty saved list selects the default pair;
+duplicate or unsupported values are rejected. Existing flight and hotel provider
+preferences are separate.
+
+Amounts use `{ currency, minor }`, with a safe integer number of the currency's
+minor units: `{ "currency": "GBP", "minor": 9000 }` means £90.00. Do not assume
+every currency has two decimal places. Missing retained prices are `null`, not
+zero. Eligible totals include verified mandatory charges, taxes and selected
+extras, with pay-now and pickup charges reconciled to the total. Deposits and
+excess are disclosed separately. Mixed-currency charges, unknown required fees,
+unconfirmed extras, or mismatched driver details cannot qualify for alerts.
+
+Search states are `queued`, `running`, `success`, `partial`, `unavailable`,
+`failed`, and `cancelled`. Waiting work is queued, not yet checking a provider.
+A result contains `offers`, `candidates`, `errors`, `providers`, `completed`,
+`total`, `successfulProviders`, and `scope: "checked_provider_offers"`. Each
+provider reports its status and bounded discovery counts. At most eight offers
+per selected provider are inspected. Candidates remain visibly unverified;
+successful discovery alone does not make a candidate an eligible quote. An
+offer's evidence includes its source URL and observation time, with a status of
+`confirmed`, `estimated`, or `unknown`.
+
+Tracker detail includes the latest 100 stored observations and 20 check runs.
+`latestObservation` independently identifies eligible evidence for the retained
+price and can come from outside that window. `observedAt` is the evidence time.
+Validation uses the check's completion time as `evaluatedAt`, or the observation
+time if no completion was recorded. `lastCheckedAt`
+records an attempt and must not be displayed as fresh price evidence. Failed
+checks retain earlier verified prices. Historical observations do not establish
+current availability or guarantee a booking price.
+
+The first eligible price establishes the low-price baseline. A lower later price
+can trigger a new-low alert. A target alert fires at or below an armed target and
+rearms only after a complete qualifying check above it. Partial checks can retain
+eligible prices without rearming an above-target alert. `notificationsConfigured`
+reports channel readiness; saved alert preferences alone do not establish that
+a notification was delivered.
+
+For a read-only live provider check, run this from the repository root:
+
+```bash
+node --import tsx scripts/car-search-smoke.mts
+```
+
+It uses the production search code, requires an eligible quote from each
+provider, and writes private
+diagnostic files to a unique temporary directory. It does not create a tracker,
+use the application database, or submit a booking. `CAR_SEARCH_SMOKE_CURRENCY`
+overrides its GBP test currency; this does not change application defaults.
 
 ### Flight records
 
