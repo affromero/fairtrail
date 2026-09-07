@@ -1,5 +1,22 @@
 {
   "Cars": {
+    "Draft": {
+      "title": "Descreva o aluguel",
+      "help": "Opcional. A IA configurada pode preparar um rascunho editável. Dados ausentes ficam sem confirmação; os preços só serão consultados quando você enviar o formulário.",
+      "description": "Descrição do aluguel",
+      "example": "Um carro automático em Heathrow, com devolução no mesmo aeroporto e um motorista adicional…",
+      "prepare": "Preparar rascunho",
+      "preparing": "Preparando rascunho…",
+      "cancel": "Cancelar rascunho",
+      "waiting": "Aguardando o provedor de IA configurado. Isso pode levar alguns minutos.",
+      "cancelled": "Rascunho cancelado. Seus dados manuais não foram alterados.",
+      "timedOut": "O prazo de preparação terminou. Tente novamente ou preencha o formulário manualmente.",
+      "failed": "Não foi possível preparar o rascunho. Seus dados manuais não foram alterados. Aguarde um pouco antes de tentar novamente ou use o formulário.",
+      "ready": "As sugestões estão prontas. Aplique-as ao formulário e confira todos os dados antes de pesquisar.",
+      "apply": "Revisar rascunho no formulário",
+      "reviewHelp": "Revise os dados sugeridos. Selecione cada local alterado no catálogo, complete os dados dos motoristas e confira estas limitações. Nenhuma pesquisa ou reserva foi feita.",
+      "confirm": "Revisei os dados do aluguel e entendo as limitações indicadas."
+    },
     "Search": {
       "recentSearches": "Pesquisas de aluguer recentes",
       "refreshSearches": "Atualizar histórico de pesquisas",

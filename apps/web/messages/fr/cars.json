@@ -1,5 +1,22 @@
 {
   "Cars": {
+    "Draft": {
+      "title": "Décrivez votre location",
+      "help": "Facultatif. L’IA configurée peut préparer un brouillon modifiable. Les informations manquantes restent à confirmer ; aucun prix n’est recherché avant l’envoi du formulaire.",
+      "description": "Description de la location",
+      "example": "Une voiture automatique à Heathrow, à rendre au même aéroport, avec un conducteur supplémentaire…",
+      "prepare": "Préparer le brouillon",
+      "preparing": "Préparation du brouillon…",
+      "cancel": "Annuler le brouillon",
+      "waiting": "En attente du fournisseur d’IA configuré. Cela peut prendre quelques minutes.",
+      "cancelled": "Brouillon annulé. Vos informations saisies manuellement sont inchangées.",
+      "timedOut": "Le délai de préparation est dépassé. Réessayez ou remplissez le formulaire manuellement.",
+      "failed": "Le brouillon n’a pas pu être préparé. Vos informations manuelles sont inchangées. Patientez avant de réessayer ou utilisez le formulaire.",
+      "ready": "Les suggestions sont prêtes. Appliquez-les au formulaire et vérifiez chaque information avant de rechercher.",
+      "apply": "Vérifier le brouillon dans le formulaire",
+      "reviewHelp": "Vérifiez les suggestions. Sélectionnez chaque lieu modifié dans le catalogue, complétez les informations des conducteurs et examinez ces limites. Aucune recherche ni réservation n’a été effectuée.",
+      "confirm": "J’ai vérifié les informations de location et compris les limites indiquées."
+    },
     "Search": {
       "recentSearches": "Recherches de location récentes",
       "refreshSearches": "Actualiser l’historique",

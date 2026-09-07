@@ -1,5 +1,22 @@
 {
   "Cars": {
+    "Draft": {
+      "title": "Beschreibe deine Anmietung",
+      "help": "Optional. Die konfigurierte KI kann einen bearbeitbaren Entwurf vorbereiten. Fehlende Angaben bleiben unbestätigt. Preise werden erst nach dem Absenden des Formulars geprüft.",
+      "description": "Beschreibung der Anmietung",
+      "example": "Ein Automatikauto in Heathrow, Rückgabe am selben Flughafen, mit einem zusätzlichen Fahrer…",
+      "prepare": "Entwurf vorbereiten",
+      "preparing": "Entwurf wird vorbereitet…",
+      "cancel": "Entwurf abbrechen",
+      "waiting": "Warten auf den konfigurierten KI-Anbieter. Das kann einige Minuten dauern.",
+      "cancelled": "Entwurf abgebrochen. Deine manuellen Angaben sind unverändert.",
+      "timedOut": "Die Vorbereitung hat zu lange gedauert. Versuche es erneut oder fülle das Formular manuell aus.",
+      "failed": "Der Entwurf konnte nicht vorbereitet werden. Deine manuellen Angaben sind unverändert. Warte kurz vor einem neuen Versuch oder nutze das Formular.",
+      "ready": "Die Vorschläge sind bereit. Übernimm sie ins Formular und prüfe alle Angaben vor der Suche.",
+      "apply": "Entwurf im Formular prüfen",
+      "reviewHelp": "Prüfe die vorgeschlagenen Angaben. Wähle jeden geänderten Ort im Katalog, ergänze fehlende Fahrerangaben und beachte diese Einschränkungen. Es wurde nichts gesucht oder gebucht.",
+      "confirm": "Ich habe die Mietangaben geprüft und verstehe die aufgeführten Einschränkungen."
+    },
     "Search": {
       "recentSearches": "Letzte Mietwagensuchen",
       "refreshSearches": "Suchverlauf aktualisieren",

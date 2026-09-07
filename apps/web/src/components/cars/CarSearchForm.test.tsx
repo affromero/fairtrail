@@ -32,6 +32,100 @@ async function completeForm(copy = en.Cars.Search) {
 }
 
 describe('independent rental search form', () => {
+  it('applies suggestions only on request, preserves manual facts, and requires review before searching', async () => {
+    const searches: unknown[] = [];
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init: RequestInit) => {
+      if (url.startsWith('/api/cars/locations?')) return response([place]);
+      if (url === '/api/cars/parse') return response({ draft: { filters: { transmission: 'automatic' }, warnings: ['Cross-border permission must be confirmed separately.'] } });
+      searches.push(JSON.parse(String(init.body)));
+      return response({ id: 'draft-search', status: 'queued', creationKey: new Headers(init.headers).get('Idempotency-Key') });
+    }));
+    render(surface()); await completeForm();
+    fireEvent.change(screen.getByLabelText(en.Cars.Draft.description), { target: { value: 'Automatic car for a cross-border journey' } });
+    fireEvent.click(screen.getByRole('button', { name: en.Cars.Draft.prepare })); await settle();
+    expect(screen.getByLabelText(en.Cars.Search.transmission)).toHaveValue('any');
+    expect(searches).toEqual([]);
+    fireEvent.click(screen.getByRole('button', { name: en.Cars.Draft.apply }));
+    expect(screen.getByLabelText(en.Cars.Search.transmission)).toHaveValue('automatic');
+    expect(screen.getByLabelText(en.Cars.Search.driverAge)).toHaveValue(35);
+    expect(screen.getByLabelText(en.Cars.Search.licenceYears)).toHaveValue(5);
+    expect(screen.getByRole('combobox', { name: en.Cars.Search.pickupLocation })).toHaveValue(place.name);
+    expect(screen.getByText(/Cross-border permission must/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: en.Cars.Search.search })).toBeDisabled();
+    fireEvent.submit(screen.getByLabelText(en.Cars.Search.driverAge).closest('form')!); await settle();
+    expect(searches).toEqual([]);
+    fireEvent.click(screen.getByLabelText(en.Cars.Draft.confirm));
+    fireEvent.click(screen.getByRole('button', { name: en.Cars.Search.search })); await settle();
+    expect(searches).toEqual([expect.objectContaining({ driver: { age: 35, licenceYears: 5, residenceCountry: 'GB' }, filters: expect.objectContaining({ transmission: 'automatic' }) })]);
+  });
+  it('clears changed catalog selections and retains incomplete additional drivers for explicit completion', async () => {
+    const searches: unknown[] = [];
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init: RequestInit) => {
+      if (url.startsWith('/api/cars/locations?')) return response([place]);
+      if (url === '/api/cars/parse') return response({ draft: { pickupQuery: 'London', currency: 'JPY', additionalDrivers: [{}], filters: { maxTotal: { currency: 'JPY', minor: 5000 } } } });
+      searches.push(init); return response({});
+    }));
+    render(surface()); await completeForm();
+    fireEvent.change(screen.getByLabelText(en.Cars.Draft.description), { target: { value: 'London, one additional driver, total budget JPY5000' } });
+    fireEvent.click(screen.getByRole('button', { name: en.Cars.Draft.prepare })); await settle();
+    fireEvent.click(screen.getByRole('button', { name: en.Cars.Draft.apply }));
+    expect(screen.getByRole('combobox', { name: en.Cars.Search.pickupLocation })).toHaveValue('London');
+    expect(screen.queryByText(/England · United Kingdom · Europe\/London/)).not.toBeInTheDocument();
+    expect(screen.getAllByLabelText(en.Cars.Search.driverAge).map(input => (input as HTMLInputElement).value)).toEqual(['35', '']);
+    expect(screen.getByLabelText('Maximum rental total (JPY)')).toHaveValue('5000');
+    fireEvent.click(screen.getByLabelText(en.Cars.Draft.confirm));
+    fireEvent.submit(screen.getAllByLabelText(en.Cars.Search.driverAge)[0]!.closest('form')!); await settle();
+    expect(searches).toEqual([]);
+    expect(screen.getByRole('alert')).toHaveTextContent(en.Cars.Search.chooseLocation);
+  });
+  it.each(['cancel', 'timeout'] as const)('ignores late draft responses after %s and restores manual controls', async mode => {
+    let finish!: (value: Response) => void, signal: AbortSignal | undefined;
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init: RequestInit) => {
+      if (url !== '/api/cars/parse') return response([place]);
+      signal = init.signal!;
+      return new Promise<Response>(resolve => { finish = resolve; });
+    }));
+    render(surface());
+    fireEvent.change(screen.getByLabelText(en.Cars.Search.driverAge), { target: { value: '42' } });
+    fireEvent.change(screen.getByLabelText(en.Cars.Draft.description), { target: { value: 'A rental car' } });
+    fireEvent.click(screen.getByRole('button', { name: en.Cars.Draft.prepare })); await settle();
+    expect(screen.getByLabelText(en.Cars.Search.driverAge)).toBeDisabled();
+    if (mode === 'cancel') fireEvent.click(screen.getByRole('button', { name: en.Cars.Draft.cancel }));
+    else await act(async () => { await vi.advanceTimersByTimeAsync(280_000); });
+    expect(signal?.aborted).toBe(true);
+    expect(screen.getByLabelText(en.Cars.Search.driverAge)).toBeEnabled();
+    await act(async () => { finish(response({ draft: { driver: { age: 23 } } })); });
+    expect(screen.queryByRole('button', { name: en.Cars.Draft.apply })).not.toBeInTheDocument();
+    expect(screen.getByLabelText(en.Cars.Search.driverAge)).toHaveValue(42);
+    expect(screen.getByRole('alert')).toHaveTextContent(en.Cars.Draft[mode === 'cancel' ? 'cancelled' : 'timedOut']);
+  });
+  it('keeps manual values after invalid draft data', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => response({ draft: { driver: { age: 10 } } })));
+    render(surface());
+    fireEvent.change(screen.getByLabelText(en.Cars.Search.driverAge), { target: { value: '42' } });
+    fireEvent.change(screen.getByLabelText(en.Cars.Draft.description), { target: { value: 'A rental car' } });
+    fireEvent.click(screen.getByRole('button', { name: en.Cars.Draft.prepare })); await settle();
+    expect(screen.getByRole('alert')).toHaveTextContent(en.Cars.Draft.failed);
+    expect(screen.getByLabelText(en.Cars.Search.driverAge)).toHaveValue(42);
+    expect(screen.queryByRole('button', { name: en.Cars.Draft.apply })).not.toBeInTheDocument();
+  });
+  it('discards pending AI and manual details when the account changes', async () => {
+    let finish!: (value: Response) => void, signal: AbortSignal | undefined;
+    vi.stubGlobal('fetch', vi.fn(async (_url: string, init: RequestInit) => {
+      signal = init.signal!; return new Promise<Response>(resolve => { finish = resolve; });
+    }));
+    const mounted = render(surface());
+    fireEvent.change(screen.getByLabelText(en.Cars.Search.driverAge), { target: { value: '42' } });
+    fireEvent.change(screen.getByLabelText(en.Cars.Draft.description), { target: { value: 'Private rental description' } });
+    fireEvent.click(screen.getByRole('button', { name: en.Cars.Draft.prepare })); await settle();
+    mounted.rerender(<NextIntlClientProvider locale="en" messages={en}><CarSearchForm actorScope="bob" defaultCurrency="EUR" defaultSources={['autoeurope']} options={carFormOptions('en')} /></NextIntlClientProvider>);
+    expect(signal?.aborted).toBe(true);
+    await act(async () => { finish(response({ draft: { pickupQuery: 'Private location' } })); });
+    expect(screen.getByLabelText(en.Cars.Search.driverAge)).toHaveValue(null);
+    expect(screen.getByLabelText(en.Cars.Draft.description)).toHaveValue('');
+    expect(screen.getByLabelText(en.Cars.Search.currency)).toHaveValue('EUR');
+    expect(screen.queryByRole('button', { name: en.Cars.Draft.apply })).not.toBeInTheDocument();
+  });
   it('accepts a local comma decimal without changing the currency or rounding minor units', async () => {
     let submitted: Record<string, unknown> | undefined;
     vi.stubGlobal('fetch', vi.fn(async (url: string, init: RequestInit) => {
@@ -67,6 +161,7 @@ describe('independent rental search form', () => {
     const storageKey = 'ff-car-search:alice'; sessionStorage.setItem(storageKey, '{broken');
     render(surface());
     expect(screen.getByRole('button', { name: en.Cars.Search.search })).toBeDisabled();
+    expect(screen.getByLabelText(en.Cars.Draft.description)).toBeDisabled();
     fireEvent.click(screen.getByRole('button', { name: en.Cars.Search.retryStorage }));
     expect(sessionStorage.getItem(storageKey)).toBe('{broken');
     fireEvent.click(screen.getByText(en.Cars.Search.discardLabel));

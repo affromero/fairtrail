@@ -1,5 +1,22 @@
 {
   "Cars": {
+    "Draft": {
+      "title": "Describe your rental",
+      "help": "Optional. Your configured AI can prepare an editable draft. Missing details stay unconfirmed; no prices are checked until you submit the form.",
+      "description": "Rental description",
+      "example": "An automatic car at Heathrow, returning to the same airport, with one additional driver…",
+      "prepare": "Prepare draft",
+      "preparing": "Preparing draft…",
+      "cancel": "Cancel draft",
+      "waiting": "Waiting for your configured AI provider. This can take a few minutes.",
+      "cancelled": "Draft cancelled. Your manual rental details are unchanged.",
+      "timedOut": "Draft preparation timed out. Retry or complete the form manually.",
+      "failed": "The draft could not be prepared. Your manual details are unchanged. Wait briefly before retrying, or use the form below.",
+      "ready": "Suggestions are ready. Apply them to the form, then check every detail before searching.",
+      "apply": "Review draft in form",
+      "reviewHelp": "Review the suggested details below. Select each changed location from the catalog, complete missing driver details, and check these limitations. Nothing has been searched or booked.",
+      "confirm": "I have reviewed the rental details and understand the listed limitations."
+    },
     "Search": {
       "recentSearches": "Recent rental searches",
       "refreshSearches": "Refresh search history",

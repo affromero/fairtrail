@@ -429,6 +429,7 @@ five-second read deadline. The browser pages `/cars`, `/cars/:id`, and
 | `DELETE /api/cars/:id` | `{ id, deleted: true }` after deleting the tracker and its history |
 | `POST /api/cars/:id/scrape` | HTTP 202 with `{ id, status }` for a queued or already-active check |
 | `GET /api/cars/locations?q=LHR` | Up to 12 catalog suggestions with `id`, `version`, country, region and timezone; no provider requests |
+| `POST /api/cars/parse` | `{ draft }` from `{ text, locale? }`; editable suggestions only, no provider search or tracker creation |
 | `POST /api/cars/search` | HTTP 202 with `{ id, status, creationKey }`; requires a UUID v4 `Idempotency-Key` |
 | `GET /api/cars/search?cursor=...` | `{ searches, nextCursor }`; 25 caller-scoped standalone search summaries per page |
 | `GET /api/cars/search/:id` | `{ id, trackerId, status, createdAt, completedAt, error, search, result }` |
@@ -444,6 +445,21 @@ Malformed cursors and page sizes return 400. Ownership is checked independently
 of the cursor.
 
 #### Start an independent rental search
+
+Natural-language input is optional. `POST /api/cars/parse` accepts a rental
+description of up to 4,000 characters and an optional `en`, `es`, `fr`, `de`, or
+`pt` locale. It uses the configured AI provider without changing its settings.
+Missing driver facts remain `null`, including entries for additional drivers.
+Location suggestions are text, never trusted catalog or provider identifiers.
+Unsupported requests and ambiguities appear in `warnings`.
+
+Only one draft can run per account, with a ten-second request cooldown (HTTP
+429 on overlap or rapid retry). Cancellation and timeouts reach the underlying
+SDK or CLI process. Draft preparation does not queue a rental search, create a
+tracker, change alerts, or book a car. The browser requires users to apply and
+review the draft, complete missing details, select changed catalog locations,
+and acknowledge its limitations before submitting a search. Manual entries
+remain available after a failed or cancelled draft.
 
 Select pickup and return from `/api/cars/locations`. Send only their `id` and
 `version`, and local `date`/`time` pairs. Country, timezone, UTC instants and

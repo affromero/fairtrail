@@ -5,9 +5,9 @@ import { validateCarLocationChoice, type CarLocationChoice } from '@/lib/cars/lo
 import { travelRequest } from '../travel/client';
 import styles from './CarSearchForm.module.css';
 
-export function CarLocationInput({ label, value, onChange }: { label: string; value: CarLocationChoice | null; onChange: (value: CarLocationChoice | null) => void }) {
+export function CarLocationInput({ label, value, onChange, initialQuery = '' }: { label: string; value: CarLocationChoice | null; onChange: (value: CarLocationChoice | null) => void; initialQuery?: string }) {
   const t = useTranslations('Cars.Search'), locale = useLocale(), id = useId();
-  const [query, setQuery] = useState(value?.name ?? ''), [options, setOptions] = useState<CarLocationChoice[]>([]);
+  const [query, setQuery] = useState(value?.name ?? initialQuery), [options, setOptions] = useState<CarLocationChoice[]>([]);
   const [open, setOpen] = useState(false), [busy, setBusy] = useState(false), [error, setError] = useState(''), [active, setActive] = useState(-1);
   const generation = useRef(0), chosen = useRef(value);
   useEffect(() => {
@@ -37,7 +37,7 @@ export function CarLocationInput({ label, value, onChange }: { label: string; va
     <label htmlFor={id}>{label}</label>
     <input id={id} role="combobox" autoComplete="off" required maxLength={100} value={query} aria-autocomplete="list" aria-expanded={open && options.length > 0} aria-controls={`${id}-options`} aria-activedescendant={open && active >= 0 ? `${id}-${active}` : undefined} aria-describedby={`${id}-hint`} onFocus={() => { if (options.length) setOpen(true); }} onChange={event => { chosen.current = null; onChange(null); setQuery(event.target.value); setOpen(true); setActive(-1); }} onKeyDown={event => {
       if (event.key === 'Escape') { setOpen(false); return; }
-      if ((event.key === 'ArrowDown' || event.key === 'ArrowUp') && options.length) { event.preventDefault(); setOpen(true); setActive(index => (index + (event.key === 'ArrowDown' ? 1 : -1) + options.length) % options.length); }
+      if ((event.key === 'ArrowDown' || event.key === 'ArrowUp') && options.length) { event.preventDefault(); setOpen(true); setActive(index => index < 0 ? (event.key === 'ArrowDown' ? 0 : options.length - 1) : (index + (event.key === 'ArrowDown' ? 1 : -1) + options.length) % options.length); }
       if (event.key === 'Enter' && open && active >= 0 && options[active]) { event.preventDefault(); choose(options[active]!); }
     }} />
     {open && options.length > 0 && <ul id={`${id}-options`} role="listbox" aria-label={label} className={styles.suggestions}>{options.map((place, index) => <li id={`${id}-${index}`} key={place.id} role="option" aria-selected={index === active} onMouseDown={event => event.preventDefault()} onClick={() => choose(place)}>

@@ -1,5 +1,22 @@
 {
   "Cars": {
+    "Draft": {
+      "title": "Describe tu alquiler",
+      "help": "Opcional. La IA configurada puede preparar un borrador editable. Los datos que falten quedan sin confirmar; no se consultan precios hasta enviar el formulario.",
+      "description": "Descripción del alquiler",
+      "example": "Un coche automático en Heathrow, con devolución en el mismo aeropuerto y un conductor adicional…",
+      "prepare": "Preparar borrador",
+      "preparing": "Preparando borrador…",
+      "cancel": "Cancelar borrador",
+      "waiting": "Esperando al proveedor de IA configurado. Puede tardar unos minutos.",
+      "cancelled": "Borrador cancelado. Tus datos manuales no han cambiado.",
+      "timedOut": "Se agotó el tiempo de preparación. Reintenta o completa el formulario manualmente.",
+      "failed": "No se pudo preparar el borrador. Tus datos manuales no han cambiado. Espera un momento antes de reintentar o usa el formulario.",
+      "ready": "Las sugerencias están listas. Aplícalas al formulario y revisa cada dato antes de buscar.",
+      "apply": "Revisar borrador en el formulario",
+      "reviewHelp": "Revisa los datos sugeridos. Selecciona cada ubicación modificada en el catálogo, completa los datos de los conductores y revisa estas limitaciones. No se ha realizado ninguna búsqueda ni reserva.",
+      "confirm": "He revisado los datos del alquiler y entiendo las limitaciones indicadas."
+    },
     "Search": {
       "recentSearches": "Búsquedas de alquiler recientes",
       "refreshSearches": "Actualizar historial de búsquedas",
