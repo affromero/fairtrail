@@ -18,12 +18,16 @@ const output = await mkdtemp(resolve(outputRoot, 'run-'));
 console.log(`Private live-search evidence: ${output}`);
 const pickup = new Date(); pickup.setUTCMonth(pickup.getUTCMonth() + 1, 15);
 const dropoff = new Date(pickup); dropoff.setUTCDate(dropoff.getUTCDate() + 3);
-const location = await getCarCatalogPlace('ourairports:2434');
+const pickupId = process.env.CAR_SEARCH_SMOKE_PICKUP ?? 'ourairports:2434';
+const location = await getCarCatalogPlace(pickupId);
+const returnLocation = await getCarCatalogPlace(process.env.CAR_SEARCH_SMOKE_DROPOFF ?? pickupId);
+const ageInput = process.env.CAR_SEARCH_SMOKE_AGE ?? '35';
+assert.match(ageInput, /^\d+$/, 'Driver age must be a whole number');
 const search = await carSearchIntent({
-  pickup: { id: location.id, version: location.version }, dropoff: { id: location.id, version: location.version },
+  pickup: { id: location.id, version: location.version }, dropoff: { id: returnLocation.id, version: returnLocation.version },
   pickupAt: { date: pickup.toISOString().slice(0, 10), time: '11:00' },
   dropoffAt: { date: dropoff.toISOString().slice(0, 10), time: '11:00' },
-  driver: { age: 35, licenceYears: 2, residenceCountry: 'GB' },
+  driver: { age: Number(ageInput), licenceYears: 2, residenceCountry: process.env.CAR_SEARCH_SMOKE_RESIDENCE ?? 'GB' },
   currency: process.env.CAR_SEARCH_SMOKE_CURRENCY ?? 'GBP', sources: ['discovercars', 'autoeurope'],
 });
 await writeFile(resolve(output, 'request.json'), JSON.stringify(search, null, 2));

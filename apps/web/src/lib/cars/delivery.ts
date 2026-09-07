@@ -15,8 +15,8 @@ type Claimed = TravelAlertDelivery & { carTrackerId: string; claimToken: string;
 function payload(raw: unknown, trackerId: string, owner: string | null, revision: number): ChannelMessage {
   const message = carRecord(raw), data = carRecord(message.data);
   if (data.trackerId !== trackerId || data.userId !== owner || data.trackerRevision !== revision) throw new Error('Notification belongs to an earlier tracker owner or revision');
-  if (!['discovercars', 'autoeurope'].includes(String(data.source)) || typeof data.target !== 'boolean' || typeof data.newLow !== 'boolean' || (!data.target && !data.newLow)) throw new Error('Stored car notification is invalid');
-  const source = data.source as 'discovercars' | 'autoeurope';
+  if ((data.source !== 'discovercars' && data.source !== 'autoeurope') || typeof data.target !== 'boolean' || typeof data.newLow !== 'boolean' || (!data.target && !data.newLow)) throw new Error('Stored car notification is invalid');
+  const source = data.source;
   const price = validateCarMoney({ currency: data.currency, minor: data.totalMinor });
   if (price.minor === 0) throw new Error('Stored car notification has no verified price');
   return {

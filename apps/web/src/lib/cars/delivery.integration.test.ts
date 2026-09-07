@@ -8,6 +8,7 @@ import { deliverCarAlerts } from './delivery';
 import { runTravelAlertsSafely } from '../travel/schedule';
 import { runHotelJobsSafely } from '../hotels/runner';
 import { getCarDetail } from './views';
+import { carRecord } from './validation';
 
 describe.skipIf(process.env.CAR_DELIVERY_INTEGRATION_TESTS !== '1')('durable car notification delivery against PostgreSQL and local HTTP', () => {
   let server: Server, base = '', owner = '', other = '', trackerId = '', eventId = '';
@@ -139,6 +140,17 @@ describe.skipIf(process.env.CAR_DELIVERY_INTEGRATION_TESTS !== '1')('durable car
     else await prisma.carTracker.update({ where: { id: trackerId }, data: field === 'owner' ? { userId: other } : { revision: { increment: 1 } } });
     await deliverCarAlerts(); expect(received).toEqual([]);
     expect(await event()).toMatchObject({ pending: false, lastError: expect.stringMatching(/cancelled/) });
+  });
+  it.each(['discovercars', 'autoeurope'])('cancels an array-valued %s source without contacting a channel', async source => {
+    await channel('a');
+    const message = carRecord((await event()).message);
+    await prisma.travelAlertDelivery.update({ where: { id: eventId }, data: {
+      message: carJson({ ...message, data: { ...carRecord(message.data), source: [source] } }),
+      claimToken: crypto.randomUUID(), claimExpiresAt: new Date(0),
+    } });
+    await deliverCarAlerts();
+    expect(received).toEqual([]);
+    expect(await event()).toMatchObject({ pending: false, deliveredIds: [], claimToken: null, claimExpiresAt: null, lastError: expect.stringMatching(/cancelled/) });
   });
   it.each(['expiry', 'replacement'])('does not acknowledge or overwrite a claim after %s during transport', async change => {
     await channel('a'); await channel('b');
