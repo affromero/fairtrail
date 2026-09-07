@@ -11,6 +11,8 @@ import { POST as refresh } from '@/app/api/cars/[id]/scrape/route';
 import { GET as status, DELETE as cancel } from '@/app/api/cars/search/[id]/route';
 import { GET as searches, POST as startSearch } from '@/app/api/cars/search/route';
 import { GET as locations } from '@/app/api/cars/locations/route';
+import { GET as session } from '@/app/api/cars/session/route';
+import { invalidateMultiUserCache } from '../multi-user';
 
 const boundary = vi.hoisted(() => ({ token: '' }));
 vi.mock('next/headers', () => ({ cookies: async () => ({ get: () => boundary.token ? { value: boundary.token } : undefined }) }));
@@ -52,6 +54,24 @@ describe.skipIf(process.env.CAR_HTTP_INTEGRATION_TESTS !== '1')('car HTTP owners
     const run = await completed();
     return createCarTracker({ searchId: run.id, offerId: 'verified-quote' }, { userId: owner, isAdmin: false });
   }
+
+  it('returns distinct authenticated account scopes and current administrator authority without credentials', async () => {
+    const first = await session();
+    expect(first.headers.get('cache-control')).toBe('private, no-store');
+    expect(await first.json()).toEqual({ ok: true, data: { scope: `user:${owner}`, isAdmin: false } });
+    boundary.token = createUserSessionToken(other);
+    await prisma.user.update({ where: { id: other }, data: { isAdmin: true } });
+    expect(await (await session()).json()).toEqual({ ok: true, data: { scope: `user:${other}`, isAdmin: true } });
+  });
+  it('reports single-user scope only when self-hosted account mode is explicitly disabled', async () => {
+    await prisma.extractionConfig.update({ where: { id: 'singleton' }, data: { multiUserMode: false } });
+    await invalidateMultiUserCache(); boundary.token = '';
+    try { expect(await (await session()).json()).toEqual({ ok: true, data: { scope: 'single', isAdmin: true } }); }
+    finally {
+      await prisma.extractionConfig.update({ where: { id: 'singleton' }, data: { multiUserMode: true } });
+      await invalidateMultiUserCache();
+    }
+  });
 
   it('creates a tracker from its owned quote and reports a deduplicated queued refresh', async () => {
     const run = await completed(), response = await create(request({ searchId: run.id, offerId: 'verified-quote' }, 'POST'));
@@ -109,6 +129,9 @@ describe.skipIf(process.env.CAR_HTTP_INTEGRATION_TESTS !== '1')('car HTTP owners
     if (mode === 'public') vi.stubEnv('SELF_HOSTED', 'false');
     if (mode === 'missing') boundary.token = '';
     if (mode === 'revoked') await prisma.user.update({ where: { id: owner }, data: { sessionsValidFrom: new Date(Date.now() + 1000) } });
+    const identity = await session();
+    expect(identity.status).toBe(mode === 'public' ? 404 : 401);
+    expect(identity.headers.get('cache-control')).toBe('private, no-store');
     expect((await list(request())).status).toBe(mode === 'public' ? 404 : 401);
     expect((await create(request({}, 'POST'))).status).toBe(mode === 'public' ? 404 : 401);
     expect((await startSearch(request({}, 'POST'))).status).toBe(mode === 'public' ? 404 : 401);

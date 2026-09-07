@@ -9,6 +9,7 @@ interface CarRequestOptions {
   idempotencyKey?: string;
   revision?: number;
 }
+export interface CarSession { scope: string; isAdmin: boolean }
 
 /** Car-only transport; mutation callers own durable receipts and acknowledgement validation. */
 export class CarClient {
@@ -21,6 +22,17 @@ export class CarClient {
     if (session && /[\r\n;]/.test(session)) throw new Error('FLIGHT_FINDER_SESSION must contain only the ft-session cookie value');
     if (accessToken && /[\r\n]/.test(accessToken)) throw new Error('Invalid machine access token');
     this.origin = url.origin;
+  }
+
+  async getSession(signal?: AbortSignal): Promise<CarSession> {
+    const raw = await this.request<unknown>('/api/cars/session', { signal });
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw) || !('scope' in raw) || !('isAdmin' in raw)
+      || Object.keys(raw).some(key => key !== 'scope' && key !== 'isAdmin')
+      || typeof raw.scope !== 'string' || typeof raw.isAdmin !== 'boolean'
+      || !(raw.scope === 'single' ? raw.isAdmin : /^user:[A-Za-z0-9_-]{1,200}$/.test(raw.scope))) {
+      throw new Error('Car server returned an invalid account scope');
+    }
+    return { scope: raw.scope, isAdmin: raw.isAdmin };
   }
 
   async request<T>(path: string, options: CarRequestOptions = {}): Promise<T> {

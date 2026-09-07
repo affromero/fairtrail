@@ -15,6 +15,18 @@ beforeEach(async () => {
 afterEach(async () => { server.closeAllConnections(); await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve())); });
 
 describe('car CLI HTTP boundary', () => {
+  it.each([{ scope: 'single', isAdmin: true }, { scope: 'user:alice', isAdmin: false }, { scope: 'user:admin', isAdmin: true }])('reads the authoritative account scope without returning credentials: %j', async session => {
+    handle = (request, response) => response.end(JSON.stringify({ ok: true, data: request.url === '/api/cars/session' ? session : null }));
+    await expect(new CarClient(origin, 'private-cookie', 'private-token').getSession()).resolves.toEqual(session);
+  });
+  it.each([null, {}, { scope: 'single', isAdmin: false }, { scope: 'user:', isAdmin: false }, { scope: 'alice', isAdmin: true }, { scope: 'single', isAdmin: 'true' }, { scope: 'single', isAdmin: true, token: 'unexpected' }])('rejects an invalid account handshake instead of assuming single-user mode: %j', async data => {
+    handle = (request, response) => response.end(JSON.stringify({ ok: true, data }));
+    await expect(new CarClient(origin).getSession()).rejects.toThrow(/account scope/);
+  });
+  it.each([401, 404])('does not interpret HTTP %i as a single-user account', async status => {
+    handle = (request, response) => { response.writeHead(status); response.end(JSON.stringify({ ok: false, error: 'Unavailable' })); };
+    await expect(new CarClient(origin).getSession()).rejects.toMatchObject({ status });
+  });
   it('sends account credentials and revision-bound retry identity only to the selected server', async () => {
     const value = await new CarClient(origin, 'account-session', 'machine-token').request('/api/cars/tracker/scrape', { method: 'POST', idempotencyKey: 'original-request', revision: 4 });
     expect(value).toMatchObject({ path: '/api/cars/tracker/scrape', headers: { cookie: 'ft-session=account-session', authorization: 'Bearer machine-token', 'idempotency-key': 'original-request', 'x-car-revision': '4' } });

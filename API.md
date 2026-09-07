@@ -429,11 +429,19 @@ five-second read deadline. The browser pages `/cars`, `/cars/:id`, and
 | `DELETE /api/cars/:id` | `{ id, deleted: true }` after deleting the tracker and its history |
 | `POST /api/cars/:id/scrape` | HTTP 202 with `{ id, trackerId, status, refreshKey }`; requires `Idempotency-Key` and `X-Car-Revision` |
 | `GET /api/cars/locations?q=LHR` | Up to 12 catalog suggestions with `id`, `version`, country, region and timezone; no provider requests |
+| `GET /api/cars/session` | Authenticated recovery scope (`single` or `user:<id>`) and current `isAdmin`; private, uncached, no credentials returned |
 | `POST /api/cars/parse` | `{ draft }` from `{ text, locale? }`; editable suggestions only, no provider search or tracker creation |
 | `POST /api/cars/search` | HTTP 202 with `{ id, status, creationKey }`; requires a UUID v4 `Idempotency-Key` |
 | `GET /api/cars/search?cursor=...` | `{ searches, nextCursor }`; 25 caller-scoped standalone search summaries per page |
 | `GET /api/cars/search/:id` | `{ id, trackerId, status, createdAt, completedAt, error, search, result }` |
 | `DELETE /api/cars/search/:id` | `{ id, status }`; completed searches retain their terminal status |
+
+Read `/api/cars/session` before creating or replaying a local recovery record.
+Bind that record to the exact server origin and returned scope. Fetch the scope
+again on replay, especially after credentials change; never infer single-user
+mode from a 401 or 404 response. The `single` scope has `isAdmin: true` and is
+returned only when self-hosted multi-user mode is disabled. Keep session cookies
+and machine access tokens out of recovery files.
 
 Collection pages default to 25 trackers and accept `limit` from 1 to 100. They
 sort by creation time, then ID, both descending. Pass `nextCursor` unchanged to
