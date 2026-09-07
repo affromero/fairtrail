@@ -252,7 +252,7 @@ Content-Type: application/json
 
 #### Shared travel recovery
 
-`GET /api/admin/travel` returns the shared worker admission state: `quarantinedAt`,
+`GET /api/admin/travel` returns the authenticated `actorScope` and shared worker admission state: `quarantinedAt`,
 `reason`, `recoveryGeneration`, `topologyVersion`, `systemWide`, `vpnEnabled`, and
 lease resource/state/generation/expiry. It does not expose lease owner tokens or
 VPN endpoint credentials. Both methods return `Cache-Control: private, no-store`.
@@ -262,18 +262,23 @@ the existing administrator access model.
 
 An expired lease or unverified cleanup keeps shared execution stopped. After
 stopping old workers and independently verifying the network, an administrator
-can submit the generation obtained from GET:
+can submit the actor scope and generation obtained from GET:
 
 ```http
 POST /api/admin/travel
 Content-Type: application/json
 
-{"generation":1,"oldWorkersStopped":true,"networkVerified":true}
+{"actorScope":"user:example-admin-id","generation":1,"oldWorkersStopped":true,"networkVerified":true}
 ```
 
 Recovery marks interrupted shared jobs and their runs failed, retains previous
 observations, invalidates old worker generations, and returns the updated state.
-A missing or stale incident returns 412; omitted confirmations return 400.
+A missing or stale incident or changed administrator scope returns 412;
+omitted scope or confirmations return 400. Use the exact scope returned by GET,
+including `single` or `instance` when applicable.
+The admin dashboard provides the same explicit recovery checks. A lost response
+requires a fresh status read; the UI does not automatically repeat recovery or
+claim that a later open state proves which request reopened it.
 Never automatically submit these confirmations based on a VPN status response.
 Scheduled and manual flight, hotel, and car checks use shared admission. Flight
 country grouping, intervals, and configuration defaults remain unchanged.

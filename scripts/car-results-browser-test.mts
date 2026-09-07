@@ -8,6 +8,7 @@ import pg from 'pg';
 import { carOfferFixture, carReportFixture, carSearchFixture } from '../apps/web/src/test/car-fixtures';
 import { carContractHash } from '../apps/web/src/lib/cars/selection';
 import { carProtectionBrowserScenarios } from './car-protection-browser-scenarios.mts';
+import { travelRecoveryBrowserScenarios } from './travel-recovery-browser-scenarios.mts';
 
 // Disposable stored observations exercise real pages and authentication. No
 // provider browser is started and all scheduled background work is disabled.
@@ -504,6 +505,8 @@ try {
   const anonymousList = await fetch(`${privateUrl}/cars`, { redirect: 'manual' });
   assert.equal(anonymousList.status, 307); assert.match(anonymousList.headers.get('location') ?? '', /login/);
   passed.push('Five locale dashboards and private account/admin entrypoints enforce scope; public and anonymous access stay closed');
+  await travelRecoveryBrowserScenarios(db, bob, alice, publicCtx, privateUrl, output);
+  passed.push('Administrator recovery in five locales and both themes: explicit checks, real lost acknowledgement, status reconciliation, retained history and revoked access');
   assert.deepEqual(errors, []); await writeFile(resolve(output, 'results.json'), JSON.stringify({ passed, errors }, null, 2));
   for (const name of passed) console.log(`PASS ${name}`);
 } catch (error) {

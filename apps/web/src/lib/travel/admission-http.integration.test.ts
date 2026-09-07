@@ -42,8 +42,18 @@ describe.skipIf(process.env.TRAVEL_INTEGRATION_TESTS !== '1')('administrator tra
     await prisma.$disconnect();
   });
   async function request() {
-    return new Request('http://localhost/api/admin/travel', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ generation: (await getTravelAdmission()).recoveryGeneration, oldWorkersStopped: true, networkVerified: true }) });
+    return new Request('http://localhost/api/admin/travel', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ actorScope: process.env.SELF_HOSTED === 'true' ? `user:${adminId}` : 'instance', generation: (await getTravelAdmission()).recoveryGeneration, oldWorkersStopped: true, networkVerified: true }) });
   }
+  it('rejects confirmations from another administrator before changing admission or worker leases', async () => {
+    const original = await getTravelAdmission(), payload = await request();
+    await prisma.user.update({ where: { id: memberId }, data: { isAdmin: true, sessionsValidFrom: null } });
+    boundary.token = createUserSessionToken(memberId);
+    try {
+      expect((await POST(payload)).status).toBe(412);
+      expect(await getTravelAdmission()).toEqual(original);
+      expect(await prisma.travelAdmission.findUnique({ where: { id: 'singleton' } })).toMatchObject({ recoveredBy: null });
+    } finally { await prisma.user.update({ where: { id: memberId }, data: { isAdmin: false } }); }
+  });
   it.each(['public', 'anonymous', 'member', 'revoked'] as const)('denies %s status and recovery without clearing the incident', async mode => {
     if (mode === 'public') vi.stubEnv('SELF_HOSTED', 'false');
     if (mode === 'anonymous') boundary.token = '';
@@ -62,7 +72,7 @@ describe.skipIf(process.env.TRAVEL_INTEGRATION_TESTS !== '1')('administrator tra
   it('allows a public-site administrator to recover flights but rejects a revoked administrator session', async () => {
     vi.stubEnv('SELF_HOSTED', 'false');
     boundary.token = createSessionToken();
-    expect((await GET()).status).toBe(200);
+    expect((await (await GET()).json()).data.actorScope).toBe('instance');
     const previousRevocation = await prisma.extractionConfig.findUniqueOrThrow({ where: { id: 'singleton' }, select: { adminSessionsValidFrom: true } });
     try {
       await prisma.extractionConfig.update({ where: { id: 'singleton' }, data: { adminSessionsValidFrom: new Date(Date.now() + 1000) } });
@@ -79,7 +89,7 @@ describe.skipIf(process.env.TRAVEL_INTEGRATION_TESTS !== '1')('administrator tra
   it('returns sanitized recovery state and applies one acknowledged administrator recovery', async () => {
     const status = await GET(); expect(status.status).toBe(200);
     const data = (await status.json()).data;
-    expect(data).toMatchObject({ reason: expect.stringMatching(/cleanup/), recoveryGeneration: expect.any(Number) });
+    expect(data).toMatchObject({ actorScope: `user:${adminId}`, reason: expect.stringMatching(/cleanup/), recoveryGeneration: expect.any(Number) });
     expect(JSON.stringify(data)).not.toMatch(/"owner"|topologyHash|EXPRESSVPN/);
     const first = await request(), retry = first.clone();
     const response = await POST(first); expect(response.status).toBe(200);

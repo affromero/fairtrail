@@ -3,6 +3,7 @@ import { apiError, apiSuccess } from '@/lib/api-response';
 import { carActor } from '@/lib/cars/access';
 import { readCarJson } from '@/lib/cars/http';
 import { CarError } from '@/lib/cars/types';
+import { carRecord } from '@/lib/cars/validation';
 import { getTravelAdmission, recoverTravelAdmission } from '@/lib/travel/admission';
 import { TravelJobError } from '@/lib/travel/errors';
 
@@ -24,13 +25,25 @@ async function endpoint(action: () => Promise<Response>): Promise<Response> {
 }
 
 export async function GET(): Promise<Response> {
-  return endpoint(async () => apiSuccess(await getTravelAdmission()));
+  return endpoint(async () => {
+    const actor = await authorizedActor();
+    return apiSuccess({ ...await getTravelAdmission(), actorScope: actor.scope });
+  });
+}
+
+async function authorizedActor() {
+  const actor = process.env.SELF_HOSTED === 'true' ? await carActor() : { userId: null, isAdmin: true };
+  if (!actor.isAdmin) throw new CarError('Administrator access required', 403);
+  return { ...actor, scope: actor.userId ? `user:${actor.userId}` : process.env.SELF_HOSTED === 'true' ? 'single' : 'instance' };
 }
 
 export async function POST(request: Request): Promise<Response> {
   return endpoint(async () => {
-    const actor = process.env.SELF_HOSTED === 'true' ? await carActor() : { userId: null, isAdmin: true };
-    await recoverTravelAdmission(actor, await readCarJson(request));
-    return apiSuccess(await getTravelAdmission());
+    const actor = await authorizedActor();
+    const { actorScope, ...input } = carRecord(await readCarJson(request));
+    if (typeof actorScope !== 'string') throw new CarError('Read current administrator recovery status before continuing', 400);
+    if (actorScope !== actor.scope) throw new CarError('Administrator account changed; reload recovery status', 412);
+    await recoverTravelAdmission(actor, input);
+    return apiSuccess({ ...await getTravelAdmission(), actorScope: actor.scope });
   });
 }
