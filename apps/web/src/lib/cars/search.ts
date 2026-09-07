@@ -11,7 +11,10 @@ import { prepareCarPage } from './navigation';
 import { carTrackerSearch, validateCarSelection } from './selection';
 import { validateCarSearch } from './validation';
 import { resolveCarProviderLocations } from './location-resolution';
-import { CarError, type CarContractSelection, type CarProviderProgress, type CarSearch, type CarSearchReport, type CarSource } from './types';
+import { captureAutoEuropeProtectionChoices, extractAutoEuropeProtectionChoices } from './autoeurope-protection';
+import { discoverDiscoverCarsProtection } from './discovercars-protection';
+import { carProtectionQuoteIdentity, validateCarProtectionDiscovery } from './protection-discovery';
+import { CarError, type CarContractSelection, type CarOffer, type CarProviderProgress, type CarSearch, type CarSearchReport, type CarSource } from './types';
 
 export class CarSearchCleanupError extends Error {
   constructor(readonly report: CarSearchReport, cause: unknown) {
@@ -28,6 +31,8 @@ export class CarSearchInterruptedError extends Error {
 }
 
 export interface CarSearchOptions {
+  /** Internal standalone-result enrichment; never enables extra purchases. */
+  discoverProtection?: boolean;
   selection?: CarContractSelection;
   signal?: AbortSignal;
   /** Internal execution budget; never accepted directly from an HTTP request. */
@@ -95,18 +100,34 @@ async function inspectProvider(source: CarSource, search: CarSearch, report: Car
     for (const url of discovery.links) {
       execution.check();
       progress.checked++;
+      let protectionOffer: CarOffer | undefined;
       try {
         const observation = source === 'discovercars'
           ? extractDiscoverCarsOffer(await captureDiscoverCarsDetail(detail, url, search, searchPage), search)
           : extractAutoEuropeOffer(await captureAutoEuropeDetail(detail, url, search), search);
         if ('contract' in observation) report.offers.push(observation);
         else report.candidates.push(observation);
+        if ('contract' in observation && options.discoverProtection && search.extras.protection.length === 0 && !options.selection) {
+          protectionOffer = observation;
+          await publishProgress(report, options.onProgress, [execution.signal]);
+          if (carProtectionQuoteIdentity(url, source) !== carProtectionQuoteIdentity(observation.bookingUrl, source)) throw new CarError('Protection cannot be associated with a substituted quote');
+          const choices = source === 'discovercars' ? [await discoverDiscoverCarsProtection(detail, url)]
+            : extractAutoEuropeProtectionChoices(await captureAutoEuropeProtectionChoices(detail, url, search), search);
+          const entries = [...(report.protection ?? []), { offerId: observation.id, status: 'complete', error: null,
+            choices: choices.map(choice => ({ ...choice, id: crypto.randomUUID() })) }];
+          report.protection = validateCarProtectionDiscovery(entries, report.offers, new Date());
+          protectionOffer = undefined;
+        }
       } catch (error) {
         execution.check();
         if (error instanceof CarSearchObserverError) throw error;
         publishDiagnostic(source, error, options.onDiagnostic);
         const failure = await providerFailure(error, detail, source);
-        report.errors.push({ source, message: failure.message });
+        const message = protectionOffer && !failure.blocked ? 'Protection options could not be verified for this rental; the base quote is unchanged' : failure.message;
+        if (protectionOffer) {
+          report.protection = [...(report.protection ?? []), { offerId: protectionOffer.id, status: 'failed', choices: [], error: message }];
+        }
+        report.errors.push({ source, message });
         status = failure.blocked ? 'blocked' : 'partial';
         if (failure.terminal) break;
       }

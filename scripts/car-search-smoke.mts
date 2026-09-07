@@ -31,6 +31,7 @@ process.once('SIGINT', interrupted); process.once('SIGTERM', interrupted);
 const diagnostics: { source: string; error: string }[] = [];
 try {
   const result = await withTravelExecution(execution, () => searchCars(search, {
+    discoverProtection: process.env.CAR_SEARCH_SMOKE_PROTECTION === 'true',
     onLocationResolution: async resolved => {
       Object.assign(search, { pickup: resolved.pickup, dropoff: resolved.dropoff });
       await writeFile(resolve(output, 'resolved-request.json'), JSON.stringify(search, null, 2));
@@ -51,6 +52,10 @@ try {
   assert.equal(result.completed, search.sources.length);
   for (const provider of providers) assert.ok(provider.verified > 0, `${provider.source} did not return an eligible all-in quote; inspect the private report`);
   assert.ok(result.providers.every(provider => provider.status === 'complete'), 'Both providers must finish their bounded checks');
+  if (process.env.CAR_SEARCH_SMOKE_PROTECTION === 'true') {
+    assert.equal(result.protection?.length, result.offers.length, 'Every complete quote must have checked protection options');
+    for (const source of search.sources) assert.ok(result.protection?.some(entry => entry.status === 'complete' && entry.choices.some(choice => choice.source === source)), `${source} must expose an observed protection product`);
+  }
   await writeFile(resolve(output, 'result.json'), JSON.stringify({ passed: true, checkedAt: new Date().toISOString(), providers, scope: result.scope }, null, 2));
   console.log('PASS live two-provider search returned independently verified rental totals');
 } catch (error) {

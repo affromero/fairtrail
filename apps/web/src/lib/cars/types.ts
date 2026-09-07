@@ -1,3 +1,5 @@
+import type { CarProtectionDiscovery } from './protection-discovery';
+
 export const CAR_SOURCES = ['discovercars', 'autoeurope'] as const;
 export type CarSource = typeof CAR_SOURCES[number];
 export const CHILD_SEAT_CATEGORIES = ['infant', 'child', 'booster'] as const;
@@ -158,6 +160,8 @@ export interface CarDiscovery {
   truncated: boolean;
 }
 export interface CarSearchReport extends CarSearchResult {
+  /** Missing entries were not checked; a complete empty entry found no options. */
+  protection?: CarProtectionDiscovery[];
   /** Even a completed scan covers observed provider results, not the whole market. */
   scope: 'checked_provider_offers';
   providers: CarProviderProgress[];

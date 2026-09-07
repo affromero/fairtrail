@@ -26,6 +26,7 @@ export async function executeCarJob(jobId: string, lease: TravelLeaseToken): Pro
     const requested = validateCarSearch(current.run.request, new Date(), { allowUnresolvedProviders: true });
     const search = current.tracker ? carTrackerSearch(requested) : requested;
     const report = await searchCars(search, {
+      discoverProtection: !current.tracker && search.extras.protection.length === 0,
       signal: execution.signal,
       ...(current.selection ? { selection: current.selection } : {}),
       onProgress: (report, signal) => saveCarProgress(jobId, lease, report, signal),

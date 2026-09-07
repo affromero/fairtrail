@@ -2,6 +2,7 @@ import { carInteger, carRecord, carText } from './validation';
 import { carEvidence, carObservationTime, carProviderUrl, validateCarOffer, validateCarRequirements } from './offer-validation';
 import { validateCarMoney } from './money';
 import { CAR_SOURCES, CarError, type CarCandidate, type CarProviderProgress, type CarSearchReport, type CarSource } from './types';
+import { validateCarProtectionDiscovery } from './protection-discovery';
 
 function list(raw: unknown, limit: number): unknown[] {
   if (!Array.isArray(raw) || raw.length > limit) throw new CarError('Invalid rental report list');
@@ -55,5 +56,12 @@ export function validateCarReport(raw: unknown, sources: CarSource[], now = new 
   const finished = providers.filter(provider => provider.status !== 'running');
   const successfulProviders = finished.filter(provider => provider.status === 'complete' || offers.some(offer => offer.contract.source === provider.source) || candidates.some(candidate => candidate.source === provider.source)).length;
   if (r.completed !== finished.length || r.successfulProviders !== successfulProviders) throw new CarError('Rental report completion counts are inconsistent');
-  return { scope: 'checked_provider_offers', offers, candidates, errors, providers, completed: finished.length, total: sources.length, successfulProviders };
+  const protection = r.protection === undefined ? undefined : validateCarProtectionDiscovery(r.protection, offers, now);
+  for (const entry of protection ?? []) {
+    const source = offers.find(offer => offer.id === entry.offerId)!.contract.source;
+    if (entry.status === 'failed' && (providers.find(provider => provider.source === source)?.status === 'complete'
+      || !errors.some(error => error.source === source && error.message === entry.error))) throw new CarError('Protection discovery failure is missing from provider progress');
+  }
+  return { scope: 'checked_provider_offers', offers, candidates, errors, providers, completed: finished.length, total: sources.length, successfulProviders,
+    ...(protection === undefined ? {} : { protection }) };
 }
