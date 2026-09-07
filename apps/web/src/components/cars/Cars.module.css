@@ -68,6 +68,19 @@
 .candidatePrice { font-family: var(--font-mono); }
 .candidatePrice span { font: .8rem var(--font-body); color: var(--text-secondary); }
 .candidate li, .notice li { margin-block: .4rem; overflow-wrap: anywhere; }
+.historySummary { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; padding-block: 1.5rem; border-bottom: 1px solid var(--border); }
+.historySummary dt, .checkHistory dt { color: var(--text-secondary); font-size: .8rem; }
+.historySummary dd { margin: .5rem 0 0; }
+.historySummary time, .historyList time { font: .8rem/1.6 var(--font-mono); }
+.historySection { margin-top: 2.5rem; }
+.historyList { list-style: none; padding: 0; margin: 0; overflow-wrap: anywhere; }
+.historyList > li > .details > summary { display: flex; flex-wrap: wrap; justify-content: space-between; gap: .5rem 1.5rem; }
+.historyList > li > .details > summary::before { content: '+'; color: var(--accent); }
+.historyList > li > .details[open] > summary::before { content: '−'; }
+.historyList > li > .details > summary > span:first-child { flex: 1; }
+.checkHistory { border-top: 1px solid var(--border); padding-block: 1rem; }
+.checkHistory dl { display: flex; flex-wrap: wrap; gap: 1rem 2rem; }
+.checkHistory dd { margin: .25rem 0 0; }
 @media (max-width: 700px) {
   .resultsHeader { display: block; }
   .fields, .offerMain, .journey { grid-template-columns: 1fr; }
@@ -78,4 +91,5 @@
   .proof > summary { flex-wrap: wrap; gap: .4rem; }
   .proof > summary span:last-child { flex-basis: 100%; text-align: left; padding-left: 1rem; }
   .terms > div { grid-template-columns: 1fr; gap: .25rem; }
+  .historySummary { grid-template-columns: 1fr; }
 }

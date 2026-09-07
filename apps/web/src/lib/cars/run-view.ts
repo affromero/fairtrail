@@ -23,4 +23,4 @@ export function validateCarRunView(raw: unknown, expectedId: string, standalone 
   return { ...summary, search, result };
 }
 export type CarRunView = ReturnType<typeof validateCarRunView>;
-export const carRunIsActive = (run: CarRunView) => run.status === 'queued' || run.status === 'running';
+export const carRunIsActive = (run: Pick<CarRunView, 'status'>) => run.status === 'queued' || run.status === 'running';

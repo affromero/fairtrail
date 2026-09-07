@@ -5,7 +5,8 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { chromium, type Browser, type BrowserContext } from 'playwright';
 import pg from 'pg';
-import { carReportFixture, carSearchFixture } from '../apps/web/src/test/car-fixtures';
+import { carOfferFixture, carReportFixture, carSearchFixture } from '../apps/web/src/test/car-fixtures';
+import { carContractHash } from '../apps/web/src/lib/cars/selection';
 
 // Disposable stored observations exercise real pages and authentication. No
 // provider browser is started and all scheduled background work is disabled.
@@ -126,6 +127,66 @@ try {
   assert.equal((await db.query(`SELECT status FROM "CarSearchRun" WHERE id='car-browser-cancel'`)).rows[0].status, 'cancelled');
   await page.screenshot({ path: resolve(output, 'cancelled-390.png'), fullPage: true });
   passed.push('Progressive result polling and real cancellation persist terminal state');
+  const historicalAt = new Date(Date.now() - 86_400_000).toISOString(), historicalOffer = carOfferFixture(historicalAt);
+  await db.query(`INSERT INTO "CarTracker" (id,"userId",label,search,currency,"latestPriceMinor","historicalLowMinor","lastCheckedAt","lastError","createdAt","updatedAt") VALUES ('car-browser-tracker','car-browser-alice','London weekend',$1,'GBP',10000,9000,$2,'Provider could not verify this check',$3,$2)`, [search, now, historicalAt]);
+  await db.query(`INSERT INTO "CarSearchRun" (id,"userId","trackerId","trackerRevision",request,status,"createdAt","completedAt") VALUES ('car-browser-history','car-browser-alice','car-browser-tracker',0,$1,'success',$2,$2)`, [search, historicalAt]);
+  await db.query(`INSERT INTO "CarSnapshot" (id,"trackerId","runId",source,offer,currency,"totalMinor",eligible,"contractHash","observedAt") VALUES ('car-browser-observation','car-browser-tracker','car-browser-history','discovercars',$1,'GBP',10000,true,$2,$3)`, [historicalOffer, carContractHash(historicalOffer.contract), historicalAt]);
+  await page.goto('/cars/car-browser-tracker');
+  await page.getByRole('heading', { name: 'London weekend' }).waitFor();
+  assert.equal(await page.locator('h1').count(), 1);
+  assert.match(await page.locator('meta[name="robots"]').getAttribute('content') ?? '', /noindex/);
+  assert.match(await page.getByRole('region', { name: 'London weekend', exact: true }).getByRole('alert').innerText(), /needs attention/);
+  assert.equal(await page.getByText('Latest evidence for this total', { exact: true }).locator('..').locator('time').getAttribute('datetime'), historicalAt);
+  assert.equal(await page.getByText('Last check attempted', { exact: true }).locator('..').locator('time').getAttribute('datetime'), now);
+  const evidence = page.getByText('Evidence for the retained price', { exact: true });
+  await evidence.focus(); await page.keyboard.press('Enter');
+  assert.ok(await evidence.locator('..').getByText('Charges, extras and rental conditions', { exact: true }).isVisible());
+  for (const width of [1280, 390]) {
+    await page.setViewportSize({ width, height: 1000 });
+    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
+    await page.screenshot({ path: resolve(output, `tracker-history-${width}.png`), fullPage: true });
+  }
+  passed.push('Tracker history preserves evidence timestamps through failed checks and supports keyboard disclosure');
+  for (const locale of ['es', 'fr', 'de', 'pt']) {
+    const copy = JSON.parse(await readFile(resolve(`apps/web/messages/${locale}/cars.json`), 'utf8')).Cars;
+    const localized = await context(privateUrl, locale); await login(localized, 'car-browser-alice');
+    const localizedPage = await localized.newPage(); await localizedPage.setViewportSize({ width: 390, height: 1000 });
+    await localizedPage.goto('/cars/car-browser-tracker');
+    await localizedPage.getByRole('heading', { name: copy.trackerTitle, level: 1 }).waitFor();
+    await localizedPage.getByRole('heading', { name: copy.verifiedHistory }).waitFor();
+    assert.ok(await localizedPage.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), `Tracker ${locale} does not overflow`);
+    await localizedPage.screenshot({ path: resolve(output, `tracker-history-${locale}-390.png`), fullPage: true });
+  }
+  assert.equal((await bob.request.get('/cars/car-browser-tracker')).status(), 404);
+  assert.equal((await bob.request.get('/api/cars/car-browser-tracker')).status(), 404);
+  assert.equal((await publicCtx.request.get('/cars/car-browser-tracker')).status(), 404);
+  await anonymousPage.goto('/cars/car-browser-tracker'); assert.equal(new URL(anonymousPage.url()).pathname, '/login');
+  await db.query(`UPDATE "User" SET "isAdmin"=true WHERE id='car-browser-bob'`);
+  assert.equal((await bob.request.get('/cars/car-browser-tracker')).status(), 200);
+  passed.push('Five locale tracker layouts and owner, administrator, foreign and anonymous page access');
+  await page.route('**/api/cars/car-browser-tracker', route => route.abort());
+  await page.getByRole('button', { name: 'Refresh status' }).click();
+  await page.getByRole('alert').filter({ hasText: 'History updates interrupted' }).waitFor();
+  assert.ok(await page.getByRole('heading', { name: 'London weekend' }).isVisible());
+  await page.screenshot({ path: resolve(output, 'tracker-interrupted-390.png'), fullPage: true });
+  await page.unroute('**/api/cars/car-browser-tracker');
+  await page.getByRole('button', { name: 'Retry status updates' }).click();
+  await page.getByRole('button', { name: 'Refresh status' }).waitFor();
+  await alice.clearCookies(); await page.getByRole('button', { name: 'Refresh status' }).click();
+  await page.getByRole('link', { name: 'Sign in', exact: true }).waitFor();
+  assert.equal(await page.getByRole('heading', { name: 'London weekend' }).count(), 0);
+  await page.screenshot({ path: resolve(output, 'tracker-session-expired-390.png'), fullPage: true });
+  await login(alice, 'car-browser-alice');
+  await page.getByRole('button', { name: 'Retry status updates' }).click();
+  await page.getByRole('heading', { name: 'London weekend' }).waitFor();
+  passed.push('Tracker history survives transport failure and remains private after session expiry');
+  await db.query(`INSERT INTO "CarSearchRun" (id,"userId","trackerId","trackerRevision",request,status,"createdAt") VALUES ('car-browser-tracker-queued','car-browser-alice','car-browser-tracker',0,$1,'queued',$2)`, [search, now]);
+  await page.reload();
+  await page.getByRole('region', { name: 'Recent checks' }).getByText('Waiting', { exact: true }).waitFor();
+  await db.query(`UPDATE "CarSearchRun" SET status='failed',error='Provider check unavailable',"completedAt"=now() WHERE id='car-browser-tracker-queued'`);
+  await page.getByRole('region', { name: 'Recent checks' }).getByText('Check failed', { exact: true }).waitFor();
+  assert.equal(await page.getByText('Latest evidence for this total', { exact: true }).locator('..').locator('time').getAttribute('datetime'), historicalAt);
+  passed.push('Queued tracker work polls to its terminal result without freshening historical prices');
   assert.deepEqual(errors, []); await writeFile(resolve(output, 'results.json'), JSON.stringify({ passed, errors }, null, 2));
   for (const name of passed) console.log(`PASS ${name}`);
 } catch (error) {
