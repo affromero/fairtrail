@@ -11,7 +11,7 @@ import { CarError } from './types';
 import { normalizeCarPlace, type CarCatalogRecord, type CarLocationChoice } from './location-types';
 
 interface IndexedPlace { place: CarLocationChoice; text: string; population: number }
-interface Catalog { rows: IndexedPlace[]; byId: Map<string, CarLocationChoice>; cityNames: Map<string, string | null> }
+interface Catalog { rows: IndexedPlace[]; byId: Map<string, CarLocationChoice>; cityNames: Map<string, string | null>; regionalCityNames: Map<string, string | null> }
 let loading: Promise<Catalog> | undefined;
 const digest = (value: Uint8Array) => createHash('sha256').update(value).digest('hex');
 
@@ -71,7 +71,7 @@ async function readCatalog(visit: (record: CarCatalogRecord) => void): Promise<v
 async function catalog(): Promise<Catalog> {
   if (!loading) loading = (async () => {
     const countries = new Intl.DisplayNames(['en'], { type: 'region' });
-    const rows: IndexedPlace[] = [], byId = new Map<string, CarLocationChoice>(), cityNames = new Map<string, string | null>();
+    const rows: IndexedPlace[] = [], byId = new Map<string, CarLocationChoice>(), cityNames = new Map<string, string | null>(), regionalCityNames = new Map<string, string | null>();
     await readCatalog(record => {
       const { aliases, population, ...location } = record;
       const place = { ...location, version: manifest.version };
@@ -82,9 +82,11 @@ async function catalog(): Promise<Catalog> {
       for (const name of new Set([normalizeCarPlace(place.name), ...aliases])) {
         const key = `${place.country}:${name}`, previous = cityNames.get(key);
         cityNames.set(key, previous === undefined || previous === place.id ? place.id : null);
+        const regionalKey = `${place.country}:${normalizeCarPlace(place.region)}:${name}`, regionalPrevious = regionalCityNames.get(regionalKey);
+        regionalCityNames.set(regionalKey, regionalPrevious === undefined || regionalPrevious === place.id ? place.id : null);
       }
     });
-    return { rows, byId, cityNames };
+    return { rows, byId, cityNames, regionalCityNames };
   })().catch(error => { loading = undefined; throw error; });
   return loading;
 }
@@ -110,6 +112,10 @@ export async function getCarCatalogPlace(id: string, version?: string): Promise<
   return place;
 }
 
-export async function carCityNameIsUnambiguous(place: CarLocationChoice, name: string): Promise<boolean> {
+export async function carCityNameIsUnambiguous(place: CarLocationChoice, name: string, region?: string): Promise<boolean> {
+  if (region !== undefined) {
+    if (!region || normalizeCarPlace(region) !== normalizeCarPlace(place.region)) return false;
+    return (await catalog()).regionalCityNames.get(`${place.country}:${normalizeCarPlace(region)}:${normalizeCarPlace(name)}`) === place.id;
+  }
   return (await catalog()).cityNames.get(`${place.country}:${normalizeCarPlace(name)}`) === place.id;
 }

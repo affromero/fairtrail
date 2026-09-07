@@ -8,6 +8,29 @@ import { navigateCarPage } from './navigation';
 import { openCarControl } from './controls';
 
 interface Suggestion { id: string; name: string; city: string; country: string; kind: string; code: string | null }
+const US_STATES = new Set([
+  'Alabama', 'Alaska', 'Arizona', 'Arkansas', 'California', 'Colorado', 'Connecticut', 'Delaware',
+  'Florida', 'Georgia', 'Hawaii', 'Idaho', 'Illinois', 'Indiana', 'Iowa', 'Kansas', 'Kentucky',
+  'Louisiana', 'Maine', 'Maryland', 'Massachusetts', 'Michigan', 'Minnesota', 'Mississippi',
+  'Missouri', 'Montana', 'Nebraska', 'Nevada', 'New Hampshire', 'New Jersey', 'New Mexico',
+  'New York', 'North Carolina', 'North Dakota', 'Ohio', 'Oklahoma', 'Oregon', 'Pennsylvania',
+  'Rhode Island', 'South Carolina', 'South Dakota', 'Tennessee', 'Texas', 'Utah', 'Vermont',
+  'Virginia', 'Washington', 'West Virginia', 'Wisconsin', 'Wyoming', 'District of Columbia',
+].map(normalizeCarPlace));
+
+function discoverCarsState(country: string): string | undefined {
+  const state = /^USA - (.+)$/.exec(country)?.[1];
+  return state && US_STATES.has(normalizeCarPlace(state)) ? state : undefined;
+}
+
+function countryMatches(place: CarLocationChoice, country: string, source: CarSource): boolean {
+  const expected = source === 'autoeurope' ? place.country : discoverCarsCountryName(place.country);
+  if (normalizeCarPlace(country) === normalizeCarPlace(expected)) return true;
+  if (source !== 'discovercars' || place.country !== 'US') return false;
+  const state = discoverCarsState(country);
+  if (!state) return false;
+  return place.kind === 'airport' || normalizeCarPlace(place.region) === normalizeCarPlace(state);
+}
 function providerId(raw: unknown): string {
   if (typeof raw === 'number' && Number.isSafeInteger(raw) && raw > 0) return String(raw);
   const id = carText(raw, 40, 'provider location identity');
@@ -38,12 +61,12 @@ export function carLocationSuggestions(raw: unknown, source: CarSource): Suggest
 }
 
 export async function matchCarProviderLocation(place: CarLocationChoice, suggestions: Suggestion[], source: CarSource): Promise<{ id: string; name: string }> {
-  const expectedCountry = source === 'autoeurope' ? place.country : discoverCarsCountryName(place.country);
-  const candidates = suggestions.filter(row => normalizeCarPlace(row.country) === normalizeCarPlace(expectedCountry) && row.kind === place.kind);
+  const candidates = suggestions.filter(row => countryMatches(place, row.country, source) && row.kind === place.kind);
   const matches: Suggestion[] = [];
   for (const row of candidates) {
     if (place.kind === 'airport' && row.code === place.iata) matches.push(row);
-    if (place.kind === 'city' && normalizeCarPlace(row.name) === normalizeCarPlace(row.city) && await carCityNameIsUnambiguous(place, row.city)) matches.push(row);
+    const region = source === 'discovercars' ? discoverCarsState(row.country) : undefined;
+    if (place.kind === 'city' && normalizeCarPlace(row.name) === normalizeCarPlace(row.city) && await carCityNameIsUnambiguous(place, row.city, region)) matches.push(row);
   }
   const unique = [...new Map(matches.map(row => [row.id, row])).values()];
   if (unique.length !== 1) throw new CarError(`The provider could not uniquely match ${place.name}, ${place.country}; choose a specific airport or another location. No nearby station was substituted.`);

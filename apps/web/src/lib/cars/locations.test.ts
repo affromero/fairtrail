@@ -75,6 +75,30 @@ describe('server-owned rental geography', () => {
     await expect(matchCarProviderLocation(airport, suggestions.slice(0, 2), 'autoeurope')).rejects.toThrow(/uniquely match/);
     await expect(matchCarProviderLocation(airport, [...suggestions, { ...suggestions[2]!, id: '999' }], 'autoeurope')).rejects.toThrow(/uniquely match/);
   });
+  it('matches US airport state labels without relaxing country, airport type, code or uniqueness', async () => {
+    const jfk = await getCarCatalogPlace('ourairports:3622');
+    const raw = { placeID: 4812, place: 'New York International Airport Kennedy (JFK)', city: 'New York', country: 'USA - New York', location: 'airport' };
+    const suggestions = carLocationSuggestions({ success: true, result: [raw] }, 'discovercars');
+    expect(await matchCarProviderLocation(jfk, suggestions, 'discovercars')).toEqual({ id: '4812', name: raw.place });
+    for (const override of [{ country: 'Canada' }, { country: 'USA - Unknown' }, { kind: 'city' }, { code: 'LGA' }]) {
+      await expect(matchCarProviderLocation(jfk, [{ ...suggestions[0]!, ...override }], 'discovercars')).rejects.toThrow(/uniquely match/);
+    }
+    await expect(matchCarProviderLocation(airport, suggestions, 'discovercars')).rejects.toThrow(/uniquely match/);
+    await expect(matchCarProviderLocation(jfk, [...suggestions, { ...suggestions[0]!, id: '999' }], 'discovercars')).rejects.toThrow(/uniquely match/);
+  });
+  it('retains US state evidence when matching a city', async () => {
+    const city = await getCarCatalogPlace('geonames:5128581');
+    const suggestion = { id: '4808', name: 'New York', city: 'New York', country: 'USA - New York', kind: 'city', code: null };
+    expect(await matchCarProviderLocation(city, [suggestion], 'discovercars')).toEqual({ id: '4808', name: 'New York' });
+    await expect(matchCarProviderLocation(city, [{ ...suggestion, country: 'USA - New Jersey' }], 'discovercars')).rejects.toThrow(/uniquely match/);
+    await expect(matchCarProviderLocation({ ...city, country: 'CA' }, [suggestion], 'discovercars')).rejects.toThrow(/uniquely match/);
+    for (const country of ['USA - Nebraska', 'USA - Wisconsin', 'United States of America (USA)']) {
+      await expect(matchCarProviderLocation(city, [{ ...suggestion, country }], 'discovercars')).rejects.toThrow(/uniquely match/);
+    }
+    await expect(matchCarProviderLocation(city, [{ ...suggestion, country: 'US' }], 'autoeurope')).rejects.toThrow(/uniquely match/);
+    const springfield = await getCarCatalogPlace('geonames:4224162');
+    await expect(matchCarProviderLocation(springfield, [{ ...suggestion, name: 'Springfield', city: 'Springfield', country: 'USA - Georgia' }], 'discovercars')).rejects.toThrow(/uniquely match/);
+  });
   it('refuses a city name shared by multiple places in the same country', async () => {
     const springfield = (await searchCarLocations('Springfield US')).find(place => place.kind === 'city' && place.name === 'Springfield' && place.country === 'US');
     expect(springfield).toBeDefined();
