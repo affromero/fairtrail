@@ -3,6 +3,7 @@ import type { Prisma, HotelTracker, HotelSearchRun } from '@/generated/prisma/cl
 import { HotelError, validateHotelSearch, validateHotelOptions } from './domain';
 import { assertHotelOwner, type HotelActor } from './access';
 import type { HotelSearch, HotelSearchResult, HotelSelection, HotelTrackingOptions } from './types';
+import { cancelTravelJob, enqueueTravelJob, lockTravelAdmission } from '../travel/jobs';
 
 export const json = (value: unknown): Prisma.InputJsonValue => JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
 export function trackerDto(row: HotelTracker) {
@@ -16,15 +17,19 @@ export async function getHotelTracker(id: string, actor: HotelActor) {
   return row;
 }
 export async function lockHotelTracker(tx: Prisma.TransactionClient, id: string) {
+  await lockTravelAdmission(tx);
   await tx.$queryRaw`SELECT "id" FROM "HotelTracker" WHERE "id" = ${id} FOR UPDATE`;
   return tx.hotelTracker.findUnique({ where: { id } });
 }
 export async function createHotelSearch(raw: unknown, actor: HotelActor) {
   const search = validateHotelSearch(raw);
   return prisma.$transaction(async tx => {
+    await lockTravelAdmission(tx);
     const count = await tx.hotelSearchRun.count({ where: { status: { in: ['queued', 'running'] }, userId: actor.userId } });
     if (count >= 3) throw new HotelError('Three hotel searches are already active; wait or cancel one', 429);
-    return tx.hotelSearchRun.create({ data: { userId: actor.userId, request: json(search) } });
+    const run = await tx.hotelSearchRun.create({ data: { userId: actor.userId, request: json(search) } });
+    await enqueueTravelJob({ kind: 'hotel_search', hotelRunId: run.id, userId: run.userId }, tx);
+    return run;
   }, { isolationLevel: 'Serializable' });
 }
 export async function createHotelTracker(raw: unknown, actor: HotelActor) {
@@ -59,8 +64,9 @@ export async function refreshHotelTracker(id: string, actor: HotelActor, dueOnly
     if (dueOnly && (!tracker.active || tracker.nextCheckAt > new Date())) return null;
     validateHotelSearch(tracker.search);
     const existing = await tx.hotelSearchRun.findFirst({ where: { trackerId: id, status: { in: ['queued', 'running'] } } });
-    if (existing) return existing;
-    return tx.hotelSearchRun.create({ data: { userId: tracker.userId, trackerId: id, request: tracker.search as Prisma.InputJsonValue } });
+    const run = existing ?? await tx.hotelSearchRun.create({ data: { userId: tracker.userId, trackerId: id, request: tracker.search as Prisma.InputJsonValue } });
+    await enqueueTravelJob({ kind: 'hotel_search', hotelRunId: run.id, userId: run.userId }, tx);
+    return run;
   });
 }
 export async function editHotelTracker(id: string, raw: unknown, actor: HotelActor) {
@@ -85,7 +91,11 @@ export async function editHotelTracker(id: string, raw: unknown, actor: HotelAct
     const busy = await tx.hotelSearchRun.count({ where: { trackerId: id, status: 'running' } });
     if (busy) throw new HotelError('Wait for the current check to finish before editing', 409);
     if (settingsChanged || r.active === false || r.userId !== undefined) await tx.hotelAlert.updateMany({ where: { trackerId: id, pending: true }, data: { pending: false } });
-    if (r.active === false || r.userId !== undefined) await tx.hotelSearchRun.updateMany({ where: { trackerId: id, status: 'queued' }, data: { status: 'cancelled', completedAt: new Date() } });
+    if (r.active === false || r.userId !== undefined) {
+      const jobs = await tx.travelJob.findMany({ where: { hotelRun: { trackerId: id }, status: 'queued' } });
+      for (const job of jobs) await cancelTravelJob(job.id, actor.userId, actor.isAdmin, tx);
+      await tx.hotelSearchRun.updateMany({ where: { trackerId: id, status: 'queued' }, data: { status: 'cancelled', completedAt: new Date() } });
+    }
     return tx.hotelTracker.update({ where: { id }, data: { options: json(options), ...(r.active !== undefined ? { active: r.active as boolean } : {}), ...(r.userId !== undefined ? { userId: r.userId as string } : {}), ...(rearmTarget ? { targetArmed: true } : {}), ...(eligibilityChanged ? { historicalLow: null } : {}), nextCheckAt: new Date() } });
   });
 }

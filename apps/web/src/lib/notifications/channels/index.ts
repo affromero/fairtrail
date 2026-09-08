@@ -4,6 +4,7 @@ import { sendTelegram } from './telegram';
 import { sendEmail } from './email';
 import { sendNtfy } from './ntfy';
 import { sendWebhook } from './webhook';
+import type { NotificationTransportOptions } from './transport';
 
 /**
  * A channel owned by `userId: null` is admin/global and trusted with internal
@@ -23,17 +24,17 @@ function isTrustedOwner(channel: SendChannel): boolean {
 export type SendChannel = StoredChannel & { userId: string | null };
 
 /** Decrypt the stored config and dispatch the message to the matching sender. */
-export async function sendToChannel(channel: SendChannel, message: ChannelMessage): Promise<void> {
+export async function sendToChannel(channel: SendChannel, message: ChannelMessage, options: NotificationTransportOptions = {}): Promise<void> {
   const trusted = isTrustedOwner(channel);
   switch (channel.type) {
     case 'telegram':
-      return sendTelegram(decryptChannelConfig('telegram', channel.config), message);
+      return sendTelegram(decryptChannelConfig('telegram', channel.config), message, options);
     case 'email':
-      return sendEmail(decryptChannelConfig('email', channel.config), message, { trusted });
+      return sendEmail(decryptChannelConfig('email', channel.config), message, { ...options, trusted });
     case 'ntfy':
-      return sendNtfy(decryptChannelConfig('ntfy', channel.config), message, { trusted });
+      return sendNtfy(decryptChannelConfig('ntfy', channel.config), message, { ...options, trusted });
     case 'webhook':
-      return sendWebhook(decryptChannelConfig('webhook', channel.config), message, { trusted });
+      return sendWebhook(decryptChannelConfig('webhook', channel.config), message, { ...options, trusted });
     default:
       throw new Error(`Unknown channel type: ${channel.type as string}`);
   }

@@ -1,0 +1,13 @@
+.root { padding: 1.5rem 0 2rem; border-top: 1px solid var(--border); }
+.root h3 { margin: 0 0 .6rem; font: 600 1.25rem var(--font-display); }
+.root p { max-width: 48rem; color: var(--text-secondary); line-height: 1.6; font-size: .85rem; }
+.root label { display: block; margin: 1.25rem 0 .5rem; font-size: .85rem; }
+.root textarea { width: 100%; resize: vertical; min-height: 7rem; padding: 1rem; color: var(--text); background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); font: inherit; line-height: 1.6; }
+.root textarea::placeholder { color: var(--text-secondary); opacity: .8; }
+.actions { display: flex; flex-wrap: wrap; gap: .75rem; margin-top: .8rem; }
+.root button { min-height: 44px; padding: .75rem 1.1rem; color: var(--text); background: transparent; border: 1px solid var(--accent); border-radius: var(--radius-sm); font: 600 .9rem var(--font-display); cursor: pointer; }
+.root :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.root button:disabled { opacity: .55; cursor: default; }
+.ready, .error { border-left: 3px solid var(--accent); padding: .5rem 1rem; margin-top: 1rem; background: var(--surface); }
+.root .error { border-color: var(--price-up); color: var(--text); }
+@media (max-width: 700px) { .actions button { flex: 1; } }

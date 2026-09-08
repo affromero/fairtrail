@@ -424,6 +424,38 @@ test_hotels_forward_files_and_credentials() {
   assert_not_recorded "missing hotel search file never starts a container command" 'exec .*flight-finder-tui'
 }
 
+test_cars_use_persistent_receipts_in_every_runtime() {
+  for runtime in docker_v2 docker_v1 podman_native podman_pc podman_delegated; do
+    setup_runtime "$runtime"
+    FLIGHT_FINDER_SESSION=car-test-session FLIGHT_FINDER_TOKEN=car-test-token run_cli cars refresh tracker-one --revision 7 --json
+    assert_recorded "cars requires persistent receipts in $runtime" \
+      '-e FLIGHT_FINDER_CAR_RECEIPTS=/app/data/car-receipts -e FLIGHT_FINDER_CAR_REQUIRE_MOUNT=1 web flight-finder-tui cars refresh tracker-one --revision 7 --json'
+    assert_recorded "cars forwards account and gate credential names in $runtime" \
+      '-e FLIGHT_FINDER_SESSION -e FLIGHT_FINDER_TOKEN'
+    assert_not_recorded "cars keeps credential values out of compose arguments in $runtime" 'compose .*car-test-(session|token)'
+    assert_not_recorded "cars never changes flight backend in $runtime" 'flight-finder-tui .*--backend'
+    run_cli cars retry /app/data/car-receipts/saved.json --json
+    assert_recorded "retry addresses the container receipt without host file redirection in $runtime" \
+      'flight-finder-tui cars retry /app/data/car-receipts/saved.json --json'
+  done
+}
+
+test_cars_forward_bounded_input_files() {
+  setup_runtime docker_v2
+  run_cli cars search --file "$REPO_ROOT/API.md" --wait
+  assert_recorded "car search file is streamed through container stdin" 'flight-finder-tui cars search --file - --wait'
+  run_cli cars search "--file=$REPO_ROOT/API.md" --wait
+  assert_recorded "equals-form car input is streamed through stdin" 'flight-finder-tui cars search --file - --wait'
+  run_cli cars search --file - --wait
+  assert_recorded "explicit stdin remains stdin" 'flight-finder-tui cars search --file - --wait'
+  EXPECT_NONZERO=1 run_cli cars search --file "$SANDBOX/missing-car-input.json"
+  if [ "$LAST_EXIT" -ne 0 ]; then pass "missing car input fails before execution"; else fail "missing car input was accepted"; fi
+  assert_not_recorded "missing car input never starts a container command" 'exec .*flight-finder-tui'
+  EXPECT_NONZERO=1 run_cli cars search --file "$REPO_ROOT/API.md" --file -
+  if [ "$LAST_EXIT" -ne 0 ]; then pass "duplicate car input paths are rejected"; else fail "duplicate car input was accepted"; fi
+  assert_not_recorded "duplicate car input never starts a container command" 'exec .*flight-finder-tui'
+}
+
 test_tui_headless_docker_v1() {
   setup_runtime docker_v1
   run_cli --headless
@@ -876,6 +908,8 @@ setup_sandbox
 test_tui_headless_docker_v2
 test_hotels_use_server_api_in_every_runtime
 test_hotels_forward_files_and_credentials
+test_cars_use_persistent_receipts_in_every_runtime
+test_cars_forward_bounded_input_files
 test_tui_headless_docker_v1
 test_tui_headless_podman_native
 test_tui_headless_podman_pc

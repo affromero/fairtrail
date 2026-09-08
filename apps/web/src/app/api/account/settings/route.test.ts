@@ -92,6 +92,18 @@ describe('PATCH /api/account/settings', () => {
     expect(res.status).toBe(200);
     expect(mockUpdate).toHaveBeenCalled();
   });
+  it('advances car revisions atomically only when provider choices are submitted', async () => {
+    await PATCH(makePatch({ preferredCarProviders: ['autoeurope'] }));
+    expect(mockUpdate.mock.calls[0]?.[0]).toMatchObject({ data: { preferredCarProviders: ['autoeurope'], carPreferencesRevision: { increment: 1 } }, where: { carPreferencesRevision: { lt: 2147483647 } } });
+    await PATCH(makePatch({ defaultCurrency: 'EUR' }));
+    expect(mockUpdate.mock.calls[1]?.[0].data).not.toHaveProperty('carPreferencesRevision');
+  });
+  it('reports an exhausted preference revision without claiming the update succeeded', async () => {
+    mockUpdate.mockRejectedValueOnce({ code: 'P2025' });
+    const response = await PATCH(makePatch({ preferredCarProviders: [] }));
+    expect(response.status).toBe(409);
+    expect((await response.json()).ok).toBe(false);
+  });
 
   it('rejects empty body with 400', async () => {
     const res = await PATCH(makePatch({}));

@@ -1,5 +1,6 @@
 import { getTranslations } from 'next-intl/server';
 import { prisma } from '@/lib/prisma';
+import { TravelRecovery } from '@/components/travel/TravelRecovery';
 import styles from './page.module.css';
 
 export const dynamic = 'force-dynamic';
@@ -45,6 +46,8 @@ export default async function AdminDashboard() {
           <span className={styles.statLabel}>{t('stats.llmCost')}</span>
         </div>
       </div>
+
+      <TravelRecovery />
 
       {recentErrors.length > 0 && (
         <>

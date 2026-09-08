@@ -1,5 +1,6 @@
 import type { Browser, BrowserContext } from 'playwright';
 import type { CountryProfile } from './country-profiles';
+import { currentTravelExecution } from '../travel/execution';
 
 // Chrome-only user agents — Google blocks non-Chrome heavily
 const USER_AGENTS = [
@@ -71,13 +72,16 @@ export function buildBrowserArgs(options: LaunchBrowserOptions = {}): string[] {
 }
 
 export async function launchBrowser(options: LaunchBrowserOptions = {}): Promise<Browser> {
+  const execution = currentTravelExecution();
+  execution?.check();
   const { chromium } = await import('playwright');
 
-  return chromium.launch({
+  const launch = () => chromium.launch({
     headless: true,
     executablePath: process.env.CHROME_PATH || undefined,
     args: buildBrowserArgs(options),
   });
+  return execution ? execution.launch(launch) : launch();
 }
 
 export interface StealthContextOptions {

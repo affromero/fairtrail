@@ -1,7 +1,7 @@
 {
   "name": "Flight Finder",
   "short_name": "Flight Finder",
-  "description": "Self-host flight and hotel price tracking, independently or together.",
+  "description": "Self-host flight, hotel and rental car price tracking. Search each independently.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#faf6ed",

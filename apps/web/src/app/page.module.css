@@ -134,10 +134,17 @@
   color: var(--text);
 }
 
+.travelColumns > .travelCars {
+  grid-column: 1 / -1;
+  border-left: 0;
+  border-top: 1px solid var(--border);
+  padding: 1.25rem 0 0;
+}
+
 .travelAvailability {
   font-size: 0.8125rem;
   line-height: 1.6;
-  color: var(--muted);
+  color: var(--text-secondary);
   margin-top: 1rem;
 }
 

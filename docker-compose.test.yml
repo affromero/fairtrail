@@ -1,18 +1,16 @@
 # Docker Compose override for smoke tests.
-# Usage: docker compose -f docker-compose.yml -f docker-compose.test.yml up -d
+# Usage: ./scripts/docker-smoke-test.sh
 #
 # Adds an LLMock server and wires the web container to use it
 # instead of a real LLM provider.
 
 services:
-  # Override host ports to avoid conflicts with a running dev stack
+  # Test services communicate internally without publishing database ports.
   db:
-    ports: !override
-      - "127.0.0.1:5499:5432"
+    ports: !reset []
 
   redis:
-    ports: !override
-      - "127.0.0.1:6399:6379"
+    ports: !reset []
 
   llmock:
     image: docker.io/library/node:22-alpine
@@ -29,17 +27,25 @@ services:
       retries: 10
 
   web:
+    image: ${SMOKE_TEST_IMAGE:-flight-finder-smoke:local}
+    env_file: !reset []
+    ports: !override
+      - "127.0.0.1:${HOST_PORT:-3099}:3003"
     depends_on:
       db:
         condition: service_healthy
       llmock:
         condition: service_healthy
     environment:
+      CRON_SECRET: ${CRON_SECRET:?Smoke test secret required}
+      ADMIN_SESSION_SECRET: disposable-smoke-admin-secret
+      CRON_ENABLED: "false"
+      REDIS_URL: redis://redis:6379
       # Point Anthropic SDK at the mock server
       ANTHROPIC_BASE_URL: http://llmock:19876
       ANTHROPIC_API_KEY: test-smoke-key
       # Ensure the provider is anthropic for deterministic behavior
       NODE_ENV: production
-      SELF_HOSTED: "false"
+      SELF_HOSTED: ${SMOKE_SELF_HOSTED:-false}
       # Skip CLI install to speed up container start
       INSTALL_CLI_PROVIDERS: "false"

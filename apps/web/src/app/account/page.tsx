@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { HotelTrackers } from '@/components/hotels/HotelTrackers';
+import { CarTrackers } from '@/components/cars/CarTrackers';
 import { TravelNav } from '@/components/hotels/TravelNav';
 import { redirect, notFound } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
@@ -158,6 +159,7 @@ export default async function AccountPage() {
         )}
       </section>
       <HotelTrackers />
+      <CarTrackers key={user.id} />
     </main>
   );
 }

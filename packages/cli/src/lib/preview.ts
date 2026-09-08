@@ -1,5 +1,8 @@
 import { mkdir, writeFile } from 'fs/promises';
 import { prisma } from '@/lib/prisma';
+import { currentTravelContext } from '../../../../apps/web/src/lib/travel/context.js';
+import { withPreviewTravelAdmission } from '../../../../apps/web/src/lib/travel/preview.js';
+import { currentTravelExecution } from '../../../../apps/web/src/lib/travel/execution.js';
 import { navigateGoogleFlights, navigateAirlineDirect } from '../../../../apps/web/src/lib/scraper/navigate.js';
 import { extractPrices, type PriceData, type ExtractionFailureReason } from '../../../../apps/web/src/lib/scraper/extract-prices.js';
 import { getModelCosts } from '../../../../apps/web/src/lib/scraper/ai-registry.js';
@@ -160,6 +163,7 @@ export interface PreviewParams {
 }
 
 export async function previewFlights({ parsed, onProgress }: PreviewParams): Promise<RouteResult[]> {
+  if (!currentTravelContext()) return withPreviewTravelAdmission(() => previewFlights({ parsed, onProgress }));
   const origins = parsed.origins;
   const destinations = parsed.destinations;
   const outboundDates = parsed.outboundDates ?? [parsed.dateFrom];
@@ -222,6 +226,7 @@ export async function previewFlights({ parsed, onProgress }: PreviewParams): Pro
         date: task.outboundDate,
       });
     } catch (err) {
+      currentTravelExecution()?.check();
       routes.push({
         origin: task.origin.code,
         originName: task.origin.name,

@@ -226,7 +226,7 @@ export function assertPublicHost(host: string, opts: { trusted: boolean }): void
  */
 export async function pinnedPublicDispatcher(
   rawUrl: string,
-  opts: { trusted: boolean },
+  opts: { trusted: boolean; signal?: AbortSignal },
 ): Promise<Agent | undefined> {
   assertPublicUrl(rawUrl, opts);
   if (opts.trusted) return undefined;
@@ -235,6 +235,7 @@ export async function pinnedPublicDispatcher(
   if (/^\d{1,3}(\.\d{1,3}){3}$/.test(host) || host.includes(':')) return undefined;
 
   const resolved = await dnsLookup(host, { all: true });
+  opts.signal?.throwIfAborted();
   if (resolved.length === 0) throw new Error('URL host did not resolve');
   for (const r of resolved) {
     if (isPrivateHost(r.address)) throw new Error('URL host is not allowed');

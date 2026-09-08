@@ -1,4 +1,4 @@
-import type { ApiResponse } from '@/lib/api-response';
+export { travelRequest as hotelRequest } from '../travel/client';
 import type { HotelOffer, HotelSearch, HotelSelection, HotelTrackingOptions } from '@/lib/hotels/types';
 
 export interface HotelTrackerView {
@@ -11,13 +11,6 @@ export interface HotelDetailView {
   snapshots: { id: string; runId: string; scrapedAt: string; offer: HotelOffer; eligible: boolean }[];
   runs: { id: string; status: string; error: string | null; createdAt: string }[];
   notificationsConfigured: boolean;
-}
-export async function hotelRequest<T>(url: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(url, { ...init, headers: { 'Content-Type': 'application/json', ...init?.headers } });
-  const body: ApiResponse<T> = await response.json();
-  if (!body.ok) throw new Error(body.error);
-  if (!response.ok) throw new Error(`HTTP ${response.status}`);
-  return body.data;
 }
 export function hotelMoney(value: number, currency: string, locale?: string): string {
   return new Intl.NumberFormat(locale, { style: 'currency', currency }).format(value);

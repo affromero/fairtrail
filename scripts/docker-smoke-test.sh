@@ -16,6 +16,11 @@ set -euo pipefail
 # Usage:
 #   ./scripts/docker-smoke-test.sh          # Build + test
 #   ./scripts/docker-smoke-test.sh --no-build  # Skip build (reuse existing image)
+#   SMOKE_SELF_HOSTED=true ./scripts/docker-smoke-test.sh --no-build
+#
+# Uses an isolated Compose project without reading or writing environment files.
+# The reusable image is flight-finder-smoke:local (override SMOKE_TEST_IMAGE).
+# Test the lifecycle itself with: node --test scripts/docker-smoke-runtime-test.mjs
 #
 # Exit codes:
 #   0 = all checks passed
@@ -46,9 +51,15 @@ EOF
 fi
 
 # --- Config ---
-COMPOSE_FILES="-f docker-compose.yml -f docker-compose.test.yml"
+COMPOSE_FILES=(-f docker-compose.yml -f docker-compose.test.yml)
 CRON_SECRET="smoke-test-secret-$(date +%s)"
 HOST_PORT="${SMOKE_TEST_PORT:-3099}"
+export CRON_SECRET HOST_PORT
+export POSTGRES_PASSWORD=smoketest
+export COMPOSE_ENV_FILES=/dev/null
+smoke_directory=$(mktemp -d "${TMPDIR:-/tmp}/flight-finder-smoke.XXXXXX")
+smoke_project="ff-smoke-$(basename "$smoke_directory" | tr '[:upper:]' '[:lower:]' | tr -cd 'a-z0-9')"
+compose() { docker compose --env-file /dev/null -p "$smoke_project" "${COMPOSE_FILES[@]}" "$@"; }
 HEALTH_TIMEOUT=90
 TEST_TIMEOUT=120
 
@@ -78,13 +89,13 @@ cleanup() {
   # passed". The trap restores it via `exit "$status"` at the end.
   local status=$?
   info "Tearing down..."
-  CRON_SECRET="$CRON_SECRET" HOST_PORT="$HOST_PORT" \
-    docker compose $COMPOSE_FILES down -v --remove-orphans 2>/dev/null || true
-  # Restore original .env if it existed, otherwise remove the temp one
-  if [ "${ENV_EXISTED:-false}" = true ] && [ -f "$REPO_ROOT/.env.smoke-backup" ]; then
-    mv "$REPO_ROOT/.env.smoke-backup" "$REPO_ROOT/.env"
-  else
-    rm -f "$REPO_ROOT/.env" "$REPO_ROOT/.env.smoke-backup"
+  if ! compose down -v --remove-orphans; then
+    fail "Could not remove smoke project $smoke_project" >&2
+    if [ "$status" -eq 0 ]; then status=1; fi
+  fi
+  if ! rmdir "$smoke_directory"; then
+    fail "Could not remove smoke directory $smoke_directory" >&2
+    if [ "$status" -eq 0 ]; then status=1; fi
   fi
   # Propagate the original failure to the shell.
   exit "$status"
@@ -95,8 +106,7 @@ trap cleanup EXIT
 # --- Step 1: Build ---
 if [ "$SKIP_BUILD" = false ]; then
   info "Building Docker image from local source..."
-  CRON_SECRET="$CRON_SECRET" HOST_PORT="$HOST_PORT" \
-    docker compose $COMPOSE_FILES build web
+  compose build web
   pass "Docker image built"
 else
   info "Skipping build (--no-build)"
@@ -104,22 +114,7 @@ fi
 
 # --- Step 2: Start stack ---
 info "Starting stack (db + redis + llmock + web) on port $HOST_PORT..."
-export CRON_SECRET HOST_PORT
-# Write .env so docker-compose env_file directive works
-# (the base docker-compose.yml requires env_file: .env)
-ENV_FILE="$REPO_ROOT/.env"
-ENV_EXISTED=false
-[ -f "$ENV_FILE" ] && ENV_EXISTED=true && cp "$ENV_FILE" "$ENV_FILE.smoke-backup"
-cat > "$ENV_FILE" <<ENVEOF
-CRON_SECRET=$CRON_SECRET
-POSTGRES_PASSWORD=smoketest
-HOST_PORT=$HOST_PORT
-ANTHROPIC_API_KEY=test-smoke-key
-ENVEOF
-
-# Use the smoke test .env
-CRON_SECRET="$CRON_SECRET" HOST_PORT="$HOST_PORT" POSTGRES_PASSWORD=smoketest \
-  docker compose $COMPOSE_FILES up -d
+compose up -d --no-build
 
 # --- Step 3: Wait for health ---
 info "Waiting for /api/health (up to ${HEALTH_TIMEOUT}s)..."
@@ -129,7 +124,7 @@ until curl -sf "http://localhost:${HOST_PORT}/api/health" >/dev/null 2>&1; do
   if [ "$SECONDS_WAITED" -ge "$HEALTH_TIMEOUT" ]; then
     fail "Health check timed out after ${HEALTH_TIMEOUT}s"
     info "Container logs:"
-    docker compose $COMPOSE_FILES logs web --tail 50
+    compose logs web --tail 50
     fatal "App did not become healthy"
   fi
   sleep 2
@@ -145,7 +140,7 @@ RESPONSE=$(curl -sf -w "\n%{http_code}" \
     fail "Test endpoint request failed"
     info "Response: $RESPONSE"
     info "Container logs:"
-    docker compose $COMPOSE_FILES logs web --tail 50
+    compose logs web --tail 50
     fatal "Smoke test endpoint unreachable or errored"
   }
 
@@ -156,7 +151,7 @@ if [ "$HTTP_CODE" != "200" ]; then
   fail "Test endpoint returned HTTP $HTTP_CODE"
   info "Body: $BODY"
   info "Container logs:"
-  docker compose $COMPOSE_FILES logs web --tail 50
+  compose logs web --tail 50
   exit 1
 fi
 
@@ -169,6 +164,9 @@ if [ -z "$OK" ]; then
 fi
 
 # --- Step 5: Report ---
+compose exec -T web node --input-type=module < scripts/container-car-smoke.mjs
+pass "Container rental catalog and access checks passed"
+
 echo ""
 echo "  ============================================"
 echo "  Docker Smoke Test: ALL CHECKS PASSED"

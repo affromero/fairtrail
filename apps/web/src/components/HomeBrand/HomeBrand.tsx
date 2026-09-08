@@ -16,7 +16,7 @@ import styles from './HomeBrand.module.css';
 export function HomeBrand() {
   const t = useTranslations('HomeBrand');
   const pathname = usePathname();
-  const hotelPage = pathname === '/hotels' || pathname?.startsWith('/hotels/');
+  const travelPage = pathname === '/hotels' || pathname?.startsWith('/hotels/') || pathname === '/cars' || pathname?.startsWith('/cars/');
   if (
     pathname?.startsWith('/admin') ||
     pathname?.startsWith('/setup') ||
@@ -26,7 +26,7 @@ export function HomeBrand() {
   }
 
   return (
-    <Link href="/" className={hotelPage ? `${styles.root} ${styles.hotel}` : styles.root} aria-label={t('home')}>
+    <Link href="/" className={travelPage ? `${styles.root} ${styles.hotel}` : styles.root} aria-label={t('home')}>
       <span className={styles.mark} aria-hidden="true" />
       <span className={styles.word}>Flight Finder</span>
     </Link>

@@ -6,6 +6,7 @@ import { SearchBar } from '@/components/SearchBar';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { SavedTrackers } from '@/components/SavedTrackers';
 import { HotelTrackers } from '@/components/hotels/HotelTrackers';
+import { CarTrackers } from '@/components/cars/CarTrackers';
 import { TravelNav } from '@/components/hotels/TravelNav';
 import { SetupRedirect } from '@/components/SetupRedirect';
 import { UsageStats } from '@/components/UsageStats';
@@ -48,7 +49,7 @@ export default async function HomePage() {
     name: 'Flight Finder',
     url: 'https://flight-finder.org',
     description:
-      'Self-host flight and hotel price tracking. Follow either independently or both, compare price history, and receive price alerts.',
+      'Self-host flight, hotel and rental car price tracking. Search each independently, compare price history and receive price alerts.',
     applicationCategory: 'TravelApplication',
     operatingSystem: 'Any',
     offers: {
@@ -121,6 +122,7 @@ export default async function HomePage() {
             <PriceAlerts />
             <SavedTrackers isAuthenticated={multiUserEnabled && !!user} />
             <HotelTrackers />
+            <CarTrackers key={user?.id ?? 'single'} />
             <UsageStats />
           </>
         ) : (
@@ -138,6 +140,10 @@ export default async function HomePage() {
                 <div>
                   <h3>{t('hotelsTitle')}</h3>
                   <p>{t('hotelsText')}</p>
+                </div>
+                <div className={styles.travelCars}>
+                  <h3>{t('carsTitle')}</h3>
+                  <p>{t('carsText')}</p>
                 </div>
               </div>
               <p className={styles.travelHousehold}>{t('travelHousehold')}</p>

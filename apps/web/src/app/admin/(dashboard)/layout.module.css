@@ -6,6 +6,7 @@
 
 .nav {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 1rem;
   padding: 0.75rem 1.5rem;
@@ -24,6 +25,8 @@
 
 .links {
   display: flex;
+  flex-wrap: wrap;
+  min-width: 0;
   gap: 0.25rem;
 }
 
@@ -71,4 +74,18 @@
   max-width: 1000px;
   width: 100%;
   margin: 0 auto;
+}
+
+@media (max-width: 600px) {
+  .links {
+    flex-basis: 100%;
+  }
+
+  .link {
+    display: flex;
+    align-items: center;
+    min-height: 44px;
+    max-width: 100%;
+    overflow-wrap: anywhere;
+  }
 }

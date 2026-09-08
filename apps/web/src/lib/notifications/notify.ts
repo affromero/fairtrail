@@ -1,12 +1,20 @@
 import { prisma } from '@/lib/prisma';
 import type { ChannelMessage, ChannelType } from './channels/types';
 import { sendToChannel } from './channels';
+import { notificationTransaction } from './database';
+import type { Prisma } from '@/generated/prisma/client';
 
 export interface NotifyOutcome {
   channelId: string;
   type: ChannelType;
   ok: boolean;
   error?: string;
+}
+
+export interface NotificationDeliveryControl {
+  signal: AbortSignal;
+  beforeSend: (channelId: string) => Promise<void>;
+  onDelivered: (channelId: string) => Promise<void>;
 }
 
 /**
@@ -20,6 +28,7 @@ export async function dispatchNotifications(
   ownerUserId: string | null,
   message: ChannelMessage,
   deliveredChannelIds: string[] = [],
+  control?: NotificationDeliveryControl,
 ): Promise<NotifyOutcome[]> {
   // A query owned by a user must still fire the global (userId:null) channels:
   // those are the only channels the current UI can create. Without OR-ing in the
@@ -27,7 +36,8 @@ export async function dispatchNotifications(
   // would match zero channels and silently kill all alerts, including the
   // admin's own. When per-user channels land, both a user's own and the globals
   // fire — the natural household behavior.
-  const channels = await prisma.notificationChannel.findMany({
+  const read = <T>(query: (tx: Prisma.TransactionClient) => Promise<T>) => control ? notificationTransaction(query, control.signal) : query(prisma);
+  const channels = await read(tx => tx.notificationChannel.findMany({
     where: {
       enabled: true,
       ...(deliveredChannelIds.length ? { id: { notIn: deliveredChannelIds } } : {}),
@@ -37,24 +47,38 @@ export async function dispatchNotifications(
         : { OR: [{ userId: ownerUserId }, { userId: null }] }),
     },
     select: { id: true, type: true, config: true, userId: true },
-  });
+    ...(control ? { orderBy: { id: 'asc' as const } } : {}),
+  }));
 
-  return Promise.all(
-    channels.map(async (ch): Promise<NotifyOutcome> => {
-      const type = ch.type as ChannelType;
-      try {
-        // Thread the owner id through: a per-user channel (userId set) stays
-        // untrusted, so its outbound host is SSRF-checked at send time.
-        await sendToChannel({ id: ch.id, type, config: ch.config, userId: ch.userId }, message);
-        return { channelId: ch.id, type, ok: true };
-      } catch (err) {
-        return {
-          channelId: ch.id,
-          type,
-          ok: false,
-          error: err instanceof Error ? err.message : String(err),
-        };
-      }
-    }),
-  );
+  const send = async (ch: (typeof channels)[number]): Promise<NotifyOutcome> => {
+    const type = ch.type as ChannelType;
+    try {
+      // Thread the owner id through: a per-user channel (userId set) stays
+      // untrusted, so its outbound host is SSRF-checked at send time.
+      await sendToChannel({ id: ch.id, type, config: ch.config, userId: ch.userId }, message, { signal: control?.signal });
+      return { channelId: ch.id, type, ok: true };
+    } catch (err) {
+      return {
+        channelId: ch.id,
+        type,
+        ok: false,
+        error: err instanceof Error ? err.message : String(err),
+      };
+    }
+  };
+  if (!control) return Promise.all(channels.map(send));
+  const outcomes: NotifyOutcome[] = [];
+  for (const entry of channels) {
+    control.signal.throwIfAborted();
+    await control.beforeSend(entry.id);
+    // A channel can be disabled, removed or reassigned after batch enumeration.
+    const channel = await read(tx => tx.notificationChannel.findUnique({ where: { id: entry.id } }));
+    if (!channel?.enabled || (channel.userId !== null && channel.userId !== ownerUserId)) continue;
+    control.signal.throwIfAborted();
+    const outcome = await send(channel);
+    // Persistence/authority failures stop the batch, not just this channel.
+    if (outcome.ok) await control.onDelivered(channel.id);
+    outcomes.push(outcome);
+  }
+  return outcomes;
 }

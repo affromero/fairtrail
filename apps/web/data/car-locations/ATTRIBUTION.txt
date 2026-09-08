@@ -1,0 +1,34 @@
+Flight Finder rental location catalog
+
+Airport names, identifiers and coordinates: OurAirports, public domain.
+https://ourairports.com/data/
+
+City names, aliases, administrative regions, coordinates and city timezones:
+GeoNames, Creative Commons Attribution 4.0 International (CC BY 4.0).
+https://www.geonames.org/
+https://creativecommons.org/licenses/by/4.0/
+
+Airport timezone assignments are derived from Timezone Boundary Builder data,
+copyright OpenStreetMap contributors, under the Open Database License (ODbL) 1.0.
+The combined catalog is made available under ODbL 1.0, retaining the GeoNames
+attribution above. The source database is catalog.json.gz beside this notice
+(gzip-compressed newline-delimited JSON, one location per line). It is also
+downloadable from /api/cars/location-data on a running instance.
+https://github.com/evansiroky/timezone-boundary-builder
+https://www.openstreetmap.org/copyright
+https://opendatacommons.org/licenses/odbl/1-0/
+
+The geo-tz lookup software is MIT licensed, copyright Evan Siroky.
+https://github.com/evansiroky/node-geo-tz/blob/master/LICENSE.md
+
+Changes: selected open airports with unique IATA codes; excluded ambiguous or
+ocean airport timezones; selected populated places; normalized search aliases;
+retained up to 32 aliases per place; combined records into a compressed catalog.
+Data is supplied without a guarantee of accuracy or completeness. A geographic
+match does not establish provider availability or a rental quote.
+
+manifest.json records exact input URLs, checksums, generator and lookup versions.
+Rebuild with: node --import tsx scripts/build-car-locations.mts
+Source archives are read from CAR_CATALOG_SOURCE_DIR or downloaded into the
+temporary source cache. Checksums must match; changed sources fail visibly.
+Use --refresh-sources only when intentionally reviewing a catalog update.

@@ -1,3 +1,4 @@
+import { closeTravelBrowser, currentTravelExecution, travelDelay } from '../travel/execution';
 import type { Page } from 'playwright';
 import { launchBrowser, createStealthContext } from './browser';
 import { getAirlineUrl } from './airline-urls';
@@ -5,7 +6,7 @@ import type { CountryProfile } from './country-profiles';
 
 /** Random delay between min and max milliseconds */
 function randomDelay(min: number, max: number): Promise<void> {
-  return new Promise((r) => setTimeout(r, min + Math.random() * (max - min)));
+  return travelDelay(min + Math.random() * (max - min));
 }
 
 /** Simulate human-like page interaction: mouse moves, scrolls, pauses */
@@ -368,6 +369,7 @@ export async function navigateGoogleFlights(
     const url = urlCandidates[attempt - 1]!;
     const candidateName = CANDIDATE_NAMES[attempt - 1] ?? 'unknown';
     const browser = await launchBrowser({ proxyUrl });
+    let failure: unknown;
     const attemptStart = Date.now();
 
     try {
@@ -462,7 +464,7 @@ export async function navigateGoogleFlights(
       // Retry with fresh browser if no results and we have attempts left
       if (!resultsFound && attempt < maxAttempts) {
         console.log(`[navigate] no results on attempt ${attempt} (${candidateName}), retrying with next URL after delay…`);
-        await new Promise((r) => setTimeout(r, 3000 + Math.random() * 4000));
+        await travelDelay(3000 + Math.random() * 4000);
         continue;
       }
 
@@ -471,17 +473,19 @@ export async function navigateGoogleFlights(
       }
       return { html, url, resultsFound, source: 'google_flights' };
     } catch (error) {
+      failure = error;
+      currentTravelExecution()?.check();
       const message = error instanceof Error ? error.message : String(error);
       const isCrash = /crashed|target closed|disposed/i.test(message);
       console.error(`[navigate] attempt ${attempt} (${candidateName}) failed (crash=${isCrash}, elapsed=${Date.now() - attemptStart}ms): ${message}`);
 
       if (attempt < maxAttempts) {
-        await new Promise((r) => setTimeout(r, 3000 + Math.random() * 4000));
+        await travelDelay(3000 + Math.random() * 4000);
         continue;
       }
       throw error;
     } finally {
-      await browser.close().catch(() => {});
+      await closeTravelBrowser(browser, failure);
     }
   }
 
@@ -508,6 +512,7 @@ export async function navigateFlightDetail(
   proxyUrl?: string
 ): Promise<FlightDetailResult> {
   const browser = await launchBrowser({ proxyUrl });
+  let failure: unknown;
   const start = Date.now();
 
   try {
@@ -595,11 +600,13 @@ export async function navigateFlightDetail(
       allBookingOptions: result,
     };
   } catch (error) {
+    failure = error;
+    currentTravelExecution()?.check();
     const message = error instanceof Error ? error.message : String(error);
     console.error(`[navigate:detail] failed (elapsed=${Date.now() - start}ms): ${message}`);
     throw error;
   } finally {
-    await browser.close().catch(() => {});
+    await closeTravelBrowser(browser, failure);
   }
 }
 
@@ -615,6 +622,7 @@ export async function navigateAirlineDirect(
   }
 
   const browser = await launchBrowser({ proxyUrl });
+  let failure: unknown;
   const start = Date.now();
 
   try {
@@ -668,11 +676,13 @@ export async function navigateAirlineDirect(
     await context.close();
     return { html, url, resultsFound, source: 'airline_direct' };
   } catch (error) {
+    failure = error;
+    currentTravelExecution()?.check();
     const message = error instanceof Error ? error.message : String(error);
     console.error(`[navigate:airline] failed (elapsed=${Date.now() - start}ms): ${message}`);
     throw error;
   } finally {
-    await browser.close().catch(() => {});
+    await closeTravelBrowser(browser, failure);
   }
 }
 
@@ -745,6 +755,7 @@ async function navigateAggregatorPage(
   proxyUrl?: string,
 ): Promise<NavigationResult> {
   const browser = await launchBrowser({ proxyUrl });
+  let failure: unknown;
   const start = Date.now();
 
   try {
@@ -797,11 +808,13 @@ async function navigateAggregatorPage(
     await context.close();
     return { html, url, resultsFound, source };
   } catch (error) {
+    failure = error;
+    currentTravelExecution()?.check();
     const message = error instanceof Error ? error.message : String(error);
     console.error(`[navigate:${tag}] failed (elapsed=${Date.now() - start}ms): ${message}`);
     throw error;
   } finally {
-    await browser.close().catch(() => {});
+    await closeTravelBrowser(browser, failure);
   }
 }
 

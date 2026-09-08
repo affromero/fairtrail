@@ -1,32 +1,7 @@
-import { prisma } from '../prisma';
-import { EXTRACTION_PROVIDERS, LOCAL_PROVIDERS, resolveApiKey, getModelCosts } from '../scraper/ai-registry';
-import { extractJsonArray } from '../scraper/extract-prices';
-import { acquireProviderToken } from '../scraper/rate-limit';
 import { validateHotelSearch } from './domain';
 import type { HotelSearch } from './types';
-
-export async function hotelJson(system: string, input: string, operation = 'hotel_extract'): Promise<unknown> {
-  const config = await prisma.extractionConfig.findFirst({ where: { id: 'singleton' } });
-  const provider = config?.provider ?? 'anthropic';
-  const backend = EXTRACTION_PROVIDERS[provider];
-  if (!backend) throw new Error(`Unknown AI provider: ${provider}`);
-  await acquireProviderToken(provider);
-  const model = config?.model ?? 'claude-haiku-4-5-20251001';
-  const started = Date.now();
-  const result = await backend.extract(resolveApiKey(provider, config), model, `${system}\nIMPORTANT OUTPUT ENVELOPE: wrap the required object as {"result":[OBJECT]}. Exactly one object in result.`, input, {
-    baseUrl: config?.customBaseUrl ?? undefined,
-    timeoutMs: (config?.extractTimeoutSeconds ?? 90) * 1000,
-    ...(LOCAL_PROVIDERS.has(provider) ? { responseFormat: 'json_object' as const } : {}),
-  });
-  const costs = getModelCosts(provider, model);
-  await prisma.apiUsageLog.create({ data: {
-    provider, model, ...result.usage, operation, durationMs: Date.now() - started,
-    costUsd: (result.usage.inputTokens * costs.costPer1kInput + result.usage.outputTokens * costs.costPer1kOutput) / 1000,
-  } });
-  const json = extractJsonArray(result.content);
-  if (!json.ok || json.value.length !== 1 || !json.value[0] || typeof json.value[0] !== 'object') throw new Error('Hotel AI response did not contain one JSON result');
-  return json.value[0];
-}
+import { travelJson as hotelJson } from '../travel/ai-json';
+export { hotelJson };
 
 export async function parseHotelQuery(text: string): Promise<HotelSearch> {
   if (!text.trim() || text.length > 4000) throw new Error('Describe a hotel search in 1–4000 characters');

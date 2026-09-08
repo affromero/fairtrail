@@ -1,0 +1,34 @@
+{
+  "version": "f1f6de21f69a1b2ead8cd439cdb2ed384205d9b1202f4d5c0217a84b2808618f",
+  "generatorVersion": 2,
+  "format": "ndjson",
+  "sources": [
+    {
+      "name": "airports.csv",
+      "url": "https://raw.githubusercontent.com/davidmegginson/ourairports-data/4c7db4c0773966354c044d50f6c32c68f6387bd0/airports.csv",
+      "sha256": "2525b882da142ac7bfdf472914431dca8471ed7d6f471e4345bcd3d0a6b6cb27"
+    },
+    {
+      "name": "cities500.zip",
+      "url": "https://download.geonames.org/export/dump/cities500.zip",
+      "sha256": "f626fec9dcaccf6781fc7e7046c7c58700efcb2535b93a470396bdfdae46404f"
+    },
+    {
+      "name": "admin1CodesASCII.txt",
+      "url": "https://download.geonames.org/export/dump/admin1CodesASCII.txt",
+      "sha256": "590651498043f674accda2b7f46d21286cda0e290b02f8561c5005eee9a5448c"
+    }
+  ],
+  "timezone": {
+    "package": "geo-tz",
+    "version": "8.1.8",
+    "product": "comprehensive",
+    "sha256": "16e0ecdf197c47c53fde0f809c334f941e2b80cda858a6c9dcf0a0b9d2d1adc8"
+  },
+  "count": 244455,
+  "airports": 8771,
+  "rejectedAirports": 32,
+  "uncompressedBytes": 72816218,
+  "compressedBytes": 13828890,
+  "sha256": "32053fa28fb8994e6373ebe3051b287142ff53250cfd4930f8d98f8c8d4e796d"
+}

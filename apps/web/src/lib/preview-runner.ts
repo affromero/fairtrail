@@ -8,6 +8,9 @@
 import { mkdir, writeFile } from 'fs/promises';
 import { createHash } from 'crypto';
 import { prisma } from '@/lib/prisma';
+import { currentTravelContext } from './travel/context';
+import { withPreviewTravelAdmission } from './travel/preview';
+import { currentTravelExecution } from './travel/execution';
 import { cached, redis } from '@/lib/redis';
 import {
   PREVIEW_ACTIVE_TIMEOUT_MS,
@@ -216,6 +219,8 @@ interface PreviewValidationResult {
 }
 
 export interface RunPreviewOptions {
+  signal?: AbortSignal;
+  userId?: string | null;
   /**
    * Invoked after each task settles, regardless of success or failure.
    * runPreviewInBackground uses this to bump updatedAt on the PreviewRun
@@ -575,7 +580,9 @@ export async function runPreview(
   payload: PreviewRequestPayload,
   options: RunPreviewOptions = {}
 ): Promise<PreviewResultPayload> {
-  const config = await prisma.extractionConfig.findFirst({ where: { id: 'singleton' } });
+  const travel = currentTravelContext();
+  if (!travel) return withPreviewTravelAdmission(() => runPreview(payload, options), options);
+  const config = travel.config;
   const { origins, destinations, isOneWay } = validatePreviewPayload(payload, config?.previewMaxCombos ?? 24);
   const { dateFrom, dateTo, maxPrice, maxStops, maxDurationHours, preferredAirlines, timePreference, cabinClass, tripType, currency: bodyCurrency } = payload;
   const currency: string | null = config?.defaultCurrency ?? bodyCurrency;
@@ -689,6 +696,7 @@ export async function runPreview(
         returnDate,
       };
     } catch (error) {
+      currentTravelExecution()?.check();
       if (isGoogleFlightsLoadingShellError(error)) {
         loadingShellRoutes.add(error.routeKey);
       }

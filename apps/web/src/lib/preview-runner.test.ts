@@ -7,6 +7,9 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { PreviewRequestPayload } from '@/lib/preview-run';
+import type { ExtractionConfig, TravelJob } from '@/generated/prisma/client';
+import { withTravelContext } from './travel/context';
+import { TravelVpnSession } from './travel/vpn';
 
 const {
   mockExtractionConfigFindFirst,
@@ -72,12 +75,8 @@ vi.mock('@/lib/scraper/extract-prices', () => ({
   extractPrices: mockExtractPrices,
 }));
 
-vi.mock('@/lib/scraper/airline-urls', () => ({
-  isKnownAirline: () => false,
-}));
-
 import {
-  runPreview,
+  runPreview as runAdmittedPreview,
   parsePreviewConcurrency,
   validatePreviewPayload,
   acquirePreviewAdmission,
@@ -90,6 +89,15 @@ import {
   PREVIEW_MAX_FUTURE_DAYS,
   UNEQUAL_MULTI_DATE_ERROR,
 } from './preview-utils';
+
+// Worker lifecycle is exercised with PostgreSQL and Chromium in coordinator
+// integration tests. These cases exercise the admitted extraction pipeline.
+async function runPreview(...args: Parameters<typeof runAdmittedPreview>) {
+  const lease = { id: 'browser', owner: 'preview-test', generation: 1, topologyVersion: 1 };
+  const job = { id: 'preview-test', kind: 'flight_preview', userId: null, status: 'running' } as TravelJob;
+  const config = await mockExtractionConfigFindFirst() as ExtractionConfig | null;
+  return withTravelContext({ job, lease, config, vpn: new TravelVpnSession(lease, 'none') }, () => runAdmittedPreview(...args));
+}
 
 function makePayload(overrides: Partial<PreviewRequestPayload> = {}): PreviewRequestPayload {
   return {
@@ -177,8 +185,8 @@ describe('runPreview API key resolution (#149)', () => {
   });
 });
 
-describe('runPreview hoist invariant', () => {
-  it('reads extractionConfig exactly once across many tasks (issue #65 hoist)', async () => {
+describe('runPreview configuration snapshot', () => {
+  it('uses the admitted provider and currency across many tasks', async () => {
     const payload = makePayload({
       origins: [{ code: 'JFK', name: 'A' }, { code: 'EWR', name: 'B' }],
       destinations: [{ code: 'LAX', name: 'C' }, { code: 'SFO', name: 'D' }],
@@ -189,9 +197,11 @@ describe('runPreview hoist invariant', () => {
 
     await runPreview(payload, { concurrency: 4 });
 
-    // Before the hoist this would have been called 3 * tasks times (1 for
-    // the cost calc plus 2 in the failure path of every scrapeRoute).
-    expect(mockExtractionConfigFindFirst).toHaveBeenCalledTimes(1);
+    expect(mockExtractPrices.mock.calls.length).toBeGreaterThan(1);
+    for (const call of mockExtractPrices.mock.calls) {
+      expect(call[8]).toMatchObject({ provider: 'anthropic', model: 'claude-haiku-4-5-20251001' });
+    }
+    for (const call of mockNavigateGoogleFlights.mock.calls) expect(call[0]).toMatchObject({ currency: 'USD' });
   });
 });
 

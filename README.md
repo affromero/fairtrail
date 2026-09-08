@@ -2,10 +2,11 @@
 
 # Flight Finder
 
-**Flight and hotel prices, tracked on your terms.**
+**Flight, hotel, and car rental prices, tracked on your terms.**
 
-Track flights, hotels, or both in one self-hosted app. Open source. Use your own
-AI provider for natural-language requests, or search hotels with a structured form.
+Track flights, hotels, and car rentals independently in one self-hosted app.
+Open source. Use your own AI provider for natural-language requests, or search
+hotels and cars with structured forms.
 
 [![GitHub Release](https://img.shields.io/github/v/release/affromero/flight-finder)](https://github.com/affromero/flight-finder/releases/latest)
 [![CI](https://img.shields.io/github/actions/workflow/status/affromero/flight-finder/ci.yml?label=CI)](https://github.com/affromero/flight-finder/actions/workflows/ci.yml)
@@ -61,30 +62,34 @@ If you have [Claude Code](https://docs.anthropic.com/en/docs/claude-code) or [Co
 
 Once it finishes:
 
-1. Open [localhost:3003](http://localhost:3003) and choose **Flights** or **Hotels**.
-2. Search for a route or stay, review the details, and select what to track.
-3. Follow price history and configure alerts. Hotel searches do not require a flight.
+1. Open [localhost:3003](http://localhost:3003) and choose **Flights**, **Hotels**, or **Cars**.
+2. Search for a route, stay, or rental, review the details, and select what to track.
+3. Follow price history and configure alerts. Hotels and cars do not require a flight.
 
 From the terminal, use `flight-finder search "NYC to Tokyo in July under $800"`
 for flights or the [hotel commands](#hotel-tracking) for stays.
 
-### Flights, hotels, or both
+### Choose what you track
 
 The public website explains the product and provides installation instructions.
-Searches and trackers run on your own installation, in the browser or CLI. The
-desktop launcher and mobile browser connect to that same instance.
+Searches and trackers run on your own installation. The desktop launcher and
+mobile browser connect to that same instance.
 
 - **Flights:** follow routes and airlines, compare flexible dates, and share flight price charts.
 - **Hotels:** search Google Hotels or Booking.com by dates, rooms, and guests;
   track the cheapest qualifying offer or a particular room/rate; set a target-price
   alert and inspect the recorded history. The structured hotel form does not use AI.
-- **Households:** each person can use flights only, hotels only, or both. Ordinary
+- **Cars:** search DiscoverCars and Auto Europe independently of flights or hotels;
+  compare verified rental totals and track the cheapest qualifying offer or a
+  specific rental contract. See [Car rental tracking](#car-rental-tracking).
+- **Households:** each person can use any combination of travel trackers. Ordinary
   members see their own trackers; administrators can manage and reassign them.
 
-Flight and hotel trackers are independent. This does not combine them into a
+Flight, hotel, and car trackers are independent. This does not combine them into a
 package, shared itinerary, or combined budget. Bookings are completed with the
-airline or hotel seller. Hotel histories require access to your instance and,
-when multi-user mode is enabled, the owning account or an administrator.
+airline, hotel seller, or rental provider. Hotel and car histories require access
+to your instance and, when multi-user mode is enabled, the owning account or an
+administrator.
 
 Google Hotels supports one room; Booking.com supports multiple rooms with child
 ages assigned to each room. Discovery checks up to eight properties per source
@@ -92,6 +97,90 @@ and stay, with at most 24 date/source combinations. Unverified prices, fees,
 occupancy, or requested policies are not guessed. Results can include usable
 offers alongside explicit provider errors. Configure a notification channel to
 receive alerts outside the app; approximate matches require explicit opt-in.
+
+### Car rental tracking
+
+Open **Cars** on your self-hosted instance. Select pickup and return locations
+from the airport and city catalog, enter local dates and times, and provide the
+driver's age, residence country, and years holding a licence. Choose either
+provider or both. Account settings save each user's preferred car providers
+separately from flight and hotel preferences.
+
+From the CLI, `flight-finder cars preferences` shows the saved provider order,
+effective defaults and preference revision. Use
+`flight-finder cars preferences --providers autoeurope,discovercars --revision 0`
+with the revision you just read, or `--reset --revision 0` to inherit both
+providers. These settings affect new car searches, not existing trackers.
+CLI search files may omit `sources` to use these preferences; an explicit
+`sources` list takes precedence and is retained unchanged in the search receipt.
+Single-user installations keep both defaults; each search can select its own
+sources. Saving preferences requires a personal account.
+
+DiscoverCars groups ages 30 through 65 into one search value. Its adapter accepts
+35 as that provider value and rejects other ages in this range, as well as ages
+above 80, rather than changing the requested age. Select Auto Europe for an
+exact-age search in those cases. Each supplier's age and licence requirements
+still apply; a provider selection does not guarantee an eligible offer.
+
+Preference changes retain a recovery receipt before sending the request. After
+a lost acknowledgement, use `cars retry <receipt>` with that receipt. A stale
+revision displays current preferences without claiming the original request
+succeeded. Review them before making a new change; never replace the revision
+inside an old receipt.
+
+The structured form works without AI. An optional natural-language request
+produces a draft for review. Location suggestions still require a catalog
+selection, and missing driver details remain empty until you supply them.
+Reviewing a draft starts neither a provider search nor a tracker.
+
+Providers run in headless Chromium. Results show how many visible offers were
+checked, whether a limit was reached, and any provider failures. A search checks
+up to eight offers per provider; it does not claim to find every available car.
+An advertised price remains unverified when the provider does not supply enough
+evidence to establish the requested rental and its charges. Such candidates
+remain visible for inspection but cannot trigger price alerts.
+
+For verified offers, inspect the rental total, payment timing, deposit, excess,
+fuel and mileage policies, and driver requirements before tracking. Requested
+extras must have supported pricing evidence; an unknown charge is not treated
+as free. Deposits and excess are shown separately from the rental total.
+Always confirm availability and final terms with the provider before booking.
+
+DiscoverCars can select the requested seat categories and quantities and
+additional drivers when the supplier exposes those controls. Its local-extra
+controls may appear on the rental details page or on a separate step after
+coverage. Both sequences retain the requested selections and reject unexpected
+charges; the scraper stops before driver details or booking. Local-extra
+prices and availability are supplier estimates. Results retain each selected
+charge and show a combined estimate, which may exclude additional-driver
+surcharges. You can review an available protection option and request a fresh
+quote with the same extras. Adding protection does not make estimated extras
+eligible for tracking or alerts.
+
+AutoEurope's observed checkout does not expose selectable local extras. When
+you request seats or additional drivers, its result identifies the unselected
+extras and shows supplied supplier terms separately. Any advertised amount
+excludes those extras and cannot qualify as the requested combined total.
+Missing terms remain unknown. Base rentals and available protection products
+are checked independently of this limitation.
+
+Choose **best** mode to follow the cheapest qualifying offer across the selected
+providers, or **contract** mode to follow the selected rental contract. Set a
+target price, new-low alerts, and a check interval. The tracker records check
+history and provider errors. Pause stops future checks and pending alerts;
+messages already sent cannot be recalled.
+
+**Refresh status** reads the current state. **Check saved rental prices** requests
+a provider check. If its acknowledgement is lost, recover the saved request
+instead of starting another one. Recovery uses the original request identity,
+including after a page reload. Browser session storage must be available to save
+mutation recovery identities safely.
+
+Car search and tracking APIs require a self-hosted instance and its configured
+authentication. The public website does not expose private rental histories.
+See [API.md](API.md) for request formats, retry headers, and ownership rules.
+The catalog's source attribution and downloadable data are available at
+`/cars/location-data` on your instance.
 
 ### Prefer not to touch the terminal?
 
@@ -356,6 +445,87 @@ Hotel searches with `--wait` allow up to 120 minutes by default. Use
 cancels the server search. Flexible dates can take longer because each stay
 requires separate provider visits.
 
+### Car commands
+
+Car commands use the account-scoped HTTP API and leave flight configuration
+unchanged. They accept the same server and credential environment variables as
+hotel commands. Start with catalog locations and a reviewed search file:
+
+```bash
+flight-finder cars locations "London Heathrow" --json
+flight-finder cars parse "A London rental for next weekend" --json
+flight-finder cars search --file rental.json --wait --json
+flight-finder cars protection <searchId> <offerId> --json
+flight-finder cars protect <searchId> <offerId> <choiceId> --review <choiceReview> --wait
+flight-finder cars track <searchId> <offerId> --mode best --target 300 --currency GBP
+flight-finder cars browse
+flight-finder cars view <id> --json
+flight-finder cars alerts <id> --revision 7 --target 280 --currency GBP
+flight-finder cars refresh <id> --revision 8
+flight-finder cars retry /app/data/car-receipts/<requestId>.json --json
+```
+
+`parse` produces a draft for review. It does not select a catalog location or
+start a search. Use the public search shape in [API.md](API.md), with catalog
+`id` and `version` values from `locations`. Input files and stdin (`--file -`)
+are limited to 64 KiB. Amounts use decimal major units with an explicit currency;
+the client converts them to exact integer minor units.
+
+`protection` prints the selected rental's full price evidence and observed
+protection options, including terms, policy links, observation time and extra
+price. Review a choice before passing its `review` value to `protect`. That
+command checks the same base rental with the chosen product and a fresh total;
+it does not reserve a car or purchase coverage. The observed extra is never
+presented as a verified combined price.
+
+After the protected search finishes, run `protection` with its new search ID
+and an offer ID. Review the fresh terms, full total, payment timing, deposit
+and requirements. Pass its `trackingReview` value to
+`cars track <searchId> <offerId> --review-protection <trackingReview>`.
+Reviews apply to the exact server, account and displayed content. Changed
+terms or prices require another review. Base rentals need no protection flag.
+Closed or ineligible results remain inspectable but cannot start new tracking.
+After a lost acknowledgement, use the saved receipt with `retry`; recovery
+does not require a new review or an unexpired original quote.
+
+`browse` opens a keyboard-driven tracker list with paged results and price
+evidence. Enter opens history; arrow keys scroll, and `r` reloads server state.
+Press `l` in a tracker to review pickup and return search locations, local dates,
+and timezones. Arrow keys scroll the location view; Escape returns to history.
+In a tracker, `p` pauses or resumes, `c` checks prices, and `x` deletes it.
+Each change shows the account, target, and saved revision and requires typing
+`yes`. Escape dismisses the confirmation without sending anything.
+
+Press `t` to select a recovery receipt by path or by its displayed number.
+Review the saved request, then confirm to replay it unchanged. An uncertain
+refresh still allows pause or delete, while another refresh requires recovery
+first. Uncertain edits block conflicting changes until their receipts are
+recovered. If recovery reports a stale revision, reload and review the current
+settings before confirming a new change. The earlier outcome remains unproven.
+Account changes hide private data. Exiting stops local requests and prints the
+retained receipt paths; server work continues. Use `list` and `view` with
+`--json` when an interactive terminal is unavailable.
+
+Before changing tracking state, the CLI prints a private recovery receipt path.
+After a timeout or lost response, use `cars retry <receipt>` with the
+original server and account. Repeating `search`, `protect`, `track`, or `refresh` starts a
+new request. Receipts contain request data, never cookies or access tokens.
+The installed CLI stores them under `/app/data/car-receipts` and refuses
+mutations if that persistent volume is missing. Direct Node CLI use defaults
+to `~/.flight-finder-car-receipts`; `--receipt-dir` selects another private
+directory whose parent already exists.
+
+Use the revision returned by `view` for changes to existing trackers. A stale
+revision reports the current state when it can be read, without claiming that
+an earlier request succeeded. A 404 means access is unavailable; it does not
+prove deletion. A 410 means the original resource was removed and its receipt
+cannot create a replacement. Receipts remain available after successful replay.
+
+`--wait` polls for up to 120 minutes. Ctrl-C or timeout stops local polling and
+leaves the server search running. Use `cars results <searchId>` to return to it,
+or `cars cancel <searchId>` to cancel it explicitly. `cars --help` lists paging,
+pause/resume, deletion, renaming, and administrator reassignment commands.
+
 **Features:**
 - Natural language search, same as the web
 - Braille chart with per-airline colored trend lines
@@ -392,13 +562,13 @@ All settings are in `~/.flight-finder/.env` (generated by the installer):
 
 Self-hosting Flight Finder with your spouse, your roommates, or your whole
 family? Multi user mode gives each person their own login, their own
-trackers, and their own preferences. Everyone watches their own flights and hotels
+trackers, and their own preferences. Everyone watches their own flights, hotels, and cars
 without seeing each other's dashboards. You stay admin.
 
 #### When you want this
 
 - Two or more people sharing one self-hosted instance
-- Each person tracks flights, hotels, or both (work travel vs. personal trips)
+- Each person chooses which flights, hotels, or cars to track
 - Different default currencies or preferred airlines per person
 - You want the admin panel back to yourself
 

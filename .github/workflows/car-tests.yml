@@ -1,0 +1,118 @@
+name: Car and shared travel workflows
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  execution-browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-node@v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run db:generate
+      - run: npx playwright install chromium --with-deps
+      - run: npm run test --workspace=@flight-finder/web -- src/lib/travel/execution.test.ts src/lib/travel/execution.browser.test.ts src/lib/travel/navigation.browser.test.ts src/lib/scraper/browser.test.ts src/lib/cars/browser-context.browser.test.ts src/lib/cars/autoeurope-navigation.browser.test.ts src/lib/cars/discovercars-frame.browser.test.ts src/lib/cars/discovercars-price-lines.browser.test.ts src/lib/cars/discovercars-navigation.browser.test.ts src/lib/cars/discovercars-extras.browser.test.ts src/lib/cars/protection-discovery.browser.test.ts src/lib/cars/controls.browser.test.ts src/lib/cars/search.browser.test.ts
+        env:
+          TRAVEL_BROWSER_TESTS: '1'
+
+  shared-jobs:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: car_test
+          POSTGRES_PASSWORD: car-local-test
+          POSTGRES_DB: car_test
+        ports:
+          - 55440:5432
+        options: >-
+          --health-cmd "pg_isready -U car_test -d car_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://car_test:car-local-test@127.0.0.1:55440/car_test
+      TRAVEL_INTEGRATION_TESTS: '1'
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-node@v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run db:generate
+      - run: npm run db:push
+      - run: npm run test --workspace=@flight-finder/web -- src/lib/travel/jobs.integration.test.ts
+      - run: npm run test --workspace=@flight-finder/web -- src/lib/cars/store.integration.test.ts
+        env:
+          CAR_STORE_INTEGRATION_TESTS: '1'
+      - run: npm run test --workspace=@flight-finder/web -- src/lib/cars/creation.integration.test.ts
+        env:
+          CAR_STORE_INTEGRATION_TESTS: '1'
+      - run: npm run test --workspace=@flight-finder/web -- src/lib/cars/persistence.integration.test.ts
+        env:
+          CAR_PERSISTENCE_INTEGRATION_TESTS: '1'
+      - run: npm run test --workspace=@flight-finder/web -- src/lib/cars/http.integration.test.ts
+        env:
+          CAR_HTTP_INTEGRATION_TESTS: '1'
+      - run: npx playwright install chromium --with-deps
+      - run: npm run test --workspace=@flight-finder/web -- src/lib/cars/search.browser.test.ts
+        env:
+          TRAVEL_BROWSER_TESTS: '1'
+          CAR_RUN_INTEGRATION_TESTS: '1'
+
+  migration-rollback:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: car_test
+          POSTGRES_PASSWORD: car-local-test
+          POSTGRES_DB: car_test
+        ports:
+          - 55440:5432
+        options: >-
+          --health-cmd "pg_isready -U car_test -d car_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 56389:6379
+    env:
+      TRAVEL_ROLLBACK_IMAGE: flight-finder-travel-rollback:test
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Build the pre-car runtime
+        run: |
+          rollback_context=$(mktemp -d)
+          git archive b15f4c4 | tar -x -C "$rollback_context"
+          docker build -t "$TRAVEL_ROLLBACK_IMAGE" "$rollback_context"
+      - run: node scripts/travel-migration-test.mjs
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: travel-migration-evidence
+          path: /tmp/flight-finder-travel-migration-*
