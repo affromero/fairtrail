@@ -48,10 +48,6 @@ hotels and cars with structured forms.
 
 ---
 
-## Migrating from Fairtrail?
-
-Already running an install from before the rename? `fairtrail update` does everything for you: renames the database from `fairtrail` to `flight_finder`, moves `~/.fairtrail` to `~/.flight-finder`, pulls the new image, and keeps your tracked queries, prices, and settings intact. The `fairtrail` command itself keeps working as a deprecated alias through v1.0. Details and a manual fallback live in [MIGRATION.md](MIGRATION.md).
-
 ## Quick Start
 
 ```bash
