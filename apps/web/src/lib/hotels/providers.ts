@@ -8,6 +8,7 @@ import { extractGoogleOffers } from './google-extraction';
 import { navigateHotelPage } from './navigation';
 import { captureBookingRates } from './booking-capture';
 import { captureHotelLinks } from './link-capture';
+import { captureHotelLocation } from './location-capture';
 import type { HotelOffer, HotelSearch, HotelSelection, HotelSource, HotelStay } from './types';
 import { closeTravelBrowser, currentTravelExecution, TravelCleanupError } from '../travel/execution';
 
@@ -50,7 +51,8 @@ export async function captureHotelSource(search: HotelSearch, stay: HotelStay, s
       address: (document.querySelector('.hp_address_subtitle') as HTMLElement | null)?.innerText?.trim(),
       starsLabel: [...(document.querySelector('#hp_hotel_name,.pp-header__title')?.parentElement?.parentElement?.querySelectorAll('[aria-label],[title]') ?? [])].map(element => element.getAttribute('aria-label') ?? element.getAttribute('title') ?? '').find(label => /[1-5] (?:out of 5|stars)/i.test(label)),
     }));
-    return { url: page.url(), text: text.slice(0, 90000), controls: controls.slice(0, 20000), links: links.slice(0, 150), images: images.filter(image => /(?:bstatic\.com.*\/hotel\/|googleusercontent\.com)/.test(image.url)).slice(0, 12), rates, totalPriceBasis, ...metadata };
+    const location = await captureHotelLocation(page, source, metadata.propertyName);
+    return { url: page.url(), text: text.slice(0, 90000), controls: controls.slice(0, 20000), links: links.slice(0, 150), images: images.filter(image => /(?:bstatic\.com.*\/hotel\/|googleusercontent\.com)/.test(image.url)).slice(0, 12), rates, totalPriceBasis, ...metadata, location };
   } catch (error) {
     failure = error;
     throw error;

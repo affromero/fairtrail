@@ -1,4 +1,4 @@
-import type { HotelSearch, HotelSource, HotelStay } from './types';
+import type { HotelLocation, HotelSearch, HotelSource, HotelStay } from './types';
 import { googleSelectedDates } from './google';
 
 export interface HotelPageCapture {
@@ -9,6 +9,7 @@ export interface HotelPageCapture {
   images: { alt: string; url: string }[];
   propertyName?: string;
   address?: string;
+  location?: HotelLocation | null;
   totalPriceBasis?: string;
   starsLabel?: string;
   rates?: { id: string; text: string; roomName: string; occupancy?: string; priceBasis?: string; available?: number }[];

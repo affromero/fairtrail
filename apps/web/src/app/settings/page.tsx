@@ -8,6 +8,7 @@ import { LOCALES, LOCALE_LABELS, LOCALE_COOKIE, isLocale } from '@/i18n/locales'
 import { AvatarPicker } from '@/components/AvatarPicker/AvatarPicker';
 import { ThemePicker } from '@/components/ThemePicker/ThemePicker';
 import { ReachGuide } from '@/components/ReachGuide/ReachGuide';
+import { HotelMapAdmin } from '@/components/hotels/HotelMapAdmin';
 import { PROVIDER_METADATA, LOCAL_PROVIDERS, CLI_PROVIDERS } from '@/lib/scraper/provider-metadata';
 import { isThemeId, DEFAULT_THEME, type ThemeId } from '@/lib/theme';
 import styles from './page.module.css';
@@ -264,6 +265,7 @@ export default function SettingsPage() {
           </div>
         </div>
 
+        {config.isSelfHosted && <HotelMapAdmin />}
         {config.isSelfHosted && (
           <div className={styles.section} id="reach">
             <h2 className={styles.sectionTitle}>{t('reach.title')}</h2>

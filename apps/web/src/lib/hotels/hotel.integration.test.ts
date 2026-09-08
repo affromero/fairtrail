@@ -28,7 +28,7 @@ let flightId = '';
 describe.skipIf(!enabled)('hotel workflows against isolated PostgreSQL', () => {
   beforeAll(async () => {
     const db = new URL(process.env.DATABASE_URL ?? 'http://invalid');
-    if (db.hostname !== '127.0.0.1' || db.pathname !== '/hotel_test') throw new Error('Integration tests require the disposable localhost hotel_test database');
+    if (db.hostname !== '127.0.0.1' || !['/hotel_test', '/hotel_map_test'].includes(db.pathname)) throw new Error('Integration tests require a disposable localhost hotel_test or hotel_map_test database');
     const flight = await prisma.query.create({ data: { rawInput: 'Flight preservation sentinel', origin: 'LHR', originName: 'London', destination: 'JFK', destinationName: 'New York', dateFrom: new Date('2027-05-01'), dateTo: new Date('2027-05-10'), expiresAt: new Date('2027-05-01'), currency: 'GBP', cabinClass: 'business', vpnCountries: ['DE'], scrapeInterval: 6 } });
     flightId = flight.id;
   });

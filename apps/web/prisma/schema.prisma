@@ -182,6 +182,8 @@ model User {
   cabinClass        String?  // override; null falls back to "economy"
   preferredCarProviders CarProvider[] @default([])
   carPreferencesRevision Int @default(0)
+  hotelMapPreferences Json?
+  hotelMapPreferencesRevision Int @default(0)
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
@@ -198,6 +200,13 @@ model User {
   channels NotificationChannel[]
 
   @@index([isAdmin])
+}
+
+model HotelMapConfig {
+  id String @id @default("singleton")
+  revision Int @default(0)
+  settings Json
+  updatedAt DateTime @updatedAt
 }
 
 model HotelTracker {

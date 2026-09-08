@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { verifyHotelContext, type HotelPageCapture } from './extraction';
 import type { HotelOffer, HotelRoom, HotelSearch, HotelSelection, HotelStay } from './types';
 import { hotelAmenities } from './property-metadata';
+import { hotelLocation } from './location';
 
 type CapturedRate = NonNullable<HotelPageCapture['rates']>[number];
 interface PricedRoom { rate: CapturedRate; price: number; refundable: boolean | null; breakfast: boolean | null }
@@ -74,6 +75,7 @@ export function extractBookingOffers(capture: HotelPageCapture, search: HotelSea
     return {
       id: createHash('sha256').update(JSON.stringify([propertyId, providerRateId, stay, search.rooms])).digest('hex').slice(0, 24),
       source: 'booking', propertyId, providerRateId, hotelName, address: capture.address ?? '',
+      location: hotelLocation(capture.location, propertyId),
       propertyUrl: url.href, bookingUrl: url.href, imageUrl: capture.images[0]?.url ?? null, seller: 'Booking.com',
       ...stay, roomName, rateName, rooms: search.rooms, totalPrice: Math.round(combination.reduce((sum, room) => sum + room.price, 0) * 100) / 100,
       currency: search.currency, taxesIncluded: true, occupancyVerified: true, refundable, breakfast,

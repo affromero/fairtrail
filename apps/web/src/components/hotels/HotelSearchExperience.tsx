@@ -3,13 +3,14 @@ import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import type { HotelSearch, HotelSearchResult } from '@/lib/hotels/types';
+import type { HotelMapSettings } from '@/lib/hotels/map-config';
 import { hotelRequest } from './client';
 import { HotelSearchForm } from './HotelSearchForm';
-import { HotelOfferCard } from './HotelOfferCard';
+import { HotelMapResults } from './HotelMapResults';
 import { HotelOptions, defaultHotelOptions } from './HotelOptions';
 import styles from './Hotels.module.css';
 interface SearchJob { id: string; status: string; result: HotelSearchResult | null; error: string | null }
-export function HotelSearchExperience() {
+export function HotelSearchExperience({ mapSettings }: { mapSettings?: HotelMapSettings } = {}) {
   const t = useTranslations('Hotels'); const router = useRouter();
   const [job, setJob] = useState<SearchJob | null>(null);
   const [starting, setStarting] = useState(false); const [tracking, setTracking] = useState(false);
@@ -53,7 +54,7 @@ export function HotelSearchExperience() {
     {job?.result && <section className={styles.section} aria-label={t('results')}><h2 className={styles.heading}>{t('results')} · {job.result.offers.length}</h2><p className={styles.muted}>{t('discoveryLimit')}</p>
       {job.result.errors.map((entry, i) => <p role="alert" className={styles.error} key={i}>{entry.source} · {entry.checkIn} → {entry.checkOut}: {entry.message}</p>)}
       {running && <p className={styles.muted}>{t('progress', { completed: job.result.completed, total: job.result.total })}</p>}
-      {!job.result.offers.length ? (canTrack || job.status === 'unavailable') && <p className={styles.notice}>{t('noOffers')}</p> : <><form className={styles.form} onSubmit={(e) => e.preventDefault()}><HotelOptions value={options} onChange={setOptions} /></form><div className={`${styles.offers} ${styles.section}`}>{job.result.offers.map((offer) => <HotelOfferCard key={offer.id} offer={offer} busy={tracking || !canTrack} onTrack={() => void track(offer.id)} />)}</div></>}
+      {!job.result.offers.length ? (canTrack || job.status === 'unavailable') && <p className={styles.notice}>{t('noOffers')}</p> : <><form className={styles.form} onSubmit={(e) => e.preventDefault()}><HotelOptions value={options} onChange={setOptions} /></form><HotelMapResults key={job.id} offers={job.result.offers} busy={tracking || !canTrack} onTrack={id => void track(id)} settings={mapSettings} /></>}
     </section>}
   </>;
 }

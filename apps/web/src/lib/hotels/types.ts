@@ -26,12 +26,18 @@ export interface HotelSearch {
   filters: HotelFilters;
 }
 export interface HotelStay { checkIn: string; checkOut: string }
+export interface HotelLocation {
+  latitude: number;
+  longitude: number;
+  propertyId: string;
+}
 export interface HotelOffer extends HotelStay {
   id: string;
   source: HotelSource;
   propertyId: string;
   hotelName: string;
   address: string;
+  location?: HotelLocation | null;
   imageUrl: string | null;
   propertyUrl: string;
   bookingUrl: string;
