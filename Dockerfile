@@ -73,6 +73,11 @@ ENV NEXT_PUBLIC_COMMIT_SHA=${COMMIT_SHA}
 RUN npm run build --workspace=@flight-finder/web
 RUN npm run build --workspace=@flight-finder/cli
 
+FROM proddeps AS cliruntime
+COPY scripts/stage-cli-runtime.mjs /stage-cli-runtime.mjs
+COPY --from=builder /app/packages/cli/dist/metafile-esm.json /cli-metafile.json
+RUN node /stage-cli-runtime.mjs /app /cli-runtime /cli-metafile.json
+
 FROM docker.io/library/node:26-alpine AS runner
 RUN apk add --no-cache libc6-compat openssl chromium curl
 ENV NODE_ENV=production
@@ -97,13 +102,12 @@ ENV PATH="/home/node/.npm-global/bin:$PATH"
 
 WORKDIR /app
 COPY --chown=node:node scripts/update-cli.mjs /app/update-cli.mjs
+COPY --chown=node:node scripts/cli-retention.mjs /app/cli-retention.mjs
 COPY --chown=node:node cli-versions.json /app/cli-versions.json
 
 # Standalone server (includes traced node_modules)
 COPY --from=builder --chown=node:node /app/apps/web/.next/standalone ./
-COPY --from=builder --chown=node:node /app/apps/web/.next/static ./.next/static
 COPY --from=builder --chown=node:node /app/apps/web/.next/static ./apps/web/.next/static
-COPY --from=builder /app/apps/web/public ./public
 COPY --from=builder /app/apps/web/public ./apps/web/public
 
 # Prisma schema (the entrypoint db push reads it). The generated client and its
@@ -122,22 +126,15 @@ COPY --from=prismacli --chown=node:node /pcli/node_modules /app/prisma-cli/node_
 # because both come from the same lockfile.
 COPY --from=proddeps --chown=node:node /ext ./node_modules
 
-# Ink terminal UI (flight-finder-tui). The CLI's runtime deps (ink, react,
-# chalk, commander, ink-*, plus their transitives) are not in the lean
-# Next standalone trace, so we ship the full proddeps node_modules under
-# /app/packages/cli/node_modules. Two layers:
-#   1. Root proddeps node_modules — supplies ink, react, etc. (hoisted).
-#   2. Workspace local proddeps node_modules — overrides commander v13 and
-#      chalk v5 that npm could not hoist due to version conflicts at root.
-# Without layer 2 the wrapper picks up commander v2.20.3 which is ESM hostile.
+# Preserve the locked CLI dependency closure at its original hoisted/workspace
+# locations, sharing React identity with Ink and retaining dynamic package assets.
 COPY --from=builder --chown=node:node /app/packages/cli/dist /app/packages/cli/dist
 # Ship the cli package.json next to dist so Node finds "type":"module" when it
 # resolves dist/index.js. Without it Node walks up to the Next standalone
 # /app/package.json (no type field) and reparses every run as ESM, printing the
 # MODULE_TYPELESS_PACKAGE_JSON performance warning.
 COPY --from=builder --chown=node:node /app/packages/cli/package.json /app/packages/cli/package.json
-COPY --from=proddeps --chown=node:node /app/node_modules /app/packages/cli/node_modules
-COPY --from=proddeps --chown=node:node /app/packages/cli/node_modules /app/packages/cli/node_modules
+COPY --from=cliruntime --chown=node:node /cli-runtime /app
 RUN printf '#!/bin/sh\nexec node /app/packages/cli/dist/index.js "$@"\n' > /home/node/.npm-global/bin/flight-finder-tui \
     && chmod +x /home/node/.npm-global/bin/flight-finder-tui \
     && chown node:node /home/node/.npm-global/bin/flight-finder-tui
