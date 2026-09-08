@@ -1,4 +1,24 @@
 {
+  "CliModels": {
+    "update": "Mettre à jour la CLI vers {version}",
+    "updating": "Mise à jour de la CLI…",
+    "upToDate": "CLI à jour",
+    "updateHint": "Installer la version épinglée de la CLI ? L’authentification et les paramètres sont conservés. Les recherches en cours continuent avec leur version actuelle.",
+    "confirmUpdate": "Installer la mise à jour",
+    "keepVersion": "Conserver la version actuelle",
+    "updateComplete": "CLI {version} installée. Vérification des modèles disponibles…",
+    "updateUnknown": "Impossible de confirmer la mise à jour. Vérifiez la version installée avant de réessayer.",
+    "manualUpdate": "Pour une installation non gérée, exécutez sur l’hôte de la CLI :",
+    "title": "Modèle et raisonnement CLI", "version": "CLI installée · {version}", "connectionHint": "Utilise le compte connecté sur ce serveur.",
+    "recheck": "Revérifier la CLI", "loading": "Vérification de la CLI et des modèles disponibles…", "model": "Modèle", "reasoning": "Niveau de raisonnement",
+    "cliConfigured": "Utiliser la configuration CLI", "chooseModel": "Choisir un modèle", "savedSelection": "Sélection enregistrée", "default": "Valeur par défaut du modèle",
+    "modelDefault": "Valeur par défaut du modèle ({effort})", "unavailable": "Le modèle enregistré ne figure pas dans le catalogue actuel. Il n’a pas été remplacé. Revérifiez ou choisissez un modèle disponible avant le test.",
+    "liveCatalog": "Les modèles et niveaux proviennent de ce compte CLI. La valeur par défaut est celle indiquée par le modèle, pas une valeur imposée par le serveur.",
+    "configuredHint": "Votre sélection reste inchangée jusqu’à l’enregistrement. La configuration CLI conserve les réglages du serveur.",
+    "test": "Tester la sélection", "testing": "Test en cours…", "testHint": "Consomme le quota du compte CLI. N’enregistre aucun réglage et ne crée aucun suivi.",
+    "testPassed": "Réponse JSON vérifiée en {seconds}s. Les réglages ne sont pas enregistrés.", "testFailed": "Le test CLI a échoué.", "cancel": "Annuler le test", "cancelled": "Test annulé.",
+    "efforts": { "none": "Aucun", "minimal": "Minimal", "low": "Faible", "medium": "Moyen", "high": "Élevé", "xhigh": "Très élevé", "max": "Maximum", "ultra": "Ultra" }
+  },
   "Settings": {
     "title": "Paramètres",
     "backToHome": "Retour à l’accueil",

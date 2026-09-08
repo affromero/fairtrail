@@ -306,6 +306,7 @@ export async function parseFlightQuery(
     fullPrompt,
     {
       baseUrl: config?.customBaseUrl ?? undefined,
+      reasoningEffort: config?.reasoningEffort as import('./cli-model-types').ReasoningSelection | undefined,
       // Read the admin configured timeout from the DB so slow CPU bound local
       // models can be granted more than the 90s default (issue #86). Falls
       // through to the env var driven default inside each extract function

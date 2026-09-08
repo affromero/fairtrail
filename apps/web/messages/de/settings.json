@@ -1,4 +1,24 @@
 {
+  "CliModels": {
+    "update": "CLI auf {version} aktualisieren",
+    "updating": "CLI wird aktualisiert…",
+    "upToDate": "CLI ist aktuell",
+    "updateHint": "Die festgelegte CLI-Version installieren? Anmeldung und Einstellungen bleiben erhalten. Laufende Suchen verwenden weiterhin ihre bisherige Version.",
+    "confirmUpdate": "Update installieren",
+    "keepVersion": "Aktuelle Version behalten",
+    "updateComplete": "CLI {version} installiert. Verfügbare Modelle werden geprüft…",
+    "updateUnknown": "Update-Status konnte nicht bestätigt werden. Prüfe vor einem neuen Versuch die installierte Version.",
+    "manualUpdate": "Bei einer nicht verwalteten Installation auf dem CLI-Host ausführen:",
+    "title": "CLI-Modell und Denkleistung", "version": "Installierte CLI · {version}", "connectionHint": "Verwendet das auf diesem Server angemeldete Konto.",
+    "recheck": "CLI erneut prüfen", "loading": "CLI und verfügbare Modelle werden geprüft…", "model": "Modell", "reasoning": "Denkaufwand",
+    "cliConfigured": "CLI-Konfiguration verwenden", "chooseModel": "Modell wählen", "savedSelection": "Gespeicherte Auswahl", "default": "Modellstandard",
+    "modelDefault": "Modellstandard ({effort})", "unavailable": "Das gespeicherte Modell fehlt im aktuellen Katalog. Es wurde nicht ersetzt. Erneut prüfen oder vor dem Test ein verfügbares Modell wählen.",
+    "liveCatalog": "Modelle und Denkstufen stammen aus diesem CLI-Konto. Der Modellstandard verwendet den gemeldeten Standard des Modells, keine Serverüberschreibung.",
+    "configuredHint": "Die Auswahl bleibt bis zum Speichern unverändert. Die CLI-Konfiguration behält die Servereinstellungen bei.",
+    "test": "Auswahl testen", "testing": "Test läuft…", "testHint": "Verbraucht Kontingent des CLI-Kontos. Speichert keine Einstellungen und erstellt keine Tracker.",
+    "testPassed": "JSON-Antwort in {seconds}s verifiziert. Einstellungen wurden nicht gespeichert.", "testFailed": "CLI-Test fehlgeschlagen.", "cancel": "Test abbrechen", "cancelled": "Test abgebrochen.",
+    "efforts": { "none": "Keiner", "minimal": "Minimal", "low": "Niedrig", "medium": "Mittel", "high": "Hoch", "xhigh": "Sehr hoch", "max": "Maximum", "ultra": "Ultra" }
+  },
   "Settings": {
     "title": "Einstellungen",
     "backToHome": "Zur Startseite",

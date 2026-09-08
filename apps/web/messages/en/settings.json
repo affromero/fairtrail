@@ -1,4 +1,24 @@
 {
+  "CliModels": {
+    "update": "Update CLI to {version}",
+    "updating": "Updating CLI…",
+    "upToDate": "CLI is up to date",
+    "updateHint": "Install the pinned CLI version? Authentication and saved settings are preserved. Running searches continue on their existing version.",
+    "confirmUpdate": "Install update",
+    "keepVersion": "Keep current version",
+    "updateComplete": "CLI {version} installed. Rechecking available models…",
+    "updateUnknown": "Update status could not be confirmed. Recheck the installed version before retrying.",
+    "manualUpdate": "For an unmanaged installation, run on the CLI host:",
+    "title": "CLI model and reasoning", "version": "Installed CLI · {version}", "connectionHint": "Use the account signed in on this server.",
+    "recheck": "Recheck CLI", "loading": "Checking CLI and available models…", "model": "Model", "reasoning": "Thinking effort",
+    "cliConfigured": "Use CLI configuration", "chooseModel": "Choose a model", "savedSelection": "Saved selection", "default": "Model default",
+    "modelDefault": "Model default ({effort})", "unavailable": "The saved model is not in the current catalog. It has not been replaced. Recheck or choose an available model before testing.",
+    "liveCatalog": "Models and thinking levels come from this CLI account. Model default uses the selected model’s reported default, not a host override.",
+    "configuredHint": "Your saved selection stays unchanged until you save. CLI configuration preserves existing host settings.",
+    "test": "Test selection", "testing": "Testing…", "testHint": "Uses your CLI account allowance. Does not save settings or create trackers.",
+    "testPassed": "Verified JSON response in {seconds}s. Settings have not been saved.", "testFailed": "CLI test failed.", "cancel": "Cancel test", "cancelled": "Test cancelled.",
+    "efforts": { "none": "None", "minimal": "Minimal", "low": "Low", "medium": "Medium", "high": "High", "xhigh": "Extra high", "max": "Maximum", "ultra": "Ultra" }
+  },
   "Settings": {
     "title": "Settings",
     "backToHome": "Back to home",

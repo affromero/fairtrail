@@ -69,6 +69,7 @@ describe('ai-registry', () => {
     const savedEnv: Record<string, string | undefined> = {};
 
     beforeEach(() => {
+      mockSpawn.mockImplementation(() => { throw new Error('CLI unavailable'); });
       // Save and clear LLM env vars (setup.ts sets dummy keys globally)
       for (const key of ['ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'GOOGLE_AI_API_KEY', 'SELF_HOSTED']) {
         savedEnv[key] = process.env[key];
@@ -95,21 +96,25 @@ describe('ai-registry', () => {
       expect(providers).not.toContain('google');
     });
 
-    it('auto-detects CLI providers when binary and auth exist', async () => {
-      mockExecSync.mockReturnValue(Buffer.from('/usr/local/bin/claude'));
-      mockExistsSync.mockReturnValue(true);
+    it('detects CLI providers after a successful version and sign-in check', async () => {
+      mockSpawn.mockImplementation((_binary: string, args: string[]) => {
+        const proc = createFakeProc();
+        queueMicrotask(() => { proc.stdout?.emit('data', Buffer.from(args[0] === '--version' ? '2.1.165' : 'Logged in')); proc.emit('close', 0); });
+        return proc;
+      });
 
       const providers = await detectAvailableProviders();
 
       expect(providers).toContain('claude-code');
-      expect(mockExecSync).toHaveBeenCalledWith('which claude', {
-        stdio: 'ignore',
-      });
+      expect(providers).toContain('codex');
     });
 
-    it('skips CLI providers when binary exists but no auth', async () => {
-      mockExecSync.mockReturnValue(Buffer.from('/usr/local/bin/codex'));
-      mockExistsSync.mockReturnValue(false);
+    it('does not mark an installed but signed-out CLI ready', async () => {
+      mockSpawn.mockImplementation((_binary: string, args: string[]) => {
+        const proc = createFakeProc();
+        queueMicrotask(() => { proc.stdout?.emit('data', Buffer.from('0.153.4')); proc.emit('close', args[0] === '--version' ? 0 : 1); });
+        return proc;
+      });
 
       const providers = await detectAvailableProviders();
 

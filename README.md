@@ -333,6 +333,23 @@ Flight Finder needs an LLM for two things: parsing natural language queries and 
 - **API key users** -- paste a key, passed via env var, never written to disk.
 - **Local model users** -- select Ollama/llama.cpp/vLLM in the admin UI, type your model ID.
 
+**Managing subscription CLIs:** Setup, Settings, and Admin show the installed CLI
+version and let you recheck availability without replacing saved choices. Codex
+model and thinking choices come from the signed-in account. “Use CLI configuration”
+preserves host settings; “Model default” uses the selected model’s reported effort.
+Testing a selection uses the account allowance without saving settings or creating
+trackers. Ready CLIs appear first in the provider list; project defaults are unchanged.
+
+After setup, administrators can update managed Docker CLIs from the same picker.
+The updater installs the exact version in `cli-versions.json` (or the administrator’s
+`CODEX_VERSION` / `CLAUDE_CODE_VERSION` override), verifies it, then switches the
+executable atomically. Authentication and saved settings are untouched. Existing
+searches keep their previous executable, and a failed installation leaves it available.
+Container startup also reconciles installed versions when `INSTALL_CLI_PROVIDERS=true`.
+Unmanaged installations show an exact command to run on the CLI host instead.
+Package-manager restrictions still apply; the updater does not bypass release-age
+policies. If an update response is interrupted, recheck the version before retrying.
+
 **Picking a local model (Ollama, llama.cpp, vLLM):**
 
 The parse step needs a model that follows strict JSON instructions. Tiny models tend to ramble or refuse. Stick with current generation families that have reliable structured output. Qwen3 / Qwen3.5 currently have the most stable tool calling and JSON behaviour in the small model class; Gemma 3n / Gemma 4 are strong alternatives with native function calling on the laptop tier.

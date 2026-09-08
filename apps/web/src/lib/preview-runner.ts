@@ -181,6 +181,7 @@ export type RouteResult = RouteResultPayload;
  * added so extractPrices can avoid its own DB read.
  */
 export interface ExtractionContext {
+  reasoningEffort?: import('./scraper/cli-model-types').ReasoningSelection;
   provider: string;
   model: string;
   customBaseUrl: string | null;
@@ -350,6 +351,7 @@ async function scrapeGoogleOneWayLeg(
       provider: params.context.provider,
       model: params.context.model,
       customBaseUrl: params.context.customBaseUrl,
+      reasoningEffort: params.context.reasoningEffort,
       extractTimeoutSeconds: params.context.extractTimeoutSeconds,
       apiKey: params.context.apiKey,
     },
@@ -477,6 +479,7 @@ async function scrapeRoute(params: ScrapeRouteParams): Promise<PriceData[]> {
         provider: params.context.provider,
         model: params.context.model,
         customBaseUrl: params.context.customBaseUrl,
+        reasoningEffort: params.context.reasoningEffort,
         extractTimeoutSeconds: params.context.extractTimeoutSeconds,
         apiKey: params.context.apiKey,
       }
@@ -592,6 +595,7 @@ export async function runPreview(
     provider,
     model,
     customBaseUrl: config?.customBaseUrl ?? null,
+    reasoningEffort: config?.reasoningEffort as import('./scraper/cli-model-types').ReasoningSelection | undefined,
     extractTimeoutSeconds: config?.extractTimeoutSeconds ?? null,
     apiKey: resolveApiKey(provider, config),
     costs: getModelCosts(provider, model),

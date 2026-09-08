@@ -1,0 +1,4 @@
+{
+  "codex": { "package": "@openai/codex", "binary": "codex", "version": "0.153.4", "override": "CODEX_VERSION" },
+  "claude-code": { "package": "@anthropic-ai/claude-code", "binary": "claude", "version": "2.1.165", "override": "CLAUDE_CODE_VERSION" }
+}

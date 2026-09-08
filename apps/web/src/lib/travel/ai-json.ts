@@ -21,6 +21,7 @@ export async function travelJson(system: string, input: string, operation = 'hot
   control?.signal.throwIfAborted();
   const result = await backend.extract(resolveApiKey(provider, config), model, `${system}\nIMPORTANT OUTPUT ENVELOPE: wrap the required object as {"result":[OBJECT]}. Exactly one object in result.`, input, {
     baseUrl: config?.customBaseUrl ?? undefined,
+    reasoningEffort: config?.reasoningEffort as import('../scraper/cli-model-types').ReasoningSelection | undefined,
     timeoutMs: control ? Math.min(config?.extractTimeoutSeconds ?? 90, 120) * 1000 : (config?.extractTimeoutSeconds ?? 90) * 1000,
     ...(control ? { signal: control.signal } : {}),
     ...(LOCAL_PROVIDERS.has(provider) ? { responseFormat: 'json_object' as const } : {}),

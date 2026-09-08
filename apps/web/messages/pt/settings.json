@@ -1,4 +1,24 @@
 {
+  "CliModels": {
+    "update": "Atualizar CLI para {version}",
+    "updating": "Atualizando CLI…",
+    "upToDate": "CLI atualizada",
+    "updateHint": "Instalar a versão fixada da CLI? A autenticação e as configurações são preservadas. As pesquisas em andamento continuam com a versão atual.",
+    "confirmUpdate": "Instalar atualização",
+    "keepVersion": "Manter versão atual",
+    "updateComplete": "CLI {version} instalada. Verificando os modelos disponíveis…",
+    "updateUnknown": "Não foi possível confirmar a atualização. Verifique a versão instalada antes de tentar novamente.",
+    "manualUpdate": "Para uma instalação não gerenciada, execute no servidor da CLI:",
+    "title": "Modelo e raciocínio da CLI", "version": "CLI instalada · {version}", "connectionHint": "Usa a conta ligada neste servidor.",
+    "recheck": "Verificar CLI", "loading": "A verificar a CLI e os modelos disponíveis…", "model": "Modelo", "reasoning": "Nível de raciocínio",
+    "cliConfigured": "Usar configuração da CLI", "chooseModel": "Escolher modelo", "savedSelection": "Seleção guardada", "default": "Predefinição do modelo",
+    "modelDefault": "Predefinição do modelo ({effort})", "unavailable": "O modelo guardado não consta do catálogo atual. Não foi substituído. Verifique novamente ou escolha um modelo disponível antes do teste.",
+    "liveCatalog": "Os modelos e níveis vêm desta conta CLI. A predefinição usa o valor indicado pelo modelo, não uma substituição do servidor.",
+    "configuredHint": "A seleção permanece inalterada até guardar. A configuração da CLI mantém as definições do servidor.",
+    "test": "Testar seleção", "testing": "A testar…", "testHint": "Consome a quota da conta CLI. Não guarda definições nem cria acompanhamentos.",
+    "testPassed": "Resposta JSON verificada em {seconds}s. As definições não foram guardadas.", "testFailed": "O teste da CLI falhou.", "cancel": "Cancelar teste", "cancelled": "Teste cancelado.",
+    "efforts": { "none": "Nenhum", "minimal": "Mínimo", "low": "Baixo", "medium": "Médio", "high": "Alto", "xhigh": "Muito alto", "max": "Máximo", "ultra": "Ultra" }
+  },
   "Settings": {
     "title": "Configurações",
     "backToHome": "Voltar ao início",

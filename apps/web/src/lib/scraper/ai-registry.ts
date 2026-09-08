@@ -10,6 +10,9 @@ import {
 import { prisma } from '@/lib/prisma';
 import { decryptSecret } from '@/lib/secret-crypto';
 import { cliOutputControl, linkCliCancellation } from './cli-cancellation';
+import { cliEnvironment } from './cli-environment';
+import { cliReasoningArgs, probeCli } from './cli-models';
+import type { ReasoningSelection } from './cli-model-types';
 
 // Client-safe metadata lives in provider-metadata.ts so the settings/setup/admin
 // client pages can render the provider UI without pulling this module (and the
@@ -79,6 +82,7 @@ export interface ExtractionResult {
 }
 
 export interface ExtractOptions {
+  reasoningEffort?: ReasoningSelection;
   baseUrl?: string;
   signal?: AbortSignal;
   /**
@@ -331,7 +335,7 @@ export const EXTRACTION_PROVIDERS: Record<string, ProviderConfig> = {
 
       const result = await new Promise<string>((resolve, reject) => {
         options?.signal?.throwIfAborted();
-        const env = { ...process.env };
+        const env = cliEnvironment('claude-code');
         // Force the CLI onto its own Max-subscription auth. Drop the API key AND
         // any inherited base-URL / auth-token override that would otherwise
         // redirect the spawned `claude` at a different endpoint (a host proxy,
@@ -414,6 +418,14 @@ export const EXTRACTION_PROVIDERS: Record<string, ProviderConfig> = {
       options?.signal?.throwIfAborted();
       const tmpDirectory = mkdtempSync(join(os.tmpdir(), 'codex-'));
       const tmpFile = join(tmpDirectory, 'output.txt');
+      const reasoningArgs = await cliReasoningArgs('codex', model, options?.reasoningEffort).catch(error => {
+        rmSync(tmpDirectory, { recursive: true, force: true });
+        throw error;
+      });
+      if (options?.signal?.aborted) {
+        rmSync(tmpDirectory, { recursive: true, force: true });
+        options.signal.throwIfAborted();
+      }
 
       const result = await new Promise<string>((resolve, reject) => {
         options?.signal?.throwIfAborted();
@@ -428,12 +440,14 @@ export const EXTRACTION_PROVIDERS: Record<string, ProviderConfig> = {
           '--skip-git-repo-check',
           '--ephemeral',
           ...(model && model !== 'codex' ? ['--model', model] : []),
+          ...reasoningArgs,
           '-s', 'read-only',
           '-o', tmpFile,
         ], {
           timeout: 240_000,
           ...(options?.signal ? { detached: process.platform !== 'win32' } : {}),
-          env: { ...process.env },
+          env: cliEnvironment('codex'),
+          cwd: tmpDirectory,
         });
         const outputControl = cliOutputControl(options?.signal);
         const unlink = linkCliCancellation(proc, outputControl.signal);
@@ -486,25 +500,6 @@ export const EXTRACTION_PROVIDERS: Record<string, ProviderConfig> = {
     },
   },
 };
-
-/** Check that a CLI provider has auth configured, not just the binary installed */
-async function hasCliAuth(provider: string): Promise<boolean> {
-  const { existsSync } = await import(/* webpackIgnore: true */ 'fs');
-  const { homedir } = await import(/* webpackIgnore: true */ 'os');
-  const { join } = await import(/* webpackIgnore: true */ 'path');
-  const home = homedir();
-
-  switch (provider) {
-    case 'codex':
-      return existsSync(join(home, '.codex', 'auth.json'));
-    case 'claude-code':
-      return existsSync(join(home, '.claude.json'))
-        || existsSync(join(home, '.claude', 'credentials.json'))
-        || existsSync(join(home, '.claude', '.credentials.json'));
-    default:
-      return false;
-  }
-}
 
 /**
  * Ping a local provider to check if it's actually reachable.
@@ -562,9 +557,7 @@ export async function detectAvailableProviders(
     const cliBinary = CLI_PROVIDERS[key];
     if (cliBinary) {
       try {
-        const { execSync } = await import('child_process');
-        execSync(`which ${cliBinary}`, { stdio: 'ignore' });
-        if (await hasCliAuth(key)) {
+        if ((await probeCli(key)).authenticated) {
           available.push(key);
         }
       } catch {
