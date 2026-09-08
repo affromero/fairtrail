@@ -51,7 +51,11 @@ it.each([
   const methods: string[] = [];
   const directory = await mkdtemp(join(tmpdir(), 'car-browser-screen-'));
   const jobs = new Set<string>(); let loseRefreshReply = true;
+  let scope = 'user:alice', delayDetail = false;
+  let releaseDetail: (() => void) | undefined;
   let tracker = { ...carTrackerViewFixture(), label: 'Heathrow rental', latestPriceMinor: 12345 };
+  tracker.search.pickup.providerNames = { discovercars: 'Long terminal collection area for the selected rental' };
+  tracker.search.dropoff.providerNames = { discovercars: 'Separate vehicle return entrance' };
   const deliveries = Array.from({ length: 8 }, (_, index) => ({ id: `delivery-${index}`, trackerId: tracker.id, status: index === 7 ? 'accepted' : 'retrying', createdAt: tracker.createdAt, acknowledgedChannels: index === 7 ? 2 : 1, nextAttemptAt: index === 7 ? null : tracker.createdAt }));
   const server = createServer(async (request, response) => {
     methods.push(request.method!);
@@ -67,7 +71,8 @@ it.each([
       response.writeHead(200, { 'Content-Type': 'application/json' });
       response.end(JSON.stringify({ ok: true, data: { tracker } })); return;
     }
-    const data = request.url === '/api/cars/session' ? { scope: 'user:alice', isAdmin: false }
+    if (delayDetail && request.url === `/api/cars/${tracker.id}`) await new Promise<void>(resolve => { releaseDetail = resolve; });
+    const data = request.url === '/api/cars/session' ? { scope, isAdmin: false }
       : request.url === `/api/cars/${tracker.id}` ? { tracker, snapshots: [], runs: [], latestObservation: null, deliveries, notificationsConfigured: false, canReassign: false }
         : { trackers: [tracker], nextCursor: null };
     response.writeHead(200, { 'Content-Type': 'application/json' });
@@ -94,6 +99,15 @@ it.each([
     await vi.waitFor(() => expect(stripVTControlCharacters(output)).toContain('PRICE EVIDENCE'));
     expect(stripVTControlCharacters(output)).toContain('No observations yet');
     expect(stripVTControlCharacters(output)).toContain('No notification channel configured');
+    output = ''; stdin.push('l');
+    await vi.waitFor(() => expect(stripVTControlCharacters(output)).toContain('RENTAL LOCATIONS'));
+    expect(stripVTControlCharacters(output)).toContain('Long terminal collection area');
+    expect(stripVTControlCharacters(output)).toContain('Separate vehicle return entrance');
+    for (const key of ['p', 'c', 'x']) { stdin.push(key); await instance.waitUntilRenderFlush(); }
+    expect(browser.getSnapshot().confirmation).toBeNull();
+    expect(methods.every(method => method === 'GET')).toBe(true);
+    output = ''; stdin.push('\u001b');
+    await vi.waitFor(() => expect(stripVTControlCharacters(output)).toContain('PRICE EVIDENCE'));
     output = ''; stdin.push('d');
     await vi.waitFor(() => expect(stripVTControlCharacters(output)).toContain('NOTIFICATION DELIVERY'));
     expect(stripVTControlCharacters(output)).toContain('Waiting to retry');
@@ -130,6 +144,12 @@ it.each([
     }
     stdout.rows = 16; stdout.columns = 42; stdout.emit('resize');
     await instance.waitUntilRenderFlush();
+    output = ''; stdin.push('l');
+    await vi.waitFor(() => expect(stripVTControlCharacters(output)).toContain('RENTAL LOCATIONS'));
+    for (let index = 0; index < 25; index++) { stdin.push('\u001b[B'); await instance.waitUntilRenderFlush(); }
+    expect(stripVTControlCharacters(output).replace(/\s+/g, ' ')).toContain('Review the rental conditions');
+    output = ''; stdin.push('\u001b');
+    await vi.waitFor(() => expect(stripVTControlCharacters(output)).toContain('PRICE EVIDENCE'));
     output = ''; stdin.push('d');
     await vi.waitFor(() => expect(stripVTControlCharacters(output)).toContain('NOTIFICATION DELIVERY'));
     expect(stripVTControlCharacters(output)).toContain('1 of 8');
@@ -137,6 +157,16 @@ it.each([
     await vi.waitFor(() => expect(stripVTControlCharacters(output)).toContain('8 of 8'));
     output = ''; stdin.push('\u001b');
     await vi.waitFor(() => expect(stripVTControlCharacters(output)).toContain('YOUR TRACKERS'));
+    stdin.push('\r'); await vi.waitFor(() => expect(browser.getSnapshot().detail).not.toBeNull());
+    stdin.push('l'); await instance.waitUntilRenderFlush();
+    delayDetail = true;
+    const reloading = browser.reload();
+    await vi.waitFor(() => expect(releaseDetail).toBeDefined());
+    scope = 'user:bob'; output = ''; releaseDetail!();
+    await reloading; await instance.waitUntilRenderFlush();
+    expect(browser.getSnapshot()).toMatchObject({ hidden: true, detail: null, trackers: [] });
+    expect(stripVTControlCharacters(output)).not.toContain('RENTAL LOCATIONS');
+    expect(stripVTControlCharacters(output)).not.toContain('Separate vehicle return entrance');
     stdin.push('q'); await instance.waitUntilExit();
     expect(browser.getSnapshot()).toMatchObject({ hidden: true, trackers: [], detail: null });
     expect(methods.filter(method => method !== 'GET')).toEqual(editing ? ['POST', 'POST', 'PATCH'] : []);

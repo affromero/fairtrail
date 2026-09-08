@@ -466,6 +466,8 @@ does not require a new review or an unexpired original quote.
 
 `browse` opens a keyboard-driven tracker list with paged results and price
 evidence. Enter opens history; arrow keys scroll, and `r` reloads server state.
+Press `l` in a tracker to review pickup and return search locations, local dates,
+and timezones. Arrow keys scroll the location view; Escape returns to history.
 In a tracker, `p` pauses or resumes, `c` checks prices, and `x` deletes it.
 Each change shows the account, target, and saved revision and requires typing
 `yes`. Escape dismisses the confirmation without sending anything.

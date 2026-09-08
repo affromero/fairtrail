@@ -2,6 +2,7 @@ import React, { useEffect, useState, useSyncExternalStore } from 'react';
 import { Box, Text, useApp, useInput, useStdout, useStderr } from 'ink';
 import TextInput from 'ink-text-input';
 import { CarConfirmation } from './CarConfirmation.js';
+import { CarLocations } from './CarLocations.js';
 import { CarBrowser as Browser, carTerminalText } from '../lib/car-browser.js';
 import { formatCarMoney } from '../../../../apps/web/src/lib/cars/money.js';
 
@@ -11,6 +12,8 @@ export function CarBrowser({ browser, signal }: { browser: Browser; signal: Abor
   const { write } = useStderr();
   const [selected, setSelected] = useState(0), [offset, setOffset] = useState(0);
   const [deliveryMode, setDeliveryMode] = useState(false);
+  const [locationMode, setLocationMode] = useState(false);
+  useEffect(() => { setLocationMode(false); }, [state.scope, state.hidden, state.detail?.tracker.id]);
   const [recoveryForm, setRecoveryForm] = useState(false), [receiptPath, setReceiptPath] = useState('');
   const enteringReceipt = recoveryForm && !state.hidden;
   const [rows, setRows] = useState(stdout.rows || 24);
@@ -35,12 +38,14 @@ export function CarBrowser({ browser, signal }: { browser: Browser; signal: Abor
     if (key.ctrl && input === 'c' || input === 'q' && !enteringReceipt && !state.confirmation) { browser.close(); exit(); return; }
     if (state.mutationBusy) return;
     if (state.confirmation) { if (key.escape) browser.cancelConfirmation(); return; }
+    if (locationMode && state.detail && !state.hidden) { if (key.escape) setLocationMode(false); return; }
     if (enteringReceipt) { if (key.escape) setRecoveryForm(false); return; }
     if (input === 'r') { void browser.reload(); return; }
     if (state.busy) return;
     if (input === 't' && !state.hidden) { setReceiptPath(''); setRecoveryForm(true); return; }
     if (key.escape && state.detail) { setOffset(0); void browser.back(); return; }
     if (state.detail) {
+      if (input === 'l') { setLocationMode(true); return; }
       if (input === 'd') { setDeliveryMode(value => !value); setOffset(0); }
       if (input === 'p') browser.requestAction(state.detail.tracker.active ? 'pause' : 'resume');
       if (input === 'c') browser.requestAction('refresh');
@@ -57,6 +62,7 @@ export function CarBrowser({ browser, signal }: { browser: Browser; signal: Abor
   });
   const price = (minor: number | null, currency: string) => minor === null ? 'No eligible price' : formatCarMoney({ minor, currency });
   const start = Math.max(0, selection - available + 1);
+  if (locationMode && state.detail && !state.hidden && !state.confirmation) return <CarLocations key={`${state.scope}:${state.detail.tracker.id}:${state.detail.tracker.revision}`} tracker={state.detail.tracker} />;
   if (state.confirmation) return <Box flexDirection="column" paddingX={1}>
     <CarConfirmation confirmation={state.confirmation} rows={rows} onConfirm={() => { void browser.confirm(); }} />
   </Box>;
@@ -102,7 +108,7 @@ export function CarBrowser({ browser, signal }: { browser: Browser; signal: Abor
       </> : snapshots.slice(historyOffset, historyOffset + available).map(snapshot => <Text key={snapshot.id} wrap="truncate-end">
         {snapshot.observedAt.slice(0, 16).replace('T', ' ')} UTC · {price(snapshot.totalMinor, snapshot.currency)} · {snapshot.eligible ? 'Eligible' : `Excluded: ${carTerminalText(snapshot.reasons.join('; '))}`} · {carTerminalText(snapshot.source)}
       </Text>)}
-      <Text dimColor>↑↓ history · d {deliveryMode ? 'prices' : 'deliveries'} · Esc trackers · r reload status</Text>
+      <Text dimColor>↑↓ history · l locations · d {deliveryMode ? 'prices' : 'deliveries'} · Esc trackers · r reload status</Text>
       <Text dimColor>p pause/resume · c check prices · x delete (confirmation required)</Text>
     </>}
     {!state.confirmation && !enteringReceipt && state.recoveries.some(row => row.outcome !== 'confirmed') && <Text color="#c1272d">Recovery receipts need review. Press t to select one.</Text>}

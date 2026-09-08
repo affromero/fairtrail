@@ -2,15 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Box, Text, useInput, useStdout } from 'ink';
 import TextInput from 'ink-text-input';
 import { carTerminalText, type CarBrowserConfirmation } from '../lib/car-browser.js';
-
-function wrapLine(line: string, width: number) {
-  const lines: string[] = [];
-  while (line.length > width) {
-    const space = line.lastIndexOf(' ', width), end = space > 0 ? space : width;
-    lines.push(line.slice(0, end)); line = line.slice(end + (space > 0 ? 1 : 0));
-  }
-  return [...lines, line];
-}
+import { carDocumentLines } from '../lib/car-document.js';
 
 export function CarConfirmation({ confirmation, rows, onConfirm }: { confirmation: CarBrowserConfirmation; rows: number; onConfirm: () => void }) {
   const { stdout } = useStdout();
@@ -32,11 +24,8 @@ export function CarConfirmation({ confirmation, rows, onConfirm }: { confirmatio
     ...(operation.kind === 'delete' ? ['Deletes the tracker and its price history. This cannot be undone.'] : []),
     ...(operation.kind === 'protect' ? ['Rechecks the same base rental with the saved protection choice and a fresh total. Does not book a car or buy coverage.'] : []),
     'Saved payload:', JSON.stringify(operation.body, null, 2),
-  ].join('\n');
-  // ASCII escapes preserve exact payload characters and predictable terminal cell widths.
-  const escaped = document.split('').map(character => character.charCodeAt(0) > 126
-    ? `\\u${character.charCodeAt(0).toString(16).padStart(4, '0')}` : character).join('');
-  const lines = escaped.split('\n').flatMap(line => wrapLine(line, width));
+  ];
+  const lines = carDocumentLines(document.flatMap(line => line.split('\n')), width);
   const start = Math.min(offset, Math.max(0, lines.length - count));
   useInput((input, key) => {
     if (key.upArrow) setOffset(Math.max(0, start - 1));
