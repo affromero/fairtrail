@@ -163,9 +163,10 @@
 
 .providers {
   width: 100%;
-  max-width: 560px;
-  text-align: center;
-  margin-top: 1.5rem;
+  max-width: 672px;
+  text-align: left;
+  padding: 1.25rem 0;
+  border-bottom: 1px solid var(--border);
 }
 
 .providersTitle {
@@ -173,7 +174,19 @@
   font-size: 1rem;
   font-weight: 600;
   color: var(--text);
-  margin-bottom: 0.75rem;
+  margin-bottom: 0;
+  cursor: pointer;
+}
+
+.providers[open] > summary {
+  margin-bottom: 1.25rem;
+}
+
+.providers > summary:focus-visible,
+.notSection > summary:focus-visible,
+.selfHost > summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 6px;
 }
 
 .providerGrid {
@@ -295,8 +308,22 @@
 /* Demo GIF (flight-finder.org) */
 .demo {
   width: 100%;
-  max-width: 860px;
-  padding: 0 1.5rem 2rem;
+  margin: 2rem 0;
+}
+
+.publicHero {
+  max-width: 1040px;
+  padding-bottom: 0;
+  gap: 1rem;
+}
+
+.publicHero .tagline {
+  text-align: center;
+  text-wrap: balance;
+}
+
+.publicHero .travelOverview {
+  max-width: 672px;
 }
 
 .demoImg {
@@ -399,21 +426,156 @@
 /* How it works (flight-finder.org) */
 .how {
   width: 100%;
-  max-width: 720px;
+  max-width: 1040px;
   padding: 3rem 1.5rem 4rem;
   border-top: 1px solid var(--border);
 }
 
 .steps {
-  display: flex;
-  flex-direction: column;
-  gap: 1.25rem;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1.5rem;
 }
 
 .step {
   display: flex;
+  flex-direction: column;
   gap: 1rem;
-  align-items: flex-start;
+  min-width: 0;
+}
+
+.stepHeading {
+  order: -1;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.stepHeading h3 {
+  margin: 0;
+}
+
+.stepVisual {
+  width: 100%;
+  height: 190px;
+  overflow: hidden;
+  color: var(--accent);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+}
+
+.terminalBar {
+  display: flex;
+  gap: 5px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.terminalBar span {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--muted);
+}
+
+.terminalBody {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 12px 8px;
+  padding: 22px 14px;
+  font-size: clamp(0.5625rem, 0.9vw, 0.6875rem);
+  line-height: 1.8;
+}
+
+.terminalPrompt {
+  color: var(--muted);
+}
+
+.terminalSuccess {
+  grid-column: 2;
+}
+
+.terminalCursor {
+  display: inline-block;
+  width: 6px;
+  height: 12px;
+  margin-left: 8px;
+  background: currentColor;
+  vertical-align: middle;
+}
+
+.routeVisual,
+.chartVisual {
+  padding: 20px;
+}
+
+.routeCodes {
+  display: flex;
+  justify-content: space-between;
+  font-size: 1.75rem;
+  letter-spacing: 0.04em;
+  color: var(--text);
+}
+
+.routeVisual svg,
+.chartVisual svg {
+  display: block;
+  width: 100%;
+}
+
+.routeVisual svg {
+  height: 60px;
+}
+
+.routeDates {
+  display: flex;
+  justify-content: space-between;
+  border-top: 1px dashed var(--border);
+  padding-top: 12px;
+  font-size: 0.6875rem;
+  color: var(--text-secondary);
+}
+
+.chartPrice {
+  font-size: 1rem;
+  color: var(--muted);
+}
+
+.chartPrice span {
+  color: var(--text);
+}
+
+.chartVisual svg {
+  height: 125px;
+}
+
+.chartGrid {
+  stroke: var(--border);
+  stroke-dasharray: 3 5;
+}
+
+.chartLine {
+  stroke: currentColor;
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+@media (max-width: 700px) {
+  .steps {
+    grid-template-columns: 1fr;
+    gap: 2rem;
+  }
+
+  .stepVisual {
+    height: 200px;
+  }
+
+  .terminalBody {
+    font-size: 0.75rem;
+  }
 }
 
 .stepNumber {
@@ -436,7 +598,7 @@
 .notSection {
   width: 100%;
   max-width: 720px;
-  padding: 3rem 1.5rem 4rem;
+  padding: 1.5rem;
   border-top: 1px solid var(--border);
 }
 
@@ -469,8 +631,20 @@
 .selfHost {
   width: 100%;
   max-width: 720px;
-  padding: 3rem 1.5rem 4rem;
+  padding: 1.5rem;
   border-top: 1px solid var(--border);
+}
+
+.notSection > summary,
+.selfHost > summary {
+  margin-bottom: 0;
+  cursor: pointer;
+  font-size: 1rem;
+}
+
+.notSection[open] > summary,
+.selfHost[open] > summary {
+  margin-bottom: 1.5rem;
 }
 
 .selfHostLead {
