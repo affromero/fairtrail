@@ -25,6 +25,24 @@ beforeEach(() => { sessionStorage.clear(); });
 afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
 describe('rental results and honest tracking controls', () => {
+  it.each(Object.keys(locales) as (keyof typeof locales)[])('shows estimated selected seats without permitting tracking in %s', async locale => {
+    const search = carSearchFixture(), offer = carOfferFixture(), copy = locales[locale].Cars;
+    search.extras.childSeats = [{ category: 'child', quantity: 2 }];
+    const identity = { kind: 'child_seat' as const, category: 'child' as const, quantity: 2, productId: '4_17671' };
+    const unknown = { ...offer.available, value: null, status: 'unknown' as const, text: 'Optional extras are subject to supplier availability.' };
+    offer.contract.extras.push(identity);
+    offer.extras.push({ ...identity, availability: unknown, eligibility: unknown, included: { ...offer.available, value: false }, chargeId: 'selected-seats' });
+    offer.charges.push({ id: 'selected-seats', label: 'Child seat (9-18 kg) (2)', kind: 'extra', payment: 'pickup', amount: { ...offer.total, value: { currency: 'GBP', minor: 7794 }, status: 'estimated', text: 'Prices are subject to change.' } });
+    offer.total = { ...offer.total, value: { currency: 'GBP', minor: offer.total.value!.minor + 7794 }, status: 'estimated' };
+    render(<Results search={search} report={carReportFixture([offer])} locale={locale} />);
+    expect(screen.getByText(copy.unverifiedTotal)).toBeVisible();
+    expect(screen.getByRole('button', { name: copy.track })).toBeDisabled();
+    expect(screen.queryByText(copy.verifiedTotal)).not.toBeInTheDocument();
+    await userEvent.setup().click(screen.getByText(copy.details));
+    expect(screen.getByRole('heading', { name: `${copy.child} × 2` })).toBeVisible();
+    expect(screen.getByText(`Child seat (9-18 kg) (2) · ${copy.payPickup}`).closest('summary')).toHaveTextContent(copy.estimated);
+    expect(screen.getByRole('link', { name: copy.viewProvider })).toBeVisible();
+  });
   it('shows the offered provider pickup and return labels before tracking without mixing providers', () => {
     const search = carSearchFixture();
     search.pickup.providerNames = { discovercars: 'Heathrow Terminal pickup', autoeurope: 'Other provider pickup' };

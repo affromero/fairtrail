@@ -8,6 +8,8 @@ import { verifyDiscoverCarsLocalTime } from './discovercars-time';
 import { discoverCarsFixedDeposit } from './discovercars-deposit';
 import { carAddressStationIdentity } from './station-identity';
 import { carRequirementTerms } from './requirements';
+import { discoverCarsRequestedExtras } from './discovercars-extras';
+import type { DiscoverCarsPriceLine } from './discovercars-price-lines';
 import { CarError, type CarCandidate, type CarCharge, type CarEvidence, type CarExtraQuote, type CarMoney, type CarOffer, type CarRequirement, type CarSearch } from './types';
 
 const text = (value: unknown) => carText(value, 12000, 'provider field');
@@ -71,7 +73,9 @@ export function extractDiscoverCarsOffer(capture: DiscoverCarsCapture, search: C
     let coverageTerms = section('protection');
     if (search.driver.residenceCountry === 'US' && /USA residents must use their own Third Party Liability and Collision Damage Waiver insurance policies\./i.test(coverageTerms)) throw new CarError('US residents must provide their own liability and collision insurance; coverage eligibility could not be verified');
     if (/need to purchase insurance at the counter/i.test(coverageTerms)) throw new CarError('Required collision or theft cover is not included; own-cover proof or an unpriced counter purchase is required');
-    if (search.extras.childSeats.length || search.extras.additionalDrivers.length) throw new CarError(`Selected local extras are request-only: ${section('optional-extras-and-services')}`);
+    const requestedExtras = discoverCarsRequestedExtras(search), localExtras = capture.localExtras;
+    if (requestedExtras.length && (!localExtras || 'error' in localExtras)) throw new CarError(localExtras && 'error' in localExtras ? localExtras.error : 'Requested local extras were not selected in the provider quote');
+    if (!requestedExtras.length && localExtras) throw new CarError('Provider captured unrequested local extras');
     if (raw.coverage === null || raw.coverage === undefined) throw new CarError('The provider did not disclose whether optional protection was selected; this quote could not be verified');
     if (carRecord(raw.coverage).isChecked !== false) throw new CarError('Provider protection selection is not verified as unselected');
     if (rows(raw.extras).some(item => item.selectedCount !== 0)) throw new CarError('Provider added an unrequested extra');
@@ -102,6 +106,33 @@ export function extractDiscoverCarsOffer(capture: DiscoverCarsCapture, search: C
     let total = money(carRecord(carRecord(blocks.total).client), search.currency);
     if (charges.length !== capture.priceLines.length || sumCarMoney(charges.map(item => item.amount.value!), search.currency).minor !== total.minor || visibleMoney(capture.visibleTotal, search.currency).minor !== total.minor) throw new CarError('Visible rental total and charges do not reconcile');
     const extras: CarExtraQuote[] = [];
+    const reconcile = (lines: DiscoverCarsPriceLine[], visibleTotal: string) => {
+      const key = (payment: string, label: string, minor: number) => JSON.stringify([payment, label.replace(/\s+/g, ' ').trim(), minor]);
+      const actual = lines.map(line => key(line.payment, line.label, visibleMoney(line.amount, search.currency).minor)).sort();
+      const expected = charges.map(charge => key(charge.payment, charge.label, charge.amount.value!.minor)).sort();
+      if (JSON.stringify(actual) !== JSON.stringify(expected) || visibleMoney(visibleTotal, search.currency).minor !== total.minor) throw new CarError('Selected extras and rental total do not reconcile');
+    };
+    if (localExtras && 'selections' in localExtras) {
+      if (localExtras.offerId !== raw.offerId || !Number.isFinite(Date.parse(localExtras.observedAt)) || Math.abs(Date.parse(localExtras.observedAt) - Date.parse(capture.observedAt)) > 300_000 || localExtras.selections.length !== requestedExtras.length) throw new CarError('Local-extra selection does not belong to this quote');
+      const terms = prose(localExtras.terms, 'local-extra conditions');
+      for (const requested of requestedExtras) {
+        const selections = localExtras.selections.filter(item => item.id === requested.id), selection = selections[0];
+        const products = rows(raw.extras).filter(item => item.id === requested.id), product = products[0];
+        if (selections.length !== 1 || !selection || products.length !== 1 || !product || selection.productId !== product.idWithMap || !selection.productId.startsWith(`${requested.id}_`) || selection.kind !== requested.kind || selection.category !== requested.category || selection.quantity !== requested.quantity || selection.label !== requested.label) throw new CarError('Selected local-extra identities or quantities disagree');
+        if (product.payable !== 'atPickUp' || product.freeSelectable !== 0 || typeof product.maxQuantity !== 'number' || !Number.isSafeInteger(product.maxQuantity) || product.maxQuantity < requested.quantity) throw new CarError('Local-extra payment, inclusion or quantity could not be verified');
+        const unit = money(product, search.currency);
+        if (!selection.visibleUnitPrice.endsWith(' for rental period') || visibleMoney(selection.visibleUnitPrice.replace(/ for rental period$/, ''), search.currency).minor !== unit.minor) throw new CarError('Visible local-extra price disagrees with the rendered product');
+        const amount = sumCarMoney(Array.from({ length: requested.quantity }, () => unit), search.currency);
+        const id = `local-extra-${selection.productId}`, label = requested.quantity === 1 ? requested.label : `${requested.label} (${requested.quantity})`;
+        charges.push({ id, label, kind: 'extra', payment: 'pickup', amount: proof(amount, `${label}. ${terms}`, 'estimated') });
+        extras.push({ kind: requested.kind, category: requested.category, quantity: requested.quantity, productId: selection.productId,
+          availability: proof<boolean>(null, terms, 'unknown'), eligibility: proof<boolean>(null, requested.kind === 'additional_driver' ? 'Additional-driver eligibility and possible age-related charges require supplier confirmation.' : `${requested.label}; suitability and availability require supplier confirmation.`, 'unknown'),
+          included: proof(false, selection.visibleUnitPrice), chargeId: id });
+      }
+      total = sumCarMoney(charges.map(charge => charge.amount.value!), search.currency);
+      reconcile(localExtras.priceLines, localExtras.visibleTotal);
+      requirements.push({ kind: 'other', appliesTo: 'rental', condition: 'Selected local extras', evidence: proof(terms, terms) });
+    }
     const selected = search.extras.protection.find(item => item.source === 'discovercars');
     const protection = capture.protection;
     if (Boolean(selected) !== Boolean(protection)) throw new CarError('Selected protection was added or omitted');
@@ -110,11 +141,8 @@ export function extractDiscoverCarsOffer(capture: DiscoverCarsCapture, search: C
       const rate = carRecord(protection.price);
       const amount = money({ amount: rate.period, currency: rate.currency }, search.currency);
       charges.push({ id: `protection-${protection.productId}`, label: protection.name, kind: 'extra', payment: 'now', amount: proof(amount, `${protection.name}: ${amount.minor} minor ${search.currency} for the entire rental`) });
-      const lineKey = (payment: string, label: string, minor: number) => JSON.stringify([payment, label.replace(/\s+/g, ' ').trim(), minor]);
-      const actualAmounts = protection.priceLines.map(line => lineKey(line.payment, line.label, visibleMoney(line.amount, search.currency).minor)).sort();
-      const expectedAmounts = charges.map(charge => lineKey(charge.payment, charge.label, charge.amount.value!.minor)).sort();
       total = sumCarMoney(charges.map(charge => charge.amount.value!), search.currency);
-      if (JSON.stringify(actualAmounts) !== JSON.stringify(expectedAmounts) || visibleMoney(protection.visibleTotal, search.currency).minor !== total.minor) throw new CarError('Selected protection and rental total do not reconcile');
+      reconcile(protection.priceLines, protection.visibleTotal);
       coverageTerms += ` ${text(protection.terms)}`;
       extras.push({ kind: 'protection', productId: protection.productId, category: null, quantity: 1, availability: proof(true, protection.name), eligibility: proof(true, protection.terms), included: proof(false, protection.name), chargeId: `protection-${protection.productId}` });
     }
@@ -135,9 +163,9 @@ export function extractDiscoverCarsOffer(capture: DiscoverCarsCapture, search: C
       contract: {
         source: 'discovercars', supplierId, pickupLocationId: String(pickup.placeId), dropoffLocationId: String(dropoff.placeId),
         pickupStationId: carAddressStationIdentity('discovercars', supplierId, String(pickup.placeId), prose(pickup.address, 'Pickup office address')), dropoffStationId: carAddressStationIdentity('discovercars', supplierId, String(dropoff.placeId), prose(dropoff.address, 'Return office address')),
-        pickupAt: search.pickupAt, dropoffAt: search.dropoffAt, driver: search.driver, additionalDrivers: [], currency: search.currency,
+        pickupAt: search.pickupAt, dropoffAt: search.dropoffAt, driver: search.driver, additionalDrivers: search.extras.additionalDrivers, currency: search.currency,
         vehicleClass: text(model.sipp), transmission: specifications.isAutomatic === true ? 'automatic' : specifications.isAutomatic === false ? 'manual' : 'unknown', seats: specifications.seats, model: capture.visibleModel, modelGuaranteed: model.exact,
-        fuelPolicy: text(vehicle.fuelPolicy), mileagePolicy: mileageTerms, cancellationPolicy: cancellation[0], coverageProductIds: [...coverage.map(item => `included:${String(item.id)}`), ...extras.map(extra => extra.productId)], coverageTerms, rentalRequirements: carRequirementTerms(requirements), extras: extras.map(({ kind, productId, category, quantity }) => ({ kind, productId, category, quantity })),
+        fuelPolicy: text(vehicle.fuelPolicy), mileagePolicy: mileageTerms, cancellationPolicy: cancellation[0], coverageProductIds: [...coverage.map(item => `included:${String(item.id)}`), ...extras.filter(extra => extra.kind === 'protection').map(extra => extra.productId)], coverageTerms, rentalRequirements: carRequirementTerms(requirements), extras: extras.map(({ kind, productId, category, quantity }) => ({ kind, productId, category, quantity })),
       },
       available: proof(capture.selectable === true, 'Provider rendered a selectable current rental quote'), requestVerified: proof(true, request),
       driverEligible: proof(search.driver.age >= Number(minAge) && (noMaximumAge || search.driver.age <= Number(maxAge)) && search.driver.licenceYears >= Number(licence), driver),
@@ -145,7 +173,7 @@ export function extractDiscoverCarsOffer(capture: DiscoverCarsCapture, search: C
       mandatoryChargesComplete: proof(taxesIncluded && mandatoryIncluded && !contradictoryFees, includedTerms), taxesIncluded: proof(taxesIncluded && !contradictoryFees, includedTerms),
       unlimitedMileage: proof<boolean>(conditionalMileage ? null : inclusionEntries.some(entry => /^Unlimited mileage$/i.test(entry)), mileageTerms, conditionalMileage ? 'unknown' : 'confirmed'),
       freeCancellation: proof(Date.parse(capture.observedAt) < Date.parse(search.pickupAt.instant) - Number(cancellation[1]) * 3_600_000, cancellation[0]),
-      total: proof(total, (protection?.visibleTotal ?? capture.visibleTotal).replace(/\s+/g, ' ').trim()), charges,
+      total: proof(total, (protection?.visibleTotal ?? (localExtras && 'selections' in localExtras ? localExtras.visibleTotal : capture.visibleTotal)).replace(/\s+/g, ' ').trim(), requestedExtras.length ? 'estimated' : 'confirmed'), charges,
       deposit: proof(deposit, section('deposit') || 'Supplier did not disclose a deposit', deposit ? 'estimated' : 'unknown'),
       excess: proof(excess, coverageTerms, excess ? 'estimated' : 'unknown'), extras,
     });

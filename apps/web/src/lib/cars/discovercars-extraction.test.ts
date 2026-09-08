@@ -5,6 +5,7 @@ import { assessCarPrice } from './pricing';
 import { carContractIdentity } from './identity';
 import type { DiscoverCarsCapture } from './discovercars-capture';
 import type { DiscoverCarsProtection } from './discovercars-protection';
+import { selectCarObservation } from './selection';
 
 const location = { name: 'London Heathrow Airport', country: 'GB', timeZone: 'Europe/London', providerIds: { discovercars: '1712' } };
 const search = validateCarSearch({ pickup: location, dropoff: location, pickupAt: { date: '2026-10-15', time: '11:00' }, dropoffAt: { date: '2026-10-18', time: '11:00' }, driver: { age: 35, licenceYears: 2, residenceCountry: 'GB' }, sources: ['discovercars'], currency: 'USD' }, new Date('2026-09-01'));
@@ -44,7 +45,56 @@ function offer(capture = fixture()) {
   if (!('contract' in result)) throw new Error(result.reasons.join('; '));
   return result;
 }
+function localExtrasFixture() {
+  const capture: DiscoverCarsCapture = fixture();
+  const criteria = { ...search, extras: { ...search.extras, childSeats: [{ category: 'child' as const, quantity: 2 }], additionalDrivers: [search.driver, { age: 45, licenceYears: 10, residenceCountry: 'GB' }] } };
+  capture.offer.extras = [{ id: 4, idWithMap: '4_17671', selectedCount: 0, maxQuantity: 3, freeSelectable: 0, payable: 'atPickUp', ...price(38.97) }, { id: 6, idWithMap: '6_17668', selectedCount: 0, maxQuantity: 3, freeSelectable: 0, payable: 'atPickUp', ...price(36) }];
+  const localExtras = { offerId: String(capture.offer.offerId), observedAt: capture.observedAt, terms: 'Prices and availability are subject to change. Prices are a guide only.',
+    selections: [{ id: 4, productId: '4_17671', kind: 'child_seat' as const, category: 'child' as const, quantity: 2, label: 'Child seat (9-18 kg)', visibleUnitPrice: '$38.97 for rental period' }, { id: 6, productId: '6_17668', kind: 'additional_driver' as const, category: null, quantity: 2, label: 'Additional driver', visibleUnitPrice: '$36.00 for rental period' }],
+    visibleTotal: '$284.88', priceLines: [...capture.priceLines, { label: 'Child seat (9-18 kg) (2)', amount: '$77.94', payment: 'pickup' as const }, { label: 'Additional driver (2)', amount: '$72.00', payment: 'pickup' as const }],
+  };
+  capture.localExtras = localExtras;
+  return { capture, criteria, localExtras };
+}
 describe('verified DiscoverCars rental contracts', () => {
+  it('shows selected quantities and estimated totals without selecting them for tracker prices', () => {
+    const { capture, criteria } = localExtrasFixture(), result = extractDiscoverCarsOffer(capture, criteria);
+    if (!('contract' in result)) throw new Error(result.reasons.join('; '));
+    expect(result.total).toMatchObject({ value: { minor: 28488 }, status: 'estimated' });
+    expect(result.charges.filter(charge => charge.kind === 'extra').map(charge => charge.amount)).toMatchObject([{ value: { minor: 7794 }, status: 'estimated' }, { value: { minor: 7200 }, status: 'estimated' }]);
+    expect(result.charges.find(charge => charge.id === 'payNow-rentalPrepayment')?.amount.status).toBe('confirmed');
+    expect(result.contract.additionalDrivers).toEqual(criteria.extras.additionalDrivers);
+    expect(result.contract.coverageProductIds).not.toContain('4_17671');
+    expect(result.extras).toMatchObject([{ quantity: 2, availability: { value: null, status: 'unknown' } }, { quantity: 2, eligibility: { value: null, status: 'unknown' } }]);
+    expect(assessCarPrice(result, criteria, new Date(capture.observedAt))).toMatchObject({ eligible: false, total: null });
+    expect(selectCarObservation({ scope: 'checked_provider_offers', offers: [result], candidates: [], errors: [], total: 1, completed: 1, successfulProviders: 1, providers: [{ source: 'discovercars', status: 'complete', checked: 1, discoveredVisible: 1, limit: 8, truncated: false }] }, criteria, undefined, new Date(capture.observedAt))).toMatchObject({ status: 'no_eligible_checked_offers' });
+  });
+  it('preserves selected seats and additional drivers alongside a confirmed protection charge', () => {
+    const { capture, criteria, localExtras } = localExtrasFixture();
+    criteria.extras.protection = [{ source: 'discovercars', productId: '35' }];
+    capture.protection = { offerId: String(capture.offer.offerId), productId: '35', name: 'Full Coverage', selected: true, price: { period: 55.29, currency: 'USD' }, terms: 'Reimbursement protection with exclusions.', visibleTotal: '$340.17', priceLines: [...localExtras.priceLines, { label: 'Full Coverage', amount: '$55.29', payment: 'now' }], observedAt: capture.observedAt };
+    const result = extractDiscoverCarsOffer(capture, criteria);
+    if (!('contract' in result)) throw new Error(result.reasons.join('; '));
+    expect(result.total).toMatchObject({ value: { minor: 34017 }, status: 'estimated' });
+    expect(result.charges.find(charge => charge.id === 'protection-35')?.amount).toMatchObject({ value: { minor: 5529 }, status: 'confirmed' });
+    expect(result.contract.coverageProductIds).toContain('35');
+    expect(assessCarPrice(result, criteria, new Date(capture.observedAt)).eligible).toBe(false);
+    capture.protection.priceLines = capture.protection.priceLines.filter(line => !line.label.includes('Child seat'));
+    expect(extractDiscoverCarsOffer(capture, criteria)).toMatchObject({ reasons: [expect.stringMatching(/reconcile/)] });
+  });
+  it.each(['wrong-quote', 'stale', 'wrong-category', 'wrong-quantity', 'wrong-unit-price', 'missing-line', 'double-counted', 'changed-payment', 'unrequested'])('rejects %s local-extra evidence', mode => {
+    const { capture, criteria, localExtras } = localExtrasFixture();
+    if (mode === 'wrong-quote') localExtras.offerId = 'another-quote';
+    if (mode === 'stale') localExtras.observedAt = '2026-09-05T12:00:00Z';
+    if (mode === 'wrong-category') localExtras.selections[0]!.id = 3;
+    if (mode === 'wrong-quantity') localExtras.selections[0]!.quantity = 1;
+    if (mode === 'wrong-unit-price') localExtras.selections[0]!.visibleUnitPrice = '$30.00 for rental period';
+    if (mode === 'missing-line') localExtras.priceLines.pop();
+    if (mode === 'double-counted') localExtras.priceLines.push({ ...localExtras.priceLines[2]! });
+    if (mode === 'changed-payment') localExtras.priceLines[2]!.payment = 'now';
+    if (mode === 'unrequested') criteria.extras.childSeats = [];
+    expect(extractDiscoverCarsOffer(capture, criteria)).not.toHaveProperty('contract');
+  });
   it.each(['null', 'omitted'])('explains %s optional-selection metadata without certifying the quote', absence => {
     const capture: DiscoverCarsCapture = fixture();
     if (absence === 'null') capture.offer.coverage = null;

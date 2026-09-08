@@ -7,6 +7,7 @@ import { captureDiscoverCarsPriceLines, type DiscoverCarsPriceLine } from './dis
 import { parseCarMoney } from './money';
 import { validateCarProtectionChoice, type CarProtectionChoice } from './protection-choice';
 import { carProviderUrl } from './offer-validation';
+import { verifyDiscoverCarsExtraSelection, type DiscoverCarsExtrasCapture } from './discovercars-extras';
 
 export interface DiscoverCarsProtection {
   offerId: string;
@@ -20,14 +21,18 @@ export interface DiscoverCarsProtection {
   observedAt: string;
 }
 
-async function openProtection(page: Page, quoteUrl: string) {
+async function openProtection(page: Page, quoteUrl: string, localExtras?: DiscoverCarsExtrasCapture) {
   const requested = new URL(carProviderUrl(quoteUrl, 'discovercars'));
   const offerId = requested.pathname.match(/^\/offer\/([^/]+)$/)?.[1];
   if (!offerId) throw new CarError('Expected the requested rental quote');
-  await navigateCarPage(page, quoteUrl, 'discovercars');
-  const current = new URL(page.url());
+  if (!localExtras) await navigateCarPage(page, quoteUrl, 'discovercars');
+  const current = new URL(carProviderUrl(page.url(), 'discovercars'));
   if (current.pathname !== requested.pathname || current.searchParams.get('sq') !== requested.searchParams.get('sq')) {
     throw new CarError('Protection page changed to another quote');
+  }
+  if (localExtras) {
+    if (localExtras.offerId !== offerId) throw new CarError('Local extras belong to another protection quote');
+    await verifyDiscoverCarsExtraSelection(page, localExtras.selections);
   }
   const guard = await prepareCarPage(page, 'discovercars');
   const next = page.locator('.OfferPriceBreakdown-BookNow:not(.Button_isDisabled):visible, .OfferDetails-BookNow:not(.Button_isDisabled):visible').first();
@@ -41,6 +46,13 @@ async function openProtection(page: Page, quoteUrl: string) {
   const choice = page.getByRole('button', { name: /^Book with coverage .+/ });
   await choice.waitFor({ state: 'visible' });
   if (!(await choice.isEnabled())) throw new CarError('Protection cannot be selected for this rental');
+  if (localExtras) {
+    const summary = page.locator('.OfferPriceBreakdown:visible').first();
+    const lines = await captureDiscoverCarsPriceLines(summary);
+    const identity = (items: DiscoverCarsPriceLine[]) => items.map(item => JSON.stringify([item.payment, item.label, item.amount])).sort();
+    if (JSON.stringify(identity(lines)) !== JSON.stringify(identity(localExtras.priceLines)) || (await summary.locator('.OfferPriceBreakdown-AmountPriceBlock').innerText()).trim() !== localExtras.visibleTotal.trim()) throw new CarError('Protection review changed the selected local extras or rental price');
+    if (new URL(page.url()).pathname !== `/offer/coverage/${offerId}`) throw new CarError('Protection page changed to another quote');
+  }
   return { offerId, coverage, choice };
 }
 
@@ -74,8 +86,8 @@ export async function discoverDiscoverCarsProtection(page: Page, quoteUrl: strin
 }
 
 /** Selects a priced option only; never continues to driver details or payment. */
-export async function captureDiscoverCarsProtection(page: Page, quoteUrl: string, productId: string): Promise<DiscoverCarsProtection> {
-  const { offerId, coverage, choice } = await openProtection(page, quoteUrl);
+export async function captureDiscoverCarsProtection(page: Page, quoteUrl: string, productId: string, localExtras?: DiscoverCarsExtrasCapture): Promise<DiscoverCarsProtection> {
+  const { offerId, coverage, choice } = await openProtection(page, quoteUrl, localExtras);
   if (String(coverage.id) !== productId) throw new CarError('Requested protection product is not offered for this rental');
   await choice.click();
   await page.waitForFunction(() => document.querySelector('.CoverageOptions-Card_isSelected')?.textContent?.includes('Book with coverage'));
