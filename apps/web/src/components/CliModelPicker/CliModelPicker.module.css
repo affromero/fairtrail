@@ -1,0 +1,14 @@
+.root { border-block: 1px solid var(--border); padding: 1.25rem 0; margin-block: 1rem; text-align: left; }
+.header { display: flex; justify-content: space-between; align-items: start; gap: 1rem; }
+.header h3 { margin: 0; font: 600 1.15rem var(--font-display); color: var(--text); }
+.header p, .hint { color: var(--text-secondary); font-size: .85rem; line-height: 1.5; }
+.fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; margin-block: 1rem; }
+.field { display: flex; flex-direction: column; gap: .5rem; font-size: .9rem; color: var(--text); }
+.fields select { width: 100%; min-height: 44px; padding: .65rem; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius-md); font: inherit; }
+.root button { min-height: 44px; padding: .65rem 1rem; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface); color: var(--text); cursor: pointer; font: 600 .9rem var(--font-display); }
+.root button:disabled, .fields select:disabled { opacity: .55; cursor: not-allowed; }
+.root button:focus-visible, .fields select:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.actions { display: flex; align-items: center; flex-wrap: wrap; gap: .75rem; }
+.error, .result { padding: .75rem 1rem; border-left: 3px solid var(--accent); background: var(--surface); overflow-wrap: anywhere; line-height: 1.5; }
+.error { border-color: var(--danger, #c1272d); }
+@media (max-width: 600px) { .fields { grid-template-columns: 1fr; } .header { flex-wrap: wrap; } }

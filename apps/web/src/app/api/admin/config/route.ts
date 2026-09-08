@@ -9,6 +9,7 @@ import { isThemeId } from '@/lib/theme';
 import { updateCronInterval } from '@/lib/cron';
 import { requireAdminApi } from '@/lib/admin-guard';
 import { isAggregatorSource } from '@/lib/scraper/navigate';
+import { validateInferenceSelection } from '@/lib/scraper/inference-selection';
 
 /**
  * Masks the middle of a secret so the full value never crosses the wire.
@@ -60,23 +61,10 @@ export async function PATCH(request: NextRequest) {
   if (denial) return denial;
 
   const body = await request.json().catch(() => null);
-  if (!body) return apiError('Invalid JSON body', 400);
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return apiError('Invalid JSON body', 400);
 
   const { provider, model } = body;
-
-  if (provider) {
-    const providerConfig = EXTRACTION_PROVIDERS[provider];
-    if (!providerConfig) {
-      return apiError(`Unknown provider: ${provider}`, 400);
-    }
-
-    if (model && !providerConfig.allowCustomModel) {
-      const validModel = providerConfig.models.find((m) => m.id === model);
-      if (!validModel) {
-        return apiError(`Invalid model "${model}" for provider "${provider}"`, 400);
-      }
-    }
-  }
+  if ((provider !== undefined && typeof provider !== 'string') || (model !== undefined && typeof model !== 'string')) return apiError('Provider and model must be strings', 400);
 
   const data: Record<string, unknown> = {};
   if (provider) data.provider = provider;
@@ -85,6 +73,17 @@ export async function PATCH(request: NextRequest) {
   // Read the current config once; reused by the key guard and the reachability
   // probe below so the request makes a single DB read.
   const existingConfig = await prisma.extractionConfig.findFirst({ where: { id: 'singleton' } });
+  const selectionChanged = (provider !== undefined && provider !== existingConfig?.provider)
+    || (model !== undefined && model !== existingConfig?.model)
+    || (body.reasoningEffort !== undefined && body.reasoningEffort !== (existingConfig?.reasoningEffort ?? null));
+  if (selectionChanged) {
+    const reasoning = body.reasoningEffort !== undefined ? body.reasoningEffort
+      : provider !== undefined && provider !== existingConfig?.provider ? null : existingConfig?.reasoningEffort ?? null;
+    try {
+      const selection = await validateInferenceSelection(provider ?? existingConfig?.provider ?? 'anthropic', model ?? existingConfig?.model ?? 'claude-haiku-4-5-20251001', reasoning);
+      Object.assign(data, selection);
+    } catch (error) { return apiError(error instanceof Error ? error.message : 'Invalid inference selection', 400); }
+  }
 
   // Provider API key (#149): admins enter the key in the GUI instead of editing
   // .env. Store it encrypted in the per-provider column (a non-empty string

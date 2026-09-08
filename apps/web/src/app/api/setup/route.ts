@@ -3,6 +3,7 @@ import { apiSuccess, apiError } from '@/lib/api-response';
 import { hashPassword } from '@/lib/password';
 import { registerForCommunity } from '@/lib/community-sync';
 import { encryptSecret } from '@/lib/secret-crypto';
+import { validateInferenceSelection } from '@/lib/scraper/inference-selection';
 
 // Env-backed provider -> the ExtractionConfig column that stores its key,
 // encrypted at rest (#149). Keep in sync with STORED_KEY_FIELD in ai-registry.
@@ -22,7 +23,8 @@ export async function POST(request: Request) {
     return apiError('Setup already completed. Use admin panel to change settings.', 403);
   }
 
-  const body = await request.json();
+  const body = await request.json().catch(() => null);
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return apiError('Invalid JSON body', 400);
   const { adminPassword, provider, model, communitySharing, customBaseUrl, publicBaseUrl, apiKey } = body as {
     adminPassword: string;
     provider: string;
@@ -57,6 +59,9 @@ export async function POST(request: Request) {
   if (!provider || !model) {
     return apiError('Provider and model are required', 400);
   }
+  let selection;
+  try { selection = await validateInferenceSelection(provider, model, body.reasoningEffort); }
+  catch (error) { return apiError(error instanceof Error ? error.message : 'Invalid inference selection', 400); }
 
   const passwordHash = isSelfHosted
     ? 'self-hosted'
@@ -87,6 +92,7 @@ export async function POST(request: Request) {
       id: 'singleton',
       provider,
       model,
+      reasoningEffort: selection.reasoningEffort,
       adminPasswordHash: passwordHash,
       communitySharing: communitySharing && communityApiKey !== null,
       communityApiKey,
@@ -97,6 +103,7 @@ export async function POST(request: Request) {
     update: {
       provider,
       model,
+      reasoningEffort: selection.reasoningEffort,
       adminPasswordHash: passwordHash,
       communitySharing: communitySharing && communityApiKey !== null,
       communityApiKey,

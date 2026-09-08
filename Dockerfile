@@ -96,6 +96,8 @@ ENV NPM_CONFIG_PREFIX=/home/node/.npm-global
 ENV PATH="/home/node/.npm-global/bin:$PATH"
 
 WORKDIR /app
+COPY --chown=node:node scripts/update-cli.mjs /app/update-cli.mjs
+COPY --chown=node:node cli-versions.json /app/cli-versions.json
 
 # Standalone server (includes traced node_modules)
 COPY --from=builder --chown=node:node /app/apps/web/.next/standalone ./

@@ -7,6 +7,8 @@ import { LOCALES, LOCALE_LABELS, LOCALE_COOKIE, isLocale } from '@/i18n/locales'
 import styles from './page.module.css';
 import { PROVIDER_METADATA, LOCAL_PROVIDERS } from '@/lib/scraper/provider-metadata';
 import { AvatarPicker } from '@/components/AvatarPicker/AvatarPicker';
+import { CliModelPicker } from '@/components/CliModelPicker/CliModelPicker';
+import { orderedProviders, type ReasoningSelection } from '@/lib/scraper/cli-model-types';
 
 interface SetupStatus {
   setupComplete: boolean;
@@ -38,6 +40,7 @@ export default function SetupPage() {
   const [provider, setProvider] = useState('');
   const [model, setModel] = useState('');
   const [customModel, setCustomModel] = useState('');
+  const [reasoning, setReasoning] = useState<ReasoningSelection>(null);
   const [customBaseUrl, setCustomBaseUrl] = useState('');
   // Provider API key entered during first-run setup (#149); stored encrypted.
   const [apiKey, setApiKey] = useState('');
@@ -165,7 +168,7 @@ export default function SetupPage() {
     const res = await fetch('/api/setup', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ adminPassword: password, provider, model: effectiveModel, communitySharing, customBaseUrl: customBaseUrl.trim() || null, publicBaseUrl: publicBaseUrl.trim() || null, apiKey: apiKey.trim() || null }),
+      body: JSON.stringify({ adminPassword: password, provider, model: effectiveModel, reasoningEffort: reasoning, communitySharing, customBaseUrl: customBaseUrl.trim() || null, publicBaseUrl: publicBaseUrl.trim() || null, apiKey: apiKey.trim() || null }),
     });
 
     if (!res.ok) {
@@ -221,7 +224,7 @@ export default function SetupPage() {
   const detectedProviders = status.detectedProviders ?? [];
   const hasCliProvider = detectedProviders.some((p) => CLI_PROVIDERS.has(p));
 
-  const providerEntries = Object.entries(PROVIDER_METADATA);
+  const providerEntries = orderedProviders(detectedProviders);
   const isSelfHosted = status.isSelfHosted ?? false;
   const subtitles = [
     t('subtitlePassword'),
@@ -316,6 +319,7 @@ export default function SetupPage() {
                     className={`${styles.providerCard} ${provider === key ? styles.selected : ''} ${!detected ? styles.unavailable : ''}`}
                     onClick={() => {
                       setProvider(key);
+                      setReasoning(null);
                       setCustomModel('');
                       // Clear the key field when switching providers so a key
                       // typed for one is never submitted for another.
@@ -350,7 +354,9 @@ export default function SetupPage() {
 
             {provider && PROVIDER_METADATA[provider] && (
               <>
-                {PROVIDER_METADATA[provider]!.models.length > 0 && (
+                {CLI_PROVIDERS.has(provider) && <CliModelPicker key={provider} setup provider={provider} model={customModel || model} reasoning={reasoning}
+                  onModelChange={value => { setModel(value); setCustomModel(''); }} onReasoningChange={setReasoning} />}
+                {!CLI_PROVIDERS.has(provider) && PROVIDER_METADATA[provider]!.models.length > 0 && (
                   <select
                     className={styles.input}
                     value={model}

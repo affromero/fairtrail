@@ -408,6 +408,7 @@ function normalizeEntry(entry: unknown, travelDateFallback: string, currency: st
  * DB on every attempt. Issue 65 audit finding A4.
  */
 export interface ExtractionConfigOverride {
+  reasoningEffort?: import('./cli-model-types').ReasoningSelection;
   provider: string;
   model: string;
   customBaseUrl: string | null;
@@ -444,6 +445,7 @@ export async function extractPrices(
     ? {
         provider: configOverride.provider,
         model: configOverride.model,
+        reasoningEffort: configOverride.reasoningEffort,
         customBaseUrl: configOverride.customBaseUrl,
         extractTimeoutSeconds: configOverride.extractTimeoutSeconds ?? null,
         maxFlightsPerDate: configOverride.maxFlightsPerDate ?? null,
@@ -498,6 +500,7 @@ ${UNTRUSTED_CLOSE}`;
   try {
     result = await providerConfig.extract(apiKey, model, systemPrompt, userPrompt, {
       baseUrl: config?.customBaseUrl ?? undefined,
+      reasoningEffort: config?.reasoningEffort as import('./cli-model-types').ReasoningSelection | undefined,
       // Honour the admin configured timeout from the DB when set; otherwise
       // each extract function falls back to EXTRACT_TIMEOUT_MS (issue #86).
       ...(typeof config?.extractTimeoutSeconds === 'number'

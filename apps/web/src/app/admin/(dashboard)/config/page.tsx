@@ -2,7 +2,9 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useTranslations } from 'next-intl';
-import { PROVIDER_METADATA, LOCAL_PROVIDERS } from '@/lib/scraper/provider-metadata';
+import { PROVIDER_METADATA, LOCAL_PROVIDERS, CLI_PROVIDERS } from '@/lib/scraper/provider-metadata';
+import { CliModelPicker } from '@/components/CliModelPicker/CliModelPicker';
+import { orderedProviders, type ReasoningSelection } from '@/lib/scraper/cli-model-types';
 import { ThemePicker } from '@/components/ThemePicker/ThemePicker';
 import { isThemeId, DEFAULT_THEME, type ThemeId } from '@/lib/theme';
 import styles from './page.module.css';
@@ -53,6 +55,7 @@ export default function ConfigPage() {
   const [provider, setProvider] = useState('anthropic');
   const [model, setModel] = useState('claude-haiku-4-5-20251001');
   const [customModel, setCustomModel] = useState('');
+  const [reasoning, setReasoning] = useState<ReasoningSelection>(null);
   const [scrapeInterval, setScrapeInterval] = useState(3);
   const [extractTimeoutSeconds, setExtractTimeoutSeconds] = useState(90);
   const [maxFlightsPerDate, setMaxFlightsPerDate] = useState(10);
@@ -144,6 +147,7 @@ export default function ConfigPage() {
         if (d.ok) {
           setConfig(d.data);
           setProvider(d.data.provider);
+          setReasoning(d.data.reasoningEffort ?? null);
           setScrapeInterval(d.data.scrapeInterval);
           setExtractTimeoutSeconds(d.data.extractTimeoutSeconds ?? 90);
           setMaxFlightsPerDate(d.data.maxFlightsPerDate ?? 10);
@@ -196,6 +200,7 @@ export default function ConfigPage() {
 
   const handleProviderChange = (newProvider: string) => {
     setProvider(newProvider);
+    setReasoning(null);
     setCustomModel('');
     // Clear the key field so a key typed for one provider can't be saved
     // against another. The saved key (if any) stays in the DB untouched.
@@ -233,6 +238,7 @@ export default function ConfigPage() {
       body: JSON.stringify({
         provider,
         model: effectiveModel,
+        reasoningEffort: reasoning,
         scrapeIntervalHours: scrapeInterval,
         extractTimeoutSeconds,
         maxFlightsPerDate,
@@ -311,7 +317,7 @@ export default function ConfigPage() {
             value={provider}
             onChange={(e) => handleProviderChange(e.target.value)}
           >
-            {Object.entries(PROVIDER_METADATA).map(([key, p]) => (
+            {orderedProviders(Object.keys(providerStatuses).filter(key => providerStatuses[key] === 'ready')).map(([key, p]) => (
               <option key={key} value={key}>{p.displayName}</option>
             ))}
           </select>
@@ -349,7 +355,8 @@ export default function ConfigPage() {
           </div>
         )}
 
-        <div className={styles.field}>
+        {CLI_PROVIDERS[provider] ? <CliModelPicker key={provider} provider={provider} model={effectiveModel} reasoning={reasoning}
+          onModelChange={value => { setModel(value); setCustomModel(''); }} onReasoningChange={setReasoning} /> : <div className={styles.field}>
           <label className={styles.label}>{t('model')}</label>
           {models.length > 0 && (
             <select
@@ -394,7 +401,7 @@ export default function ConfigPage() {
               onChange={(e) => setCustomModel(e.target.value)}
             />
           )}
-        </div>
+        </div>}
 
         {providerConfig?.allowCustomBaseUrl && (
           <div className={styles.field}>

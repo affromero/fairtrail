@@ -12,6 +12,8 @@ import { HotelMapAdmin } from '@/components/hotels/HotelMapAdmin';
 import { PROVIDER_METADATA, LOCAL_PROVIDERS, CLI_PROVIDERS } from '@/lib/scraper/provider-metadata';
 import { isThemeId, DEFAULT_THEME, type ThemeId } from '@/lib/theme';
 import styles from './page.module.css';
+import { CliModelPicker } from '@/components/CliModelPicker/CliModelPicker';
+import { orderedProviders, type ReasoningSelection } from '@/lib/scraper/cli-model-types';
 
 interface Config {
   provider: string;
@@ -40,6 +42,7 @@ export default function SettingsPage() {
   const [provider, setProvider] = useState('anthropic');
   const [model, setModel] = useState('claude-haiku-4-5-20251001');
   const [customModel, setCustomModel] = useState('');
+  const [reasoning, setReasoning] = useState<ReasoningSelection>(null);
   const [scrapeInterval, setScrapeInterval] = useState(3);
   const [customBaseUrl, setCustomBaseUrl] = useState('');
   const [publicBaseUrl, setPublicBaseUrl] = useState('');
@@ -103,9 +106,9 @@ export default function SettingsPage() {
   }, [t]);
 
   useEffect(() => {
-    fetch('/api/setup/status')
+    fetch('/api/admin/providers')
       .then((r) => r.json())
-      .then((d) => { setDetectedProviders(d.detectedProviders ?? d.data?.detectedProviders ?? []); })
+      .then((d) => { if (d.ok) setDetectedProviders(Object.entries(d.data as Record<string, { status: string }>).filter(([, value]) => value.status === 'ready').map(([key]) => key)); })
       .catch(() => {});
 
     fetch('/api/vpn/status')
@@ -119,6 +122,7 @@ export default function SettingsPage() {
         if (d.ok) {
           setConfig(d.data);
           setProvider(d.data.provider);
+          setReasoning(d.data.reasoningEffort ?? null);
           setScrapeInterval(d.data.scrapeInterval);
           setCustomBaseUrl(d.data.customBaseUrl || '');
           setPublicBaseUrl(d.data.publicBaseUrl || '');
@@ -157,6 +161,7 @@ export default function SettingsPage() {
 
   const handleProviderChange = (newProvider: string) => {
     setProvider(newProvider);
+    setReasoning(null);
     setCustomModel('');
     setCustomBaseUrl(PROVIDER_METADATA[newProvider]?.defaultBaseUrl ?? '');
     const newModels = PROVIDER_METADATA[newProvider]?.models ?? [];
@@ -184,6 +189,7 @@ export default function SettingsPage() {
       body: JSON.stringify({
         provider,
         model: effectiveModel,
+        reasoningEffort: reasoning,
         scrapeIntervalHours: scrapeInterval,
         customBaseUrl: customBaseUrl.trim() || null,
         theme,
@@ -324,7 +330,7 @@ export default function SettingsPage() {
           <div className={styles.field}>
             <label className={styles.label}>{t('extraction.provider')}</label>
             <div className={styles.providerGrid}>
-              {Object.entries(PROVIDER_METADATA).map(([key, p]) => {
+              {orderedProviders(detectedProviders).map(([key, p]) => {
                 const detected = detectedProviders.includes(key);
                 const isCli = !!CLI_PROVIDERS[key];
                 const isLocal = LOCAL_PROVIDERS.has(key);
@@ -426,7 +432,8 @@ export default function SettingsPage() {
             </div>
           </div>
 
-          <div className={styles.field}>
+          {CLI_PROVIDERS[provider] ? <CliModelPicker key={provider} provider={provider} model={effectiveModel} reasoning={reasoning}
+            onModelChange={value => { setModel(value); setCustomModel(''); }} onReasoningChange={setReasoning} /> : <div className={styles.field}>
             <label className={styles.label}>{t('extraction.model')}</label>
             {models.length > 0 && (
               <select
@@ -471,7 +478,7 @@ export default function SettingsPage() {
                 onChange={(e) => setCustomModel(e.target.value)}
               />
             )}
-          </div>
+          </div>}
 
           {providerConfig?.allowCustomBaseUrl && (
             <div className={styles.field}>

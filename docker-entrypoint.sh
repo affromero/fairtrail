@@ -118,7 +118,7 @@ if [ "$INSTALL_CLI_PROVIDERS" = "true" ]; then
       echo "[setup] Copied Claude Code auth from host"
     else
       echo "[setup] WARNING: Could not copy Claude Code auth — host files may not be readable"
-      echo "[setup]   Fix: run 'chmod -R a+rX ~/.claude' on the host, then restart"
+      echo "[setup]   Fix: grant only the container user access to the required Claude credential files, then restart. Do not make the credential directory world-readable."
     fi
   fi
   if [ -n "$rotated_claude" ]; then
@@ -139,7 +139,7 @@ if [ "$INSTALL_CLI_PROVIDERS" = "true" ]; then
       echo "[setup] Copied Codex auth from host"
     else
       echo "[setup] WARNING: Could not copy Codex auth — host files may not be readable"
-      echo "[setup]   Fix: run 'chmod -R a+rX ~/.codex' on the host, then restart"
+      echo "[setup]   Fix: grant only the container user access to the required Codex credential files, then restart. Do not make the credential directory world-readable."
     fi
   fi
   if [ -n "$rotated_codex" ]; then
@@ -151,19 +151,11 @@ if [ "$INSTALL_CLI_PROVIDERS" = "true" ]; then
   # Install CLI providers (cached in cli-cache volume). Versions are pinned so a
   # runtime "latest" cannot pull an unreviewed release into the image. Bump these
   # deliberately. Override at build/run time with CLAUDE_CODE_VERSION / CODEX_VERSION.
-  CLAUDE_CODE_VERSION="${CLAUDE_CODE_VERSION:-2.1.165}"
-  CODEX_VERSION="${CODEX_VERSION:-0.137.0}"
-  if ! command -v claude >/dev/null 2>&1; then
-    echo "[setup] Installing Claude Code CLI (${CLAUDE_CODE_VERSION})..."
-    npm install -g "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" --prefer-offline --no-audit --no-fund 2>&1 | tail -1
-    command -v claude >/dev/null 2>&1 && echo "[setup] Claude Code CLI ready" || echo "[setup] WARNING: Claude Code CLI install failed"
-  fi
-
-  if ! command -v codex >/dev/null 2>&1; then
-    echo "[setup] Installing Codex CLI (${CODEX_VERSION})..."
-    npm install -g "@openai/codex@${CODEX_VERSION}" --prefer-offline --no-audit --no-fund 2>&1 | tail -1
-    command -v codex >/dev/null 2>&1 && echo "[setup] Codex CLI ready" || echo "[setup] WARNING: Codex CLI install failed"
-  fi
+  for cli_provider in claude-code codex; do
+    if ! node /app/update-cli.mjs "$cli_provider"; then
+      echo "[setup] WARNING: $cli_provider update failed; recheck its version in Settings"
+    fi
+  done
 fi
 
 # --- Start the app ---
