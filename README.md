@@ -116,6 +116,12 @@ CLI search files may omit `sources` to use these preferences; an explicit
 Single-user installations keep both defaults; each search can select its own
 sources. Saving preferences requires a personal account.
 
+DiscoverCars groups ages 30 through 65 into one search value. Its adapter accepts
+35 as that provider value and rejects other ages in this range, as well as ages
+above 80, rather than changing the requested age. Select Auto Europe for an
+exact-age search in those cases. Each supplier's age and licence requirements
+still apply; a provider selection does not guarantee an eligible offer.
+
 Preference changes retain a recovery receipt before sending the request. After
 a lost acknowledgement, use `cars retry <receipt>` with that receipt. A stale
 revision displays current preferences without claiming the original request
