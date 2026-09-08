@@ -8,6 +8,7 @@ import { isPresetSlug } from '@/lib/avatars';
 import { isThemeId } from '@/lib/theme';
 import { CABIN_CLASSES, isCabinClass } from '@/lib/cabin-class';
 import { validateCarProviders } from '@/lib/cars/preferences';
+import { hotelMapActorScope, validateHotelMapPreferences } from '@/lib/hotels/map-config';
 
 async function requireUser() {
   if (!(await isMultiUserEnabled())) return { ok: false as const, status: 404 };
@@ -32,6 +33,8 @@ export async function GET() {
     preferredAggregators: user.preferredAggregators,
     preferredCarProviders: user.preferredCarProviders,
     carPreferencesRevision: user.carPreferencesRevision,
+    hotelMapPreferences: user.hotelMapPreferences,
+    hotelMapPreferencesRevision: user.hotelMapPreferencesRevision,
     cabinClass: user.cabinClass,
   });
 }
@@ -44,6 +47,14 @@ export async function PATCH(request: NextRequest) {
   if (!body) return apiError('Invalid JSON body', 400);
 
   const data: Record<string, unknown> = {};
+
+  if (body.hotelMapPreferences !== undefined) {
+    if (request.headers.get('X-Hotel-Map-Actor') !== hotelMapActorScope(auth.user.id)) return apiError('Account changed; reload map preferences before saving', 409);
+    if (!Number.isInteger(body.hotelMapPreferencesRevision) || body.hotelMapPreferencesRevision < 0 || body.hotelMapPreferencesRevision >= 2147483647) return apiError('Invalid hotel map preference revision', 400);
+    try { data.hotelMapPreferences = validateHotelMapPreferences(body.hotelMapPreferences); }
+    catch { return apiError('Invalid hotel map preferences', 400); }
+    data.hotelMapPreferencesRevision = { increment: 1 };
+  }
 
   if (body.preferredCarProviders !== undefined) {
     try { data.preferredCarProviders = validateCarProviders(body.preferredCarProviders, true); }
@@ -125,7 +136,7 @@ export async function PATCH(request: NextRequest) {
   }
 
   const updated = await prisma.user.update({
-    where: { id: auth.user.id, ...(body.preferredCarProviders === undefined ? {} : { carPreferencesRevision: { lt: 2147483647 } }) },
+    where: { id: auth.user.id, ...(body.preferredCarProviders === undefined ? {} : { carPreferencesRevision: { lt: 2147483647 } }), ...(body.hotelMapPreferences === undefined ? {} : { hotelMapPreferencesRevision: body.hotelMapPreferencesRevision }) },
     data,
     select: {
       username: true,
@@ -138,12 +149,14 @@ export async function PATCH(request: NextRequest) {
       preferredAggregators: true,
       preferredCarProviders: true,
       carPreferencesRevision: true,
+      hotelMapPreferences: true,
+      hotelMapPreferencesRevision: true,
       cabinClass: true,
     },
   }).catch((error: unknown) => {
     if (error && typeof error === 'object' && 'code' in error && error.code === 'P2025') return null;
     throw error;
   });
-  if (!updated) return apiError('Account or car preference revision changed; reload settings', 409);
+  if (!updated) return apiError('Account or preference revision changed; reload settings', 409);
   return apiSuccess(updated);
 }

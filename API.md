@@ -409,6 +409,54 @@ Failed channel deliveries retry after five minutes; successful channels are
 remembered so a retry does not resend to them. An instance crash between sending
 and saving the delivery acknowledgement can still produce a duplicate.
 
+#### Hotel map settings
+
+Offers may include `location: { latitude, longitude, propertyId }`. The location
+is bound to the provider property identity. Missing, invalid or conflicting
+coordinates do not remove a price offer; the map leaves that property unpinned.
+Coordinates do not change offer IDs, tracking selection or price calculations.
+
+`GET /api/hotels/map-settings` returns `{ revision, config, preferences, account }`
+under the normal hotel authentication rules. Map configuration is public to
+authorized hotel users and must not contain secrets. Responses use `no-store`.
+
+Administrators use `GET /api/admin/hotel-map` to read
+`{ revision, config, actorScope }`. To update it, send
+`PATCH /api/admin/hotel-map` with `{ revision, config }` and the returned
+`X-Hotel-Map-Actor: <actorScope>` header. Stale revisions or changed accounts
+return `409`; malformed configuration returns `400`. Writes are separate from
+the flight extraction configuration and never fetch a provider URL.
+
+```json
+{
+  "enabled": true,
+  "provider": "custom",
+  "styleUrl": "https://maps.example.org/styles/hotels.json",
+  "resourceOrigins": ["https://maps.example.org"],
+  "providerName": "Example Maps",
+  "privacyUrl": "https://maps.example.org/privacy",
+  "attribution": "Example Maps and OpenStreetMap contributors",
+  "attributionUrl": "https://www.openstreetmap.org/copyright"
+}
+```
+
+Use `provider: "openfreemap"` to restore the built-in provider configuration.
+Custom URLs require HTTPS, no credentials, fragments or query strings. Relative
+same-origin style URLs must start with `/maps/`. Up to eight distinct resource
+origins are allowed. Runtime tile requests omit credentials and referrers,
+reject redirects, stop after 15 seconds and limit each response to 16 MiB.
+
+For personal settings, `PATCH /api/account/settings` accepts
+`{ "hotelMapPreferences": { "version": 1, "style": "liberty", "enabled": true }, "hotelMapPreferencesRevision": 0 }`
+
+Use the current `hotelMapPreferencesRevision` from account settings (or
+`preferencesRevision` from map settings). Each successful save increments it;
+stale saves return `409`, including retries after an uncertain network result.
+with `X-Hotel-Map-Actor: user:<current-user-id>`. Styles are `liberty`, `positron`
+and `bright`; they apply to OpenFreeMap. Account preferences cannot introduce
+provider URLs. Disabling or changing a map never changes hotel searches or
+tracking, and saved preferences never activate map network requests.
+
 ### Self-hosted car tracking
 
 Car routes require `SELF_HOSTED=true`; public instances return HTTP 404. When

@@ -59,6 +59,24 @@ describe('hotel provider requests', () => {
 
 const family = { ...search, rooms: [{ adults: 2, children: [6] }, { adults: 1, children: [] }] };
 
+it('attaches verified map locations without changing Booking prices or tracking identities', () => {
+  const previous = extractBookingOffers(fixtures.booking, family, stay);
+  const propertyId = previous[0]!.propertyId;
+  const location = { propertyId, latitude: 51.510719, longitude: -0.121075 };
+  const mapped = extractBookingOffers({ ...fixtures.booking, location }, family, stay);
+  expect(mapped).toEqual(previous.map(offer => ({ ...offer, location })));
+  const mismatched = extractBookingOffers({ ...fixtures.booking, location: { ...location, propertyId: 'another-hotel' } }, family, stay);
+  expect(mismatched).toEqual(previous);
+});
+
+it('attaches verified map locations without changing Google prices or tracking identities', () => {
+  const previous = extractGoogleOffers(fixtures.google, search, stay);
+  const propertyId = previous[0]!.propertyId;
+  const location = { propertyId, latitude: 51.5140711, longitude: -0.1319983 };
+  expect(extractGoogleOffers({ ...fixtures.google, location }, search, stay)).toEqual(previous.map(offer => ({ ...offer, location })));
+  expect(extractGoogleOffers({ ...fixtures.google, location: { ...location, propertyId: 'another-hotel' } }, search, stay)).toEqual(previous);
+});
+
 describe('captured Booking property rates', () => {
   const headerPriced = {
     ...fixtures.booking,

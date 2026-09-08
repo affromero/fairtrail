@@ -441,6 +441,57 @@ Hotel searches with `--wait` allow up to 120 minutes by default. Use
 cancels the server search. Flexible dates can take longer because each stay
 requires separate provider visits.
 
+#### Hotel results map
+
+Open the map beside your web search results to compare hotel locations. Pins
+show complete-stay prices for the selected dates, currency and room allocation.
+Select a pin or its keyboard-accessible hotel button to compare room offers.
+Hotels at identical coordinates share a counted pin with a hotel chooser;
+their offers and tracking actions remain separate.
+Moving the map does not start another search. Hotels without verified property
+coordinates stay in the list; the app does not geocode addresses or infer
+neighborhood boundaries.
+
+Maps load only when opened. OpenFreeMap is the default tile provider. Your
+browser sends the provider its IP address and requested map area, without
+account details, stay dates, prices, cookies or referrers. Map failures leave
+the offer list and tracking controls available.
+
+Save a preferred map style or disable maps from the map preferences panel.
+Signed-in users can also change these preferences in Account Settings. Solo
+instances store personal preferences in the current browser, separately from
+account preferences. Saving a preference does not activate the map.
+
+Administrators can choose a custom provider in Settings → Hotel map provider.
+Supply a public HTTPS MapLibre style JSON URL, every resource origin used by
+its tiles, sprites and fonts, and the provider's privacy and attribution links.
+Same-origin self-hosted resources must live under `/maps/`, for example behind
+a reverse proxy. The browser must be able to fetch them without authentication.
+Do not enter secret API keys. Map requests reject redirects and origins outside
+the allowlist. Custom styles use vector or raster tile sources; imported styles
+and embedded GeoJSON, image or video sources are rejected. Saving configuration
+does not contact the provider. A stricter deployment CSP must allow the chosen
+resource origins in `connect-src`; map workers remain same-origin.
+
+Run `npm run db:push` during deployment to add the separate map configuration
+table and account preference fields. Existing flight configuration and hotel
+tracker matching stay unchanged.
+
+For local verification, run `npm run ci`. Against a disposable localhost
+`hotel_map_test` database with the schema applied, run
+`HOTEL_MAP_INTEGRATION_TESTS=1 npm exec --workspace=@flight-finder/web -- vitest run src/lib/hotels/map.integration.test.ts`.
+This checks real authorization, stale saves, account isolation and preservation
+of flight configuration. Supply the test database connection through your secret
+manager; do not point these tests at an instance with real users.
+
+With that isolated instance running in solo mode, run
+`HOTEL_MAP_BROWSER_URL=http://127.0.0.1:3017 node scripts/hotel-map-browser-test.mjs`.
+The browser suite uses fixed hotel offers and real OpenFreeMap tiles, applies the
+production CSP, and writes desktop/mobile screenshots to
+`/tmp/flight-finder-hotel-map-browser`. It also checks unavailable maps, missing
+coordinates, custom providers, forbidden resources and redirects. Custom-provider
+checks temporarily change the local map configuration and restore it afterward.
+
 ### Car commands
 
 Car commands use the account-scoped HTTP API and leave flight configuration

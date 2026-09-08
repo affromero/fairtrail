@@ -57,6 +57,7 @@ RUN apk add --no-cache libc6-compat openssl python3 make g++
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 # Keep workspace-local dependency versions alongside the hoisted shared tools.
+COPY --from=deps /app/apps/web/node_modules ./apps/web/node_modules
 COPY --from=deps /app/packages/cli/node_modules ./packages/cli/node_modules
 COPY . .
 RUN node scripts/check-prisma-toolchain.mjs

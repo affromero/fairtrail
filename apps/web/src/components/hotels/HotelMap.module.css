@@ -1,0 +1,33 @@
+.canvasWrap { position: relative; border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; background: var(--surface); }
+.results { margin-top: 2rem; }
+.split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 1.5rem; align-items: start; }
+.split .toolbar { grid-column: 1 / -1; }
+.preferences { margin-bottom: 1rem; grid-column: 1 / -1; }
+.preferences summary { cursor: pointer; min-height: 44px; font-family: var(--font-display); }
+.split .mapSection { grid-column: 2; grid-row: 3; position: sticky; top: 1rem; max-height: calc(100dvh - 2rem); overflow-y: auto; }
+.split .offerList { grid-column: 1; grid-row: 3; }
+.split .offerList article { grid-template-columns: 1fr; }
+.split .offerList img { height: 190px; min-height: 0; }
+.toolbar { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 1rem; }
+.toolbar h3 { font: 600 1.5rem var(--font-display); margin: 0; }
+.mapSection { padding-bottom: 2rem; }
+.controls { display: grid; grid-template-columns: 2fr 1fr; gap: 1rem; margin-block: 1rem; }
+.propertyList, .selection { display: flex; flex-wrap: wrap; gap: .75rem; margin-top: 1rem; }
+.selection { border-left: 3px solid var(--accent); padding: 1rem; background: var(--surface); }
+.selection h3, .selection p { flex-basis: 100%; margin: 0; }
+.propertyList button[aria-pressed="true"] { background: var(--accent); color: var(--bg); }
+.selectedOffer { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: var(--radius-lg); }
+.canvas { width: 100%; height: 540px; }
+.canvas :global(.maplibregl-ctrl-attrib) { background: #fff; color: #222; }
+.canvas :global(.maplibregl-ctrl-attrib a) { color: #222; }
+.overlap { display: grid; gap: .5rem; padding: 1rem; background: var(--surface); border-top: 1px solid var(--border); }
+.overlap p { margin: 0 0 .5rem; }
+.overlap button { min-height: 44px; padding: .6rem; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--bg); color: var(--text); cursor: pointer; }
+.overlap button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+.overlap button:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.message { position: absolute; inset: auto 1rem 3rem; padding: 1rem; background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius-md); }
+.message button { min-height: 44px; padding: .6rem 1rem; background: var(--accent); color: var(--bg); border: 0; border-radius: var(--radius-md); cursor: pointer; }
+.pin { padding: .55rem .75rem; min-height: 44px; border: 2px solid var(--bg); border-radius: 2rem; background: var(--text); color: var(--bg); font: 600 .85rem var(--font-mono); box-shadow: 0 3px 10px #0003; cursor: pointer; }
+.pin[aria-pressed="true"] { background: var(--accent); outline: 3px solid var(--text); z-index: 2; }
+.pin:focus-visible, .message button:focus-visible { outline: 3px solid var(--accent); outline-offset: 4px; }
+@media (max-width: 850px) { .split { display: block; } .split .mapSection { position: static; max-height: none; overflow: visible; } .canvas { height: 380px; } .controls { grid-template-columns: 1fr; } }

@@ -5,6 +5,7 @@ import { isMultiUserEnabled } from '@/lib/multi-user';
 import { getCurrentUser } from '@/lib/user-auth';
 import { prisma } from '@/lib/prisma';
 import { SettingsForm } from './SettingsForm';
+import { HotelMapPreferences } from '@/components/hotels/HotelMapPreferences';
 import styles from './page.module.css';
 
 export const dynamic = 'force-dynamic';
@@ -53,6 +54,7 @@ export default async function AccountSettingsPage() {
         }}
         adminEnabledAggregators={adminEnabledAggregators}
       />
+      <HotelMapPreferences key={user.id} initial={user.hotelMapPreferences} initialRevision={user.hotelMapPreferencesRevision} actorScope={`user:${user.id}`} />
     </main>
   );
 }

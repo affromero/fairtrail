@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { verifyHotelContext, type HotelPageCapture } from './extraction';
 import type { HotelOffer, HotelSearch, HotelStay } from './types';
 import { hotelAmenities } from './property-metadata';
+import { hotelLocation } from './location';
 
 /** The provider's selected total-price mode applies to the visible seller rows. */
 export function extractGoogleOffers(capture: HotelPageCapture, search: HotelSearch, stay: HotelStay): HotelOffer[] {
@@ -40,6 +41,7 @@ export function extractGoogleOffers(capture: HotelPageCapture, search: HotelSear
     offers.push({
       id: createHash('sha256').update(JSON.stringify([key, stay, search.rooms])).digest('hex').slice(0, 24),
       source: 'google_hotels', propertyId, hotelName, address: propertyPage ? capture.address ?? '' : '',
+      location: propertyPage ? hotelLocation(capture.location, propertyId) : null,
       imageUrl: propertyPage ? capture.images[0]?.url ?? null : null, propertyUrl, bookingUrl: link.url, seller: link.seller,
       ...stay, roomName, rateName: null, totalPrice: price, currency: search.currency,
       taxesIncluded: true, occupancyVerified: true, rooms: search.rooms, refundable, breakfast,
