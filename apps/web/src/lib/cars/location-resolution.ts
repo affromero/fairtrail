@@ -61,12 +61,14 @@ export function carLocationSuggestions(raw: unknown, source: CarSource): Suggest
 }
 
 export async function matchCarProviderLocation(place: CarLocationChoice, suggestions: Suggestion[], source: CarSource): Promise<{ id: string; name: string }> {
-  const candidates = suggestions.filter(row => countryMatches(place, row.country, source) && row.kind === place.kind);
+  const downtown = (row: Suggestion) => normalizeCarPlace(row.name) === normalizeCarPlace(`${row.city} Downtown`);
+  const candidates = suggestions.filter(row => countryMatches(place, row.country, source) && (row.kind === place.kind
+    || source === 'discovercars' && place.kind === 'city' && row.kind === 'downtown' && downtown(row)));
   const matches: Suggestion[] = [];
   for (const row of candidates) {
     if (place.kind === 'airport' && row.code === place.iata) matches.push(row);
     const region = source === 'discovercars' ? discoverCarsState(row.country) : undefined;
-    if (place.kind === 'city' && normalizeCarPlace(row.name) === normalizeCarPlace(row.city) && await carCityNameIsUnambiguous(place, row.city, region)) matches.push(row);
+    if (place.kind === 'city' && (normalizeCarPlace(row.name) === normalizeCarPlace(row.city) || downtown(row)) && await carCityNameIsUnambiguous(place, row.city, region)) matches.push(row);
   }
   const unique = [...new Map(matches.map(row => [row.id, row])).values()];
   if (unique.length !== 1) throw new CarError(`The provider could not uniquely match ${place.name}, ${place.country}; choose a specific airport or another location. No nearby station was substituted.`);

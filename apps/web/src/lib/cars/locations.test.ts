@@ -99,6 +99,20 @@ describe('server-owned rental geography', () => {
     const springfield = await getCarCatalogPlace('geonames:4224162');
     await expect(matchCarProviderLocation(springfield, [{ ...suggestion, name: 'Springfield', city: 'Springfield', country: 'USA - Georgia' }], 'discovercars')).rejects.toThrow(/uniquely match/);
   });
+  it.each(['discovercars', 'autoeurope'] as const)('matches only a unique exact downtown area for %s and retains its full label', async source => {
+    const city = await getCarCatalogPlace('geonames:5128581');
+    const raw = source === 'discovercars'
+      ? { success: true, result: [{ placeID: 4814, place: 'New York Downtown', city: 'New York', country: 'USA - New York', location: 'downtown' }] }
+      : { data: [{ locations: [{ location_id: 85276786, location_type_id: 2, name: 'New York City Downtown', city_name: 'New York City', country_code: 'US', code: null }] }] };
+    const suggestions = carLocationSuggestions(raw, source), candidate = suggestions[0]!;
+    expect(await matchCarProviderLocation(city, suggestions, source)).toEqual({ id: candidate.id, name: candidate.name });
+    for (const name of [`${candidate.city} North Downtown`, `${candidate.city} Airport`, `${candidate.city} Suburb`, 'Manhattan Downtown']) {
+      await expect(matchCarProviderLocation(city, [{ ...candidate, name }], source)).rejects.toThrow(/uniquely match/);
+    }
+    await expect(matchCarProviderLocation(city, [candidate, { ...candidate, id: '999' }], source)).rejects.toThrow(/uniquely match/);
+    await expect(matchCarProviderLocation(city, [candidate, { ...candidate, id: '998', name: candidate.city, kind: 'city' }], source)).rejects.toThrow(/uniquely match/);
+    await expect(matchCarProviderLocation(airport, suggestions, source)).rejects.toThrow(/uniquely match/);
+  });
   it('refuses a city name shared by multiple places in the same country', async () => {
     const springfield = (await searchCarLocations('Springfield US')).find(place => place.kind === 'city' && place.name === 'Springfield' && place.country === 'US');
     expect(springfield).toBeDefined();
