@@ -101,7 +101,7 @@ export default async function HomePage() {
           />
         )}
       </div>
-      <div className={styles.hero}>
+      <div className={`${styles.hero} ${!isSelfHosted ? styles.publicHero : ''}`}>
         <h1 className={styles.title}><Link href="/">Flight Finder</Link></h1>
         <p className={styles.tagline}>
           {t('travelTagline')}
@@ -128,10 +128,12 @@ export default async function HomePage() {
         ) : (
           <>
             <InstallCommand />
+            <div className={styles.demo}>
+              <DemoGif />
+            </div>
             <section className={styles.travelOverview} aria-labelledby="travel-title">
               <p className={styles.travelLabel}>{t('travelLabel')}</p>
               <h2 id="travel-title" className={styles.travelTitle}>{t('travelTitle')}</h2>
-              <p className={styles.travelIntro}>{t('travelIntro')}</p>
               <div className={styles.travelColumns}>
                 <div>
                   <h3>{t('flightsTitle')}</h3>
@@ -146,11 +148,10 @@ export default async function HomePage() {
                   <p>{t('carsText')}</p>
                 </div>
               </div>
-              <p className={styles.travelHousehold}>{t('travelHousehold')}</p>
               <p className={styles.travelAvailability}>{t('travelAvailability')}</p>
             </section>
-            <div className={styles.providers}>
-              <h2 className={styles.providersTitle}>{t('byoLlmTitle')}</h2>
+            <details className={styles.providers}>
+              <summary className={styles.providersTitle}>{t('byoLlmTitle')}</summary>
               <div className={styles.providerGrid}>
                 <div className={`${styles.providerCard} ${styles.providerFree}`}>
                   <span className={styles.providerName}>Claude Code</span>
@@ -188,10 +189,10 @@ export default async function HomePage() {
               <p className={styles.providersHint}>
                 {t('byoLlmHint')}
               </p>
-            </div>
+            </details>
 
-            <div className={styles.providers}>
-              <h2 className={styles.providersTitle}>{t('vpnTitle')}</h2>
+            <details className={styles.providers}>
+              <summary className={styles.providersTitle}>{t('vpnTitle')}</summary>
               <div className={styles.vpnGrid}>
                 <div className={`${styles.providerCard} ${styles.providerFree}`}>
                   <span className={styles.providerName}>ExpressVPN</span>
@@ -225,17 +226,12 @@ export default async function HomePage() {
                   <li>{t('stealthExitCountry')}</li>
                 </ul>
               </details>
-            </div>
+            </details>
           </>
         )}
       </div>
 
-      {!isSelfHosted && (
-        <div className={styles.demo}>
-          <DemoGif />
-        </div>
-      )}
-
+      {isSelfHosted && (
       <section className={styles.why}>
         <h2 className={styles.whyTitle}>{t('whyTitle')}</h2>
         <div className={styles.reasons}>
@@ -268,36 +264,60 @@ export default async function HomePage() {
           </div>
         </div>
       </section>
+      )}
 
       {!isSelfHosted && (
         <section className={styles.how}>
           <h2 className={styles.whyTitle}>{t('howTitle')}</h2>
           <div className={styles.steps}>
             <div className={styles.step}>
+              <div className={styles.stepVisual} aria-hidden="true">
+                <div className={styles.terminalBar}><span /><span /><span /></div>
+                <div className={styles.terminalBody}>
+                  <span className={styles.terminalPrompt}>$</span>
+                  <code>curl -fsSL<br />https://flight-finder.org/install.sh<br />| bash</code>
+                  <span className={styles.terminalSuccess}>✓ <span className={styles.terminalCursor} /></span>
+                </div>
+              </div>
+              <div className={styles.stepHeading}>
               <span className={styles.stepNumber}>1</span>
               <div>
                 <h3 className={styles.reasonTitle}>{t('how1Title')}</h3>
-                <p className={styles.reasonText}>
-                  {t('how1Text')}
-                </p>
+              </div>
               </div>
             </div>
             <div className={styles.step}>
+              <div className={`${styles.stepVisual} ${styles.routeVisual}`} aria-hidden="true">
+                <div className={styles.routeCodes}><span>JFK</span><span>CDG</span></div>
+                <svg viewBox="0 0 280 60" fill="none">
+                  <path d="M16 30H264" stroke="currentColor" strokeDasharray="4 6" />
+                  <circle cx="16" cy="30" r="5" fill="currentColor" />
+                  <circle cx="264" cy="30" r="5" fill="currentColor" />
+                  <path d="m135 17 22 13-22 13 3-11-12-2 12-2Z" fill="currentColor" />
+                </svg>
+                <div className={styles.routeDates}><span>12 OCT</span><span>→</span><span>26 OCT</span></div>
+              </div>
+              <div className={styles.stepHeading}>
               <span className={styles.stepNumber}>2</span>
               <div>
                 <h3 className={styles.reasonTitle}>{t('how2Title')}</h3>
-                <p className={styles.reasonText}>
-                  {t('how2Text')}
-                </p>
+              </div>
               </div>
             </div>
             <div className={styles.step}>
+              <div className={`${styles.stepVisual} ${styles.chartVisual}`} aria-hidden="true">
+                <div className={styles.chartPrice}>$480 <span>→ $315</span></div>
+                <svg viewBox="0 0 280 112" fill="none">
+                  <path d="M8 20H272M8 56H272M8 92H272" className={styles.chartGrid} />
+                  <path d="m8 26 32 14 32-22 32 40 32-12 32 27 32-13 32 27 32 5" className={styles.chartLine} />
+                  <circle cx="264" cy="92" r="6" fill="currentColor" />
+                </svg>
+              </div>
+              <div className={styles.stepHeading}>
               <span className={styles.stepNumber}>3</span>
               <div>
                 <h3 className={styles.reasonTitle}>{t('how3Title')}</h3>
-                <p className={styles.reasonText}>
-                  {t('how3Text')}
-                </p>
+              </div>
               </div>
             </div>
           </div>
@@ -305,8 +325,8 @@ export default async function HomePage() {
       )}
 
       {!isSelfHosted && (
-        <section className={styles.notSection}>
-          <h2 className={styles.whyTitle}>{t('notTitle')}</h2>
+        <details className={styles.notSection}>
+          <summary className={styles.whyTitle}>{t('notTitle')}</summary>
           <div className={styles.notItems}>
             <div className={styles.notItem}>
               <span className={styles.notIcon} aria-hidden="true">
@@ -342,15 +362,12 @@ export default async function HomePage() {
               </div>
             </div>
           </div>
-        </section>
+        </details>
       )}
 
       {!isSelfHosted && (
-        <section className={styles.selfHost}>
-          <h2 className={styles.whyTitle}>{t('selfHostTitle')}</h2>
-          <p className={styles.selfHostLead}>
-            {t('selfHostLead')}
-          </p>
+        <details className={styles.selfHost}>
+          <summary className={styles.whyTitle}>{t('selfHostTitle')}</summary>
           <div className={styles.benefits}>
             <div className={styles.benefit}>
               <span className={styles.benefitIcon} aria-hidden="true">
@@ -397,7 +414,7 @@ export default async function HomePage() {
               </div>
             </div>
           </div>
-        </section>
+        </details>
       )}
 
       <Footer />
