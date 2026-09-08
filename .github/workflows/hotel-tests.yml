@@ -76,6 +76,10 @@ jobs:
       - run: npx prisma generate --schema=apps/web/prisma/schema.prisma
       - run: npm run db:push
       - run: npm run test --workspace=@flight-finder/web -- src/lib/hotels/hotel.integration.test.ts
+      - name: Verify map preferences, authorization and concurrent saves
+        run: npm run test --workspace=@flight-finder/web -- src/lib/hotels/map.integration.test.ts
+        env:
+          HOTEL_MAP_INTEGRATION_TESTS: '1'
 
   hotel-browser:
     runs-on: ubuntu-latest

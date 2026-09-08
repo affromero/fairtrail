@@ -105,9 +105,15 @@ try {
     await page.goto('/');
     await page.getByRole('heading', { name: t.Landing.travelTitle, exact: true }).waitFor();
     assert.equal(await page.getByRole('heading', { level: 1 }).count(), 1);
-    assert.ok((await page.locator('main').innerText()).includes(t.Landing.travelIntro));
-    assert.ok((await page.locator('main').innerText()).includes(t.Landing.travelHousehold));
-    assert.ok((await page.locator('main').innerText()).includes(t.Landing.travelAvailability));
+    const overview = page.getByRole('region', { name: t.Landing.travelTitle, exact: true });
+    const expected = [t.Landing.flightsText, t.Landing.hotelsText, t.Landing.carsText, t.Landing.travelAvailability];
+    try {
+      for (const text of expected) await overview.getByText(text, { exact: true }).waitFor({ state: 'visible', timeout: 10000 });
+    } catch (error) {
+      await page.screenshot({ path: resolve(output, `public-${locale}-copy-failure.png`), fullPage: true, animations: 'disabled' });
+      await writeFile(resolve(output, `public-${locale}-copy-failure.json`), JSON.stringify({ locale, expected, actual: await overview.textContent() }, null, 2));
+      throw error;
+    }
     assert.equal(await page.locator('a[href="/hotels"], a[href="/cars"]').count(), 0, 'Public visitors install rather than navigate to a disabled search');
     const structured = JSON.parse(await page.locator('script[type="application/ld+json"]').innerText());
     const manifest = await (await ctx.request.get('/manifest.json')).json();

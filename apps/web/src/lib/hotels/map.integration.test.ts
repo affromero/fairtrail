@@ -17,7 +17,7 @@ describe.skipIf(process.env.HOTEL_MAP_INTEGRATION_TESTS !== '1')('map settings a
   let flightConfig: unknown;
   beforeAll(async () => {
     const url = new URL(process.env.DATABASE_URL ?? 'http://invalid');
-    if (url.hostname !== '127.0.0.1' || url.pathname !== '/hotel_map_test') throw new Error('Requires disposable localhost hotel_map_test database');
+    if (url.hostname !== '127.0.0.1' || !['/hotel_map_test', '/hotel_test'].includes(url.pathname)) throw new Error('Requires disposable localhost hotel_map_test or hotel_test database');
     vi.stubEnv('SELF_HOSTED', 'true');
     vi.stubEnv('ADMIN_SESSION_SECRET', 'map-integration-test-secret');
     const config = await prisma.extractionConfig.findUniqueOrThrow({ where: { id: 'singleton' } });
