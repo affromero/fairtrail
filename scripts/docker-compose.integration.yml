@@ -20,7 +20,7 @@ services:
       retries: 10
 
   web:
-    image: flight-finder-test:latest
+    image: ${FLIGHT_FINDER_TEST_IMAGE:-flight-finder-test:latest}
     init: true
     ipc: host
     depends_on:
@@ -29,7 +29,7 @@ services:
       redis:
         condition: service_healthy
     ports:
-      - "${HOST_PORT:-3399}:3003"
+      - "127.0.0.1:${HOST_PORT:-3399}:3003"
     environment:
       DATABASE_URL: postgresql://postgres:postgres@db:5432/flight_finder
       REDIS_URL: redis://redis:6379
