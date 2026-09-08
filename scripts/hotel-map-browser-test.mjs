@@ -37,7 +37,7 @@ async function scenario(name, width, mode, test) {
   await page.exposeFunction('recordMapCspViolation', value => violations.push(value));
   await page.addInitScript(() => document.addEventListener('securitypolicyviolation', event => window.recordMapCspViolation({ directive: event.violatedDirective, blocked: event.blockedURI })));
   page.on('pageerror', error => errors.push(error.message));
-  page.on('request', request => { if (/openfreemap|\/maplibre\/|\/maps\/|unlisted\.example/.test(request.url())) traffic.push({ url: request.url(), headers: request.headers() }); });
+  page.on('request', request => { if (/openfreemap|versatiles|\/maplibre\/|\/maps\/|unlisted\.example/.test(request.url())) traffic.push({ url: request.url(), headers: request.headers() }); });
   await page.route(`${server}/hotels`, async route => {
     const response = await route.fetch();
     await route.fulfill({ response, headers: { ...response.headers(), 'content-security-policy': csp } });
@@ -112,6 +112,17 @@ try {
     assert.ok(mapTraffic.every(entry => !entry.headers.cookie && !entry.headers.referer), 'No cookies or referrers sent to map provider');
     assert.ok(traffic.filter(entry => entry.url.includes('/maplibre/')).every(entry => new URL(entry.url).origin === new URL(server).origin), 'Same-origin workers');
   });
+  for (const style of ['positron', 'bright']) for (const width of [1440, 390]) await scenario(`map-${style}-${width}`, width, 'live', async ({ page, traffic }) => {
+    await page.locator('.maplibregl-canvas').waitFor();
+    await page.getByText('Loading map…', { exact: true }).waitFor({ state: 'hidden' });
+    const loaded = page.waitForResponse(response => response.url() === `https://tiles.openfreemap.org/styles/${style}` && response.ok());
+    await page.getByRole('combobox', { name: /^Map style/ }).selectOption(style);
+    await loaded;
+    await page.getByText('Loading map…', { exact: true }).waitFor({ state: 'hidden' });
+    assert.equal(await page.getByText(/The map could not load completely/).count(), 0);
+    assert.equal(await page.locator('.maplibregl-marker').count(), 2, 'Changing map style preserves the hotel markers and overlap group');
+    assert.ok(traffic.some(entry => entry.url === `https://tiles.openfreemap.org/styles/${style}`), 'The selected real provider style loaded');
+  });
   for (const mode of ['offline', 'no-webgl']) await scenario(`map-${mode}`, 390, mode, async ({ page }) => {
     await page.getByText(/The map could not load completely/).waitFor();
     assert.equal(await page.getByRole('button', { name: 'Track this hotel', exact: true }).count(), offers.length);
@@ -151,6 +162,17 @@ try {
       assert.ok(requests.every(entry => !entry.headers.cookie && !entry.headers.referer), 'Same-origin map resources omit application cookies and referrers');
       assert.ok(traffic.every(entry => !entry.url.includes('unlisted.example') && !entry.url.includes('openfreemap')), 'No redirect, unlisted-resource or fallback requests');
       assert.equal(await page.getByRole('button', { name: 'Track this hotel', exact: true }).count(), offers.length);
+    });
+    await saveConfig({ ...initial.config, provider: 'custom', providerName: 'VersaTiles', styleUrl: 'https://tiles.versatiles.org/assets/styles/colorful/style.json', resourceOrigins: ['https://tiles.versatiles.org'], privacyUrl: 'https://versatiles.org/', attribution: 'VersaTiles · OpenStreetMap contributors', attributionUrl: 'https://www.openstreetmap.org/copyright' }, await readConfig());
+    for (const width of [1440, 390]) await scenario(`map-versatiles-${width}`, width, 'versatiles', async ({ page, traffic }) => {
+      await page.locator('.maplibregl-canvas').waitFor();
+      await page.getByText('Loading map…', { exact: true }).waitFor({ state: 'hidden' });
+      assert.equal(await page.getByText(/The map could not load completely/).count(), 0);
+      assert.equal(await page.locator('.maplibregl-marker').count(), 2);
+      const resources = traffic.filter(entry => new URL(entry.url).hostname === 'tiles.versatiles.org');
+      assert.ok(resources.some(entry => entry.url.includes('/tiles/osm/')), 'Real alternative-provider tiles loaded');
+      assert.ok(resources.every(entry => !entry.headers.cookie && !entry.headers.referer), 'Alternative-provider resources omit cookies and referrers');
+      assert.ok(traffic.every(entry => !entry.url.includes('openfreemap')), 'Alternative provider does not fall back to OpenFreeMap');
     });
   } finally { await saveConfig(initial.config, await readConfig()); }
   await writeFile(resolve(output, 'results.json'), JSON.stringify(results, null, 2));
