@@ -8,6 +8,7 @@ export default defineConfig({
   dts: false,
   clean: true,
   splitting: false,
+  metafile: true,
   esbuildOptions(options) {
     options.alias = {
       '@': path.resolve(__dirname, '../../apps/web/src'),

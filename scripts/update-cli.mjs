@@ -1,6 +1,8 @@
 import { spawn } from 'node:child_process';
-import { readFile, mkdir, mkdtemp, realpath, symlink, rename, unlink, rm } from 'node:fs/promises';
+import { readFile, mkdir, mkdtemp, realpath, symlink, rename, unlink, rm, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, join } from 'node:path';
+import lockfile from 'proper-lockfile';
+import { retainCliVersions } from './cli-retention.mjs';
 
 const versionsPath = new URL('../cli-versions.json', import.meta.url);
 const deployedVersionsPath = new URL('./cli-versions.json', import.meta.url);
@@ -31,6 +33,9 @@ function run(command, args, timeout = 180_000) {
   });
 }
 const binary = join(prefix, 'bin', definition.binary);
+await mkdir(prefix, { recursive: true, mode: 0o700 });
+const release = await lockfile.lock(prefix, { realpath: true, lockfilePath: join(prefix, '.update.lock'), stale: 300_000, update: 10_000, retries: { retries: 120, minTimeout: 250, maxTimeout: 1000 } });
+try {
 const installed = await run(binary, ['--version'], 8000).catch(() => '');
 if (installed.match(/\b\d+\.\d+\.\d+(?:-[a-zA-Z0-9.-]+)?\b/)?.[0] === version) {
   console.log(JSON.stringify({ provider, version, changed: false }));
@@ -40,7 +45,7 @@ if (installed.match(/\b\d+\.\d+\.\d+(?:-[a-zA-Z0-9.-]+)?\b/)?.[0] === version) {
   const installation = await mkdtemp(join(root, `${definition.binary}-${version}-`));
   let activated = false;
   try {
-  await run('npm', ['install', '--prefix', installation, '--no-save', '--ignore-scripts', '--no-audit', '--no-fund', `${definition.package}@${version}`]);
+  await run('npm', ['install', '--prefix', installation, '--cache', join(installation, 'npm-cache'), '--no-save', '--ignore-scripts', '--no-audit', '--no-fund', `${definition.package}@${version}`]);
   if (provider === 'claude-code') {
     const packageDirectory = join(installation, 'node_modules', '@anthropic-ai', 'claude-code');
     const metadata = JSON.parse(await readFile(join(packageDirectory, 'package.json'), 'utf8'));
@@ -51,6 +56,8 @@ if (installed.match(/\b\d+\.\d+\.\d+(?:-[a-zA-Z0-9.-]+)?\b/)?.[0] === version) {
   const target = await realpath(join(installation, 'node_modules', '.bin', definition.binary));
   const observed = await run(target, ['--version'], 8000);
   if (observed.match(/\b\d+\.\d+\.\d+(?:-[a-zA-Z0-9.-]+)?\b/)?.[0] !== version) throw new Error('Installed CLI version did not match the requested release');
+  await rm(join(installation, 'npm-cache'), { recursive: true, force: true });
+  await writeFile(join(installation, 'activation.json'), JSON.stringify({ binary: definition.binary, version, activatedAt: Date.now() }), { mode: 0o600 });
   await mkdir(dirname(binary), { recursive: true });
   const temporaryLink = `${binary}.${process.pid}.${Date.now()}`;
   try { await symlink(target, temporaryLink); await rename(temporaryLink, binary); activated = true; }
@@ -60,4 +67,11 @@ if (installed.match(/\b\d+\.\d+\.\d+(?:-[a-zA-Z0-9.-]+)?\b/)?.[0] === version) {
     // Only this attempt's staging directory is disposable. Never remove an active or previous installation.
     if (!activated) await rm(installation, { recursive: true, force: true });
   }
+}
+if (process.argv.includes('--maintenance')) {
+  const removed = await retainCliVersions(prefix);
+  if (removed.length) console.error(`Removed ${removed.length} expired CLI installations`);
+}
+} finally {
+  await release();
 }

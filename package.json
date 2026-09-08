@@ -36,7 +36,8 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.122.0",
     "@google/generative-ai": "^0.24.1",
-    "openai": "^7.8.0"
+    "openai": "^7.8.0",
+    "proper-lockfile": "4.1.2"
   },
   "devDependencies": {
     "prisma": "7.10.0",

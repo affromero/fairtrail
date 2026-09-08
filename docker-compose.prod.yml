@@ -7,6 +7,11 @@ services:
   db:
     image: docker.io/library/postgres:16-alpine
     restart: unless-stopped
+    logging: &bounded-logs
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "3"
     environment:
       POSTGRES_DB: flight_finder
       POSTGRES_USER: postgres
@@ -24,6 +29,7 @@ services:
   redis:
     image: docker.io/library/redis:7-alpine
     restart: unless-stopped
+    logging: *bounded-logs
     volumes:
       - redisdata:/data
     ports:
@@ -37,6 +43,7 @@ services:
   web:
     image: ${FF_IMAGE:-ghcr.io/affromero/flight-finder}:${FF_IMAGE_TAG:-latest}
     restart: unless-stopped
+    logging: *bounded-logs
     init: true
     ipc: host
     depends_on:

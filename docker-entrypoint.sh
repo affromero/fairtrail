@@ -152,7 +152,7 @@ if [ "$INSTALL_CLI_PROVIDERS" = "true" ]; then
   # runtime "latest" cannot pull an unreviewed release into the image. Bump these
   # deliberately. Override at build/run time with CLAUDE_CODE_VERSION / CODEX_VERSION.
   for cli_provider in claude-code codex; do
-    if ! node /app/update-cli.mjs "$cli_provider"; then
+    if ! node /app/update-cli.mjs "$cli_provider" --maintenance; then
       echo "[setup] WARNING: $cli_provider update failed; recheck its version in Settings"
     fi
   done
