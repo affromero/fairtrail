@@ -1,7 +1,22 @@
 import { describe, expect, it } from 'vitest';
-import { resolveCarLocalTime, validateCarExtras, validateCarFilters, validateCarLocalDateTime, validateCarOptions, validateCarSearch } from './validation';
+import { resolveCarLocalTime, validateCarCountry, validateCarExtras, validateCarFilters, validateCarLocalDateTime, validateCarOptions, validateCarSearch } from './validation';
 
 const now = new Date('2026-09-01T00:00:00Z');
+
+describe('rental country validation', () => {
+  it.each(['GB', 'DE', 'FR', 'CW', 'BQ', 'AX', 'XK'])('accepts %s and preserves lowercase input normalization', code => {
+    expect(validateCarCountry(code.toLowerCase())).toBe(code);
+  });
+  it.each(['UK', 'DD', 'FX', 'SU', 'AN', 'EU', 'EZ', 'UN', 'ZZ', 'XA', 'XB', 'AC', 'IC', 'QO'])('rejects obsolete or non-country code %s across rental criteria', code => {
+    expect(() => validateCarCountry(code)).toThrow(/valid country/);
+    const driver = { ...request().driver, residenceCountry: code };
+    expect(() => validateCarSearch({ ...request(), driver }, now)).toThrow(/valid country/);
+    expect(() => validateCarExtras({ additionalDrivers: [driver] })).toThrow(/valid country/);
+    for (const field of ['pickup', 'dropoff']) {
+      expect(() => validateCarSearch({ ...request(), [field]: { ...location, country: code } }, now)).toThrow(/valid country/);
+    }
+  });
+});
 const location = { name: 'London Heathrow Airport', country: 'GB', timeZone: 'Europe/London', providerIds: { discovercars: '1712', autoeurope: '547' } };
 const request = () => ({
   pickup: location, dropoff: location,

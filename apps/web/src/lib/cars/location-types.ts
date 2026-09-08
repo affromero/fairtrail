@@ -25,7 +25,7 @@ export function validateCarLocationChoice(raw: unknown): CarLocationChoice {
   if (!/^(?:geonames|ourairports):\d+$/.test(id) || !/^[a-f0-9]{64}$/.test(version) || !['airport', 'city'].includes(String(r.kind))) throw new CarError('Invalid location suggestion');
   if (typeof r.latitude !== 'number' || !Number.isFinite(r.latitude) || Math.abs(r.latitude) > 90 || typeof r.longitude !== 'number' || !Number.isFinite(r.longitude) || Math.abs(r.longitude) > 180) throw new CarError('Invalid location coordinates');
   const country = carText(r.country, 2, 'country'), timeZone = carText(r.timeZone, 100, 'timezone');
-  if (!/^[A-Z]{2}$/.test(country) || !new Intl.DisplayNames(['en'], { type: 'region', fallback: 'none' }).of(country)) throw new CarError('Invalid location country');
+  if (!isCarCountry(country)) throw new CarError('Invalid location country');
   try { new Intl.DateTimeFormat('en', { timeZone }); } catch { throw new CarError('Invalid location timezone'); }
   const iata = r.iata === null ? null : carText(r.iata, 3, 'airport code');
   if ((r.kind === 'airport') !== (iata !== null) || (iata !== null && !/^[A-Z]{3}$/.test(iata))) throw new CarError('Invalid location airport code');
@@ -34,3 +34,4 @@ export function validateCarLocationChoice(raw: unknown): CarLocationChoice {
 }
 import { CarError } from './types';
 import { carRecord, carText } from './validation';
+import { isCarCountry } from './countries';

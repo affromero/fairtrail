@@ -181,6 +181,14 @@ describe('independent rental search form', () => {
     expect(screen.getByRole('heading', { name: messages.Cars.Search.findCar })).toBeInTheDocument();
     expect(screen.getByLabelText(messages.Cars.Search.driverAge)).toHaveValue(null);
     expect(screen.getByLabelText(messages.Cars.Search.residence)).toHaveValue('');
+    const residence = screen.getByLabelText<HTMLSelectElement>(messages.Cars.Search.residence);
+    const names = new Intl.DisplayNames([locale], { type: 'region' });
+    for (const code of ['GB', 'DE', 'FR']) {
+      const matches = [...residence.options].filter(option => option.text === names.of(code));
+      expect(matches.map(option => option.value)).toEqual([code]);
+    }
+    fireEvent.change(residence, { target: { value: 'GB' } });
+    expect(residence).toHaveValue('GB');
     expect(screen.getByLabelText(messages.Cars.Search.currency)).toHaveValue('GBP');
   });
   it('sends catalog identities and explicit local rental details, then opens the acknowledged search', async () => {

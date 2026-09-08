@@ -1,4 +1,5 @@
 import { Temporal } from '@js-temporal/polyfill';
+import { isCarCountry } from './countries';
 import { CAR_SOURCES, CHILD_SEAT_CATEGORIES, CarError, type CarDriver, type CarExtras, type CarLocalTime, type CarLocation, type CarSearch, type CarTrackingOptions } from './types';
 import { validateCarProviders } from './preferences';
 import { currencyPrecision, validateCarMoney } from './money';
@@ -22,7 +23,7 @@ function boolean(raw: unknown, defaultValue = false): boolean {
 }
 export function validateCarCountry(raw: unknown): string {
   const code = carText(raw, 2, 'country').toUpperCase();
-  if (!/^[A-Z]{2}$/.test(code) || ['ZZ', 'EU', 'EZ', 'UN'].includes(code) || new Intl.DisplayNames(['en'], { type: 'region', fallback: 'none' }).of(code) === undefined) throw new CarError('Choose a valid country');
+  if (!isCarCountry(code)) throw new CarError('Choose a valid country');
   return code;
 }
 function timeZone(raw: unknown): string {
