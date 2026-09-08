@@ -95,7 +95,7 @@ export async function submitDiscoverCarsSearch(page: Page, search: CarSearch): P
   guard.reset();
   const previousPath = new URL(page.url()).pathname;
   await page.locator('button[type="submit"]').filter({ hasText: /^Search(?: now)?$/ }).click();
-  await page.waitForURL(url => url.pathname.startsWith('/search/') && url.pathname !== previousPath);
+  await page.waitForURL(url => url.pathname.startsWith('/search/') && url.pathname !== previousPath, { waitUntil: 'domcontentloaded' });
   await guard.settle();
   return collectDiscoverCarsOffers(page, search);
 }

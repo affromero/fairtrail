@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import type { Browser } from 'playwright';
+import type { Browser, Route } from 'playwright';
 import { launchBrowser } from '../scraper/browser';
 import { collectDiscoverCarsOffers, fillDiscoverCarsSearch, submitDiscoverCarsSearch } from './discovercars-navigation';
 import { prepareCarPage } from './navigation';
@@ -101,6 +101,29 @@ describe.skipIf(process.env.TRAVEL_BROWSER_TESTS !== '1')('DiscoverCars request 
     const page = await browser.newPage();
     try { await expect(fillDiscoverCarsSearch(page, { ...search, driver: { ...search.driver, age: 45 } })).rejects.toThrow(/exact driver age/); }
     finally { await page.close(); }
+  });
+
+  it('returns verified offers while an unrelated result image is still loading', async () => {
+    const page = await browser.newPage();
+    let imageRequest: Route | undefined;
+    try {
+      await prepareCarPage(page, 'discovercars');
+      page.setDefaultNavigationTimeout(2000);
+      await page.route('https://www.discovercars.com/**', route => {
+        const url = new URL(route.request().url());
+        if (url.pathname === '/slow-image.png') { imageRequest = route; return; }
+        return route.fulfill({ contentType: 'text/html', body: url.pathname.startsWith('/search/')
+          ? `<button>GBP</button><img src="/slow-image.png" alt="Supplier photo"><a class="SearchCar-CtaBtn" href="${offerUrl()}">Select</a>`
+          : form('GBP') });
+      });
+      await page.goto('https://www.discovercars.com/');
+      await fillDiscoverCarsSearch(page, search);
+      expect(await submitDiscoverCarsSearch(page, search)).toEqual({ links: [offerUrl()], discoveredVisible: 1, limit: 8, truncated: false });
+      expect(await page.evaluate(() => document.readyState)).toBe('interactive');
+    } finally {
+      await imageRequest?.abort();
+      await page.close();
+    }
   });
 
   it('replaces a one-way return and moves the calendar backward for a subsequent search', async () => {
