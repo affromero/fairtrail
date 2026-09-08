@@ -7,7 +7,7 @@ import { extractAutoEuropeOffer } from './autoeurope-extraction';
 import { navigateDiscoverCarsSearch } from './discovercars-navigation';
 import { captureDiscoverCarsDetail } from './discovercars-capture';
 import { extractDiscoverCarsOffer } from './discovercars-extraction';
-import { prepareCarPage } from './navigation';
+import { providerFailure } from './provider-failure';
 import { carContractHash, carTrackerSearch, validateCarSelection } from './selection';
 import { assertCarProtectionRecheck } from './protection-recheck';
 import { validateCarSearch } from './validation';
@@ -16,6 +16,7 @@ import { captureAutoEuropeProtectionChoices, extractAutoEuropeProtectionChoices 
 import { discoverDiscoverCarsProtection } from './discovercars-protection';
 import { carProtectionQuoteIdentity, validateCarProtectionDiscovery } from './protection-discovery';
 import { CarError, type CarContractSelection, type CarOffer, type CarProviderProgress, type CarSearch, type CarSearchReport, type CarSource } from './types';
+import { createCarBrowserContext, withCarQuoteContext } from './browser-context';
 
 export class CarSearchCleanupError extends Error {
   constructor(readonly report: CarSearchReport, cause: unknown) {
@@ -68,15 +69,6 @@ function publishDiagnostic(source: CarSource, error: unknown, observer: CarSearc
   catch (error) { throw new CarSearchObserverError(error); }
 }
 
-async function providerFailure(error: unknown, page: Page | undefined, source: CarSource): Promise<{ message: string; terminal: boolean; blocked: boolean }> {
-  const status = page && !page.isClosed() ? (await prepareCarPage(page, source)).status() : 0;
-  const text = page && !page.isClosed() ? await page.locator('body').innerText({ timeout: 1000 }).catch(() => '') : '';
-  const blocked = status === 403 || status === 429 || /verify (?:that )?you are human|unusual traffic|complete the captcha|access denied/i.test(text);
-  if (blocked) return { message: 'Provider blocked automated access or rate-limited this search; no further offers were requested', terminal: true, blocked: true };
-  if (status >= 500) return { message: `Provider returned HTTP ${status}; this check could not finish`, terminal: true, blocked: false };
-  return { message: error instanceof CarError ? error.message : 'The provider quote could not be verified; no estimated price was substituted', terminal: false, blocked: false };
-}
-
 async function captureOffer(source: CarSource, detail: Page, url: string, search: CarSearch, searchPage: Page) {
   return source === 'discovercars'
     ? extractDiscoverCarsOffer(await captureDiscoverCarsDetail(detail, url, search, searchPage), search)
@@ -86,6 +78,7 @@ async function captureOffer(source: CarSource, detail: Page, url: string, search
 async function captureRequestedOffer(source: CarSource, detail: Page, url: string, search: CarSearch, searchPage: Page) {
   const binding = search.protectionRecheck;
   if (!binding) return captureOffer(source, detail, url, search, searchPage);
+  const unselectedState = source === 'discovercars' ? await detail.context().storageState() : null;
   const baseSearch = { ...search, extras: { ...search.extras, protection: [] } };
   delete baseSearch.protectionRecheck;
   const base = await captureOffer(source, detail, url, baseSearch, searchPage);
@@ -95,7 +88,9 @@ async function captureRequestedOffer(source: CarSource, detail: Page, url: strin
   if (carContractHash(base.contract) !== binding.baseContractHash) {
     return mismatch('This checked rental does not match the selected base contract; no protected price was substituted');
   }
-  const protectedOffer = await captureOffer(source, detail, url, search, searchPage);
+  const protectedOffer = unselectedState
+    ? await withCarQuoteContext(detail, search, unselectedState, page => captureOffer(source, page, url, search, searchPage))
+    : await captureOffer(source, detail, url, search, searchPage);
   if (!('contract' in protectedOffer)) return protectedOffer;
   try {
     assertCarProtectionRecheck(protectedOffer, { ...search, protectionRecheck: { ...binding,
@@ -111,7 +106,7 @@ async function inspectProvider(source: CarSource, search: CarSearch, report: Car
   let activePage: Page | undefined;
   try {
     const browser = await launchBrowser();
-    const context = await browser.newContext({ locale: 'en-US', timezoneId: search.pickup.timeZone, viewport: { width: 1440, height: 1000 } });
+    const context = await createCarBrowserContext(browser, search);
     const searchPage = await context.newPage();
     activePage = searchPage;
     const resolved = await resolveCarProviderLocations(searchPage, search, source);
