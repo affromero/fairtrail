@@ -80,10 +80,21 @@ export async function navigateAutoEuropeSearch(page: Page, search: CarSearch): P
   await page.getByRole('button', { name: 'Find Your Car', exact: true }).click();
   await page.waitForURL(url => url.pathname === '/en-us/results');
   await guard.settle();
+  return collectAutoEuropeOffers(page, search);
+}
+
+export async function collectAutoEuropeOffers(page: Page, search: CarSearch): Promise<CarDiscovery> {
   verifyCarProviderContext(page.url(), 'autoeurope', search);
   const offers = page.locator('a[href*="/options?rate_reference="]:visible');
-  await offers.first().waitFor({ timeout: 90_000 });
+  const empty = page.locator('#main [role="alert"]').getByText("Sorry, we couldn't find any available cars matching your search.", { exact: true }).filter({ visible: true });
+  await offers.or(empty).first().waitFor({ timeout: 90_000 });
+  verifyCarProviderContext(page.url(), 'autoeurope', search);
+  if (await empty.count()) {
+    if (await offers.count()) throw new CarError('Auto Europe returned conflicting availability information; no quote was substituted');
+    return { links: [], discoveredVisible: 0, limit: 8, truncated: false };
+  }
   const hrefs = await offers.evaluateAll(elements => elements.map(e => (e as HTMLAnchorElement).href));
+  if (!hrefs.length) throw new CarError('Auto Europe offers disappeared before they could be verified');
   const unique = [...new Set(hrefs)];
   const links = unique.slice(0, 8).map(url => {
     verifyCarProviderContext(url, 'autoeurope', search);
