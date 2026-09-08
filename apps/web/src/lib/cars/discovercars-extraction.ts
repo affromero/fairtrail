@@ -112,7 +112,8 @@ export function extractDiscoverCarsOffer(capture: DiscoverCarsCapture, search: C
       const expected = charges.map(charge => key(charge.payment, charge.label, charge.amount.value!.minor)).sort();
       if (JSON.stringify(actual) !== JSON.stringify(expected) || visibleMoney(visibleTotal, search.currency).minor !== total.minor) throw new CarError('Selected extras and rental total do not reconcile');
     };
-    if (localExtras && 'selections' in localExtras) {
+    const applyLocalExtras = () => {
+      if (!localExtras || !('selections' in localExtras)) return;
       if (localExtras.offerId !== raw.offerId || !Number.isFinite(Date.parse(localExtras.observedAt)) || Math.abs(Date.parse(localExtras.observedAt) - Date.parse(capture.observedAt)) > 300_000 || localExtras.selections.length !== requestedExtras.length) throw new CarError('Local-extra selection does not belong to this quote');
       const terms = prose(localExtras.terms, 'local-extra conditions');
       for (const requested of requestedExtras) {
@@ -132,11 +133,12 @@ export function extractDiscoverCarsOffer(capture: DiscoverCarsCapture, search: C
       total = sumCarMoney(charges.map(charge => charge.amount.value!), search.currency);
       reconcile(localExtras.priceLines, localExtras.visibleTotal);
       requirements.push({ kind: 'other', appliesTo: 'rental', condition: 'Selected local extras', evidence: proof(terms, terms) });
-    }
+    };
     const selected = search.extras.protection.find(item => item.source === 'discovercars');
     const protection = capture.protection;
     if (Boolean(selected) !== Boolean(protection)) throw new CarError('Selected protection was added or omitted');
-    if (protection) {
+    const applyProtection = () => {
+      if (!protection) return;
       if (protection.offerId !== raw.offerId || protection.productId !== selected?.productId || protection.selected !== true || !Number.isFinite(Date.parse(protection.observedAt)) || Math.abs(Date.parse(protection.observedAt) - Date.parse(capture.observedAt)) > 300_000) throw new CarError('Protection selection does not belong to this quote');
       const rate = carRecord(protection.price);
       const amount = money({ amount: rate.period, currency: rate.currency }, search.currency);
@@ -145,6 +147,14 @@ export function extractDiscoverCarsOffer(capture: DiscoverCarsCapture, search: C
       reconcile(protection.priceLines, protection.visibleTotal);
       coverageTerms += ` ${text(protection.terms)}`;
       extras.push({ kind: 'protection', productId: protection.productId, category: null, quantity: 1, availability: proof(true, protection.name), eligibility: proof(true, protection.terms), included: proof(false, protection.name), chargeId: `protection-${protection.productId}` });
+    };
+    if (capture.optionOrder === 'protection-first') {
+      if (!localExtras || !('selections' in localExtras)) throw new CarError('Separate extras step was not captured');
+      applyProtection();
+      applyLocalExtras();
+    } else {
+      applyLocalExtras();
+      applyProtection();
     }
     const includedTerms = section('rate-includes');
     const inclusionEntries = includedTerms.split(',').map(entry => entry.trim());
@@ -173,7 +183,7 @@ export function extractDiscoverCarsOffer(capture: DiscoverCarsCapture, search: C
       mandatoryChargesComplete: proof(taxesIncluded && mandatoryIncluded && !contradictoryFees, includedTerms), taxesIncluded: proof(taxesIncluded && !contradictoryFees, includedTerms),
       unlimitedMileage: proof<boolean>(conditionalMileage ? null : inclusionEntries.some(entry => /^Unlimited mileage$/i.test(entry)), mileageTerms, conditionalMileage ? 'unknown' : 'confirmed'),
       freeCancellation: proof(Date.parse(capture.observedAt) < Date.parse(search.pickupAt.instant) - Number(cancellation[1]) * 3_600_000, cancellation[0]),
-      total: proof(total, (protection?.visibleTotal ?? (localExtras && 'selections' in localExtras ? localExtras.visibleTotal : capture.visibleTotal)).replace(/\s+/g, ' ').trim(), requestedExtras.length ? 'estimated' : 'confirmed'), charges,
+      total: proof(total, (capture.optionOrder === 'protection-first' && localExtras && 'selections' in localExtras ? localExtras.visibleTotal : protection?.visibleTotal ?? (localExtras && 'selections' in localExtras ? localExtras.visibleTotal : capture.visibleTotal)).replace(/\s+/g, ' ').trim(), requestedExtras.length ? 'estimated' : 'confirmed'), charges,
       deposit: proof(deposit, section('deposit') || 'Supplier did not disclose a deposit', deposit ? 'estimated' : 'unknown'),
       excess: proof(excess, coverageTerms, excess ? 'estimated' : 'unknown'), extras,
     });

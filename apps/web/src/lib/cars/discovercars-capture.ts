@@ -8,6 +8,7 @@ import { verifyDiscoverCarsConditionsUrl } from './discovercars-conditions-url';
 import { captureDiscoverCarsProtection, type DiscoverCarsProtection } from './discovercars-protection';
 import { captureDiscoverCarsPriceLines, type DiscoverCarsPriceLine } from './discovercars-price-lines';
 import { captureDiscoverCarsExtras, type DiscoverCarsExtrasCapture } from './discovercars-extras';
+import { captureDiscoverCarsSeparateExtras } from './discovercars-extras-step';
 
 const guardedPages = new WeakSet<Page>();
 
@@ -49,6 +50,7 @@ export interface DiscoverCarsCapture {
   sections: { title: string; text: string }[];
   protection: DiscoverCarsProtection | null;
   localExtras?: DiscoverCarsExtrasCapture | { error: string } | null;
+  optionOrder?: 'extras-first' | 'protection-first';
 }
 
 /** Inspects the quote and supplier conditions without supplying any booking details. */
@@ -101,19 +103,28 @@ export async function captureDiscoverCarsDetail(page: Page, url: string, search:
   carProviderUrl(page.url(), 'discovercars');
   const quoteUrl = page.url();
   let localExtras: DiscoverCarsCapture['localExtras'] = null;
+  let protection: DiscoverCarsProtection | null = null;
+  let optionOrder: DiscoverCarsCapture['optionOrder'] = 'extras-first';
   if (search.extras.childSeats.length || search.extras.additionalDrivers.length) {
     try {
       await navigateCarPage(page, quoteUrl, 'discovercars');
       await conditionsButton.waitFor();
       const currentOffer = discoverCarsOfferFromScripts(await page.locator('script:not([src])').allTextContents(), String(offer.offerId));
       if (JSON.stringify(currentOffer) !== JSON.stringify(offer)) throw new CarError('Rental quote changed before local-extra selection; refresh the search');
-      localExtras = await captureDiscoverCarsExtras(page, quoteUrl, search, offer.extras);
+      const showExtras = page.getByRole('button', { name: 'Show extras', exact: true });
+      if (await showExtras.isVisible()) localExtras = await captureDiscoverCarsExtras(page, quoteUrl, search, offer.extras);
+      else {
+        const selected = await captureDiscoverCarsSeparateExtras(page, quoteUrl, search, offer, { visibleTotal, priceLines });
+        localExtras = selected.localExtras;
+        protection = selected.protection;
+        optionOrder = 'protection-first';
+      }
     } catch (error) {
       if (!(error instanceof CarError)) throw error;
       localExtras = { error: error.message };
     }
   }
   const selectedProtection = search.extras.protection.find(item => item.source === 'discovercars');
-  const protection = selectedProtection && !(localExtras && 'error' in localExtras) ? await captureDiscoverCarsProtection(page, quoteUrl, selectedProtection.productId, localExtras && 'selections' in localExtras ? localExtras : undefined) : null;
-  return { url: quoteUrl, observedAt: new Date().toISOString(), offer, selectable, currencyContext, visibleModel, visibleModelBasis, visibleInclusions, visibleSupplier, visibleTotal, priceLines, visiblePickup, visibleDropoff, sections, protection, localExtras };
+  if (optionOrder === 'extras-first' && selectedProtection && !(localExtras && 'error' in localExtras)) protection = await captureDiscoverCarsProtection(page, quoteUrl, selectedProtection.productId, localExtras && 'selections' in localExtras ? localExtras : undefined);
+  return { url: quoteUrl, observedAt: new Date().toISOString(), offer, selectable, currencyContext, visibleModel, visibleModelBasis, visibleInclusions, visibleSupplier, visibleTotal, priceLines, visiblePickup, visibleDropoff, sections, protection, localExtras, optionOrder };
 }

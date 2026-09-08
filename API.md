@@ -551,7 +551,10 @@ are observed extras, not confirmed all-in rental totals.
 
 DiscoverCars local extras, when selectable, produce itemized `estimated` charges
 and totals with supplier availability and eligibility evidence retained as
-`unknown`. AutoEurope local extras that cannot be selected remain candidates;
+`unknown`. Both detail-page controls and the separate coverage-to-extras sequence
+are supported. Each observed price breakdown must reconcile in its actual
+selection order; unrequested protection and unexpected booking steps are rejected.
+AutoEurope local extras that cannot be selected remain candidates;
 their requirements identify the requested quantities and retain any supplied
 Optional Extras terms. Candidate advertised amounts exclude unselected extras.
 

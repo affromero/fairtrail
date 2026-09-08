@@ -1,9 +1,10 @@
-import type { Page } from 'playwright';
+import type { Locator, Page } from 'playwright';
 import { CarError, type CarSearch, type ChildSeatCategory } from './types';
 import { carInteger, carRecord, carText } from './validation';
 import { carProviderUrl } from './offer-validation';
 import { verifyCarProviderContext } from './provider-context';
 import { captureDiscoverCarsPriceLines, type DiscoverCarsPriceLine } from './discovercars-price-lines';
+import { verifyDiscoverCarsQuoteStep } from './discovercars-quote-step';
 
 const PRODUCTS = {
   infant: { id: 3, label: 'Baby seat (0-13 kg)' },
@@ -37,8 +38,9 @@ export interface DiscoverCarsExtrasCapture {
   observedAt: string;
 }
 
-export async function verifyDiscoverCarsExtraSelection(page: Page, selections: DiscoverCarsExtraSelection[]): Promise<void> {
-  const options = page.locator('.ExtrasOption:visible'), labels = new Set<string>();
+export async function verifyDiscoverCarsExtraSelection(page: Page, selections: DiscoverCarsExtraSelection[], container?: Locator): Promise<void> {
+  const options = (container ?? page).locator('.ExtrasOption:visible'), labels = new Set<string>();
+  if (container && await page.locator('.ExtrasOption:visible').count() !== await options.count()) throw new CarError('Provider rendered local-extra controls outside the expected step');
   const count = await options.count();
   if (count > 100) throw new CarError('Provider local-extra controls exceed the capture limit');
   for (let index = 0; index < count; index++) {
@@ -53,13 +55,29 @@ export async function verifyDiscoverCarsExtraSelection(page: Page, selections: D
 
 /** Selects visible quote options only. Prices and availability remain unverified. */
 export async function captureDiscoverCarsExtras(page: Page, quoteUrl: string, search: CarSearch, rawExtras: unknown): Promise<DiscoverCarsExtrasCapture> {
+  return captureExtras(page, quoteUrl, search, rawExtras);
+}
+
+export async function captureDiscoverCarsExtrasStep(page: Page, quoteUrl: string, search: CarSearch, offer: Record<string, unknown>): Promise<DiscoverCarsExtrasCapture> {
+  return captureExtras(page, quoteUrl, search, offer.extras, offer);
+}
+
+async function captureExtras(page: Page, quoteUrl: string, search: CarSearch, rawExtras: unknown, stepOffer?: Record<string, unknown>): Promise<DiscoverCarsExtrasCapture> {
   const expected = new URL(carProviderUrl(quoteUrl, 'discovercars'));
-  const verify = () => {
+  const verify = async () => {
+    if (stepOffer) {
+      verifyCarProviderContext(expected.href, 'discovercars', search);
+      await verifyDiscoverCarsQuoteStep(page, quoteUrl, 'extras', stepOffer);
+      const roadtrip = page.locator('.ExtrasMobilityProtection:visible input[type="checkbox"]');
+      const roadtripSections = await page.locator('.ExtrasMobilityProtection:visible').count();
+      if (roadtripSections > 1 || (roadtripSections === 1 && await roadtrip.count() !== 1) || (await roadtrip.count() === 1 && await roadtrip.isChecked())) throw new CarError('Provider added unrequested Roadtrip Protection or omitted its selection state');
+      return;
+    }
     const current = new URL(carProviderUrl(page.url(), 'discovercars'));
     if (current.pathname !== expected.pathname || current.searchParams.get('sq') !== expected.searchParams.get('sq')) throw new CarError('Local extras belong to a different rental quote');
     verifyCarProviderContext(current.href, 'discovercars', search);
   };
-  verify();
+  await verify();
   const offerId = expected.pathname.match(/^\/offer\/([^/]+)$/)?.[1];
   if (!offerId) throw new CarError('Expected a rental detail page for local extras');
   if (!Array.isArray(rawExtras) || rawExtras.length > 100) throw new CarError('Provider local-extra products are unavailable');
@@ -68,14 +86,19 @@ export async function captureDiscoverCarsExtras(page: Page, quoteUrl: string, se
   const requested = discoverCarsRequestedExtras(search);
   if (!requested.length) throw new CarError('No local extras were requested');
   const show = page.getByRole('button', { name: 'Show extras', exact: true });
-  if (await show.count() !== 1 || !await show.isVisible()) throw new CarError('The provider does not expose local-extra selection controls for this quote');
-  await show.click();
-  const terms = carText((await page.locator('.OfferDetailsExtras-ExtrasInfo:visible').innerText()).replace(/\s+/g, ' ').trim(), 12000, 'local-extra conditions');
-  const options = page.locator('.ExtrasOption:visible');
+  const stepContainer = stepOffer ? page.locator('.OfferDetailsExtras-Extras_StepMode:visible') : undefined;
+  if (stepContainer) {
+    if (await stepContainer.count() !== 1) throw new CarError('Provider did not expose the expected separate extras step');
+  } else {
+    if (await show.count() !== 1 || !await show.isVisible()) throw new CarError('The provider does not expose local-extra selection controls for this quote');
+    await show.click();
+  }
+  const terms = carText((await (stepContainer ?? page).locator('.OfferDetailsExtras-ExtrasInfo:visible').innerText()).replace(/\s+/g, ' ').trim(), 12000, 'local-extra conditions');
+  const options = (stepContainer ?? page).locator('.ExtrasOption:visible');
   if (await options.count() > 100) throw new CarError('Provider local-extra controls exceed the capture limit');
   const selections: DiscoverCarsExtraSelection[] = [];
   for (const request of requested) {
-    verify();
+    await verify();
     const matches = products.filter(product => product.id === request.id), product = matches[0];
     if (matches.length !== 1 || !product) throw new CarError(`The provider did not offer the requested ${request.label}`);
     const productId = carText(product.idWithMap, 200, 'local-extra product identity');
@@ -99,12 +122,12 @@ export async function captureDiscoverCarsExtras(page: Page, quoteUrl: string, se
     if (!await checkbox.isChecked()) throw new CarError('Provider did not retain the requested extra');
     selections.push({ id: request.id, productId, kind: request.kind, category: request.category, quantity: request.quantity, label: request.label, visibleUnitPrice });
   }
-  await verifyDiscoverCarsExtraSelection(page, selections);
-  verify();
+  await verifyDiscoverCarsExtraSelection(page, selections, stepContainer);
+  await verify();
   const summary = page.locator('.OfferPriceBreakdown:visible').first();
   const visibleTotal = await summary.locator('.OfferPriceBreakdown-AmountPriceBlock').innerText();
   const priceLines = await captureDiscoverCarsPriceLines(summary);
-  await verifyDiscoverCarsExtraSelection(page, selections);
-  verify();
+  await verifyDiscoverCarsExtraSelection(page, selections, stepContainer);
+  await verify();
   return { offerId, selections, terms, visibleTotal, priceLines, observedAt: new Date().toISOString() };
 }

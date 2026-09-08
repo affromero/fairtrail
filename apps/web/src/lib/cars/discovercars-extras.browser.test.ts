@@ -5,6 +5,7 @@ import { captureDiscoverCarsExtras } from './discovercars-extras';
 import { validateCarSearch } from './validation';
 import { captureDiscoverCarsProtection } from './discovercars-protection';
 import { prepareCarPage } from './navigation';
+import { captureDiscoverCarsSeparateExtras } from './discovercars-extras-step';
 
 const location = { name: 'London Heathrow Airport', country: 'GB', timeZone: 'Europe/London', providerIds: { discovercars: '1712' } };
 const search = validateCarSearch({ pickup: location, dropoff: location, pickupAt: { date: '2026-10-15', time: '11:00' }, dropoffAt: { date: '2026-10-18', time: '11:00' }, driver: { age: 35, licenceYears: 2, residenceCountry: 'GB' }, sources: ['discovercars'], currency: 'GBP', extras: { childSeats: [{ category: 'child', quantity: 2 }], additionalDrivers: [{ age: 35, licenceYears: 2, residenceCountry: 'GB' }] } }, new Date('2026-09-01'));
@@ -65,10 +66,84 @@ function coverageFixture(reset: boolean) {
     <script>document.querySelector('#coverage').onclick = event => { event.target.className='CoverageOptions-Card_isSelected';event.target.setAttribute('aria-pressed','true');document.querySelector('#protection-charge').innerHTML='<div class="OfferPriceBreakdown-Extra"><p class="OfferPriceBreakdown-ExtraTitle">Full Coverage</p><p>£6.00</p></div>';document.querySelector('.OfferPriceBreakdown-AmountPriceBlock').textContent='£164.10'; };</script>`;
 }
 
+const separateOffer = () => ({ offerId: new URL(url).pathname.split('/').at(-1)!, vehicle: {}, extras: products(), coverage: { id: 35, name: 'Full Coverage', isChecked: false, price: { period: 6, currency: 'GBP' } }, priceObject: {} });
+const baseSnapshot = { visibleTotal: '£44.16', priceLines: [{ label: 'Rental prepayment', amount: '£8.19', payment: 'now' as const }, { label: 'Rental', amount: '£35.97', payment: 'pickup' as const }] };
+function renderedSeparateOffer(changed = false) {
+  const offer = separateOffer();
+  if (changed) offer.vehicle = { differentVehicle: true };
+  return `<script>self.__next_f=[];</script><script>self.__next_f.push(${JSON.stringify([1, `0:${JSON.stringify(offer)}\n`])});</script>`;
+}
+function separateCoverageFixture(mode: string) {
+  const destination = mode === 'unexpected-checkout' ? '/checkout' : `/offer/${mode === 'unexpected-driver' ? 'driver' : 'extras'}/${mode === 'changed-quote' ? 'different-quote' : separateOffer().offerId}${mode === 'changed-context' ? '?sq=changed' : ''}`;
+  return `<meta charset="utf-8"><style>[hidden]{display:none!important}</style>${renderedSeparateOffer()}
+    <div class="Steps-Next">Next: ${mode === 'wrong-next' ? 'Driver' : 'Extras'}</div>
+    <button id="without" aria-pressed="true">Book without coverage No protection</button><button id="with" aria-pressed="false">Book with coverage £2 / day</button>
+    <div class="OfferPriceBreakdown"><div class="OfferPriceBreakdown-Main"><p>Pay now</p><div class="OfferPriceBreakdown-Extra"><p class="OfferPriceBreakdown-ExtraTitle">Rental prepayment</p><p>£8.19</p></div><div id="protection"></div></div><div class="OfferPriceBreakdown-Main"><p>To pay at pick-up</p><div class="OfferPriceBreakdown-Extra"><p class="OfferPriceBreakdown-ExtraTitle">Rental</p><p>£35.97</p></div></div><p class="OfferPriceBreakdown-AmountPriceBlock">£44.16</p></div>
+    <button class="CoverageHero-LearnMore" onclick="document.querySelector('#terms').hidden=false">Learn more</button>
+    <div id="terms" class="CoverageLearnMoreModal-Modal" hidden><button class="Modal-CloseBtn" onclick="document.querySelector('#terms').hidden=true">Close modal</button><p class="CoverageLearnMoreModal-CoveredSection">Damage reimbursement</p><p class="CoverageLearnMoreModal-NotCoveredSection">Personal possessions excluded.</p></div>
+    <button id="continue" class="OfferPriceBreakdown-BookNow">Continue</button><div id="upsell" hidden><button class="CoverageCta-Button_isInPopup" onclick="location.href='${destination}'">No, I'll take the risk</button><button>Book with coverage</button></div>
+    <script>
+      sessionStorage.removeItem('coverage');
+      document.querySelector('#with').onclick=event=>{sessionStorage.setItem('coverage','selected');event.target.setAttribute('aria-pressed','true');event.target.className='CoverageOptions-Card_isSelected';document.querySelector('#without').setAttribute('aria-pressed','false');document.querySelector('#protection').innerHTML='<div class="OfferPriceBreakdown-Extra"><p class="OfferPriceBreakdown-ExtraTitle">Full Coverage</p><p>£6.00</p></div>';document.querySelector('.OfferPriceBreakdown-AmountPriceBlock').textContent='£50.16';document.querySelector('#continue').outerHTML='<a id="continue" class="OfferPriceBreakdown-BookNow" href="${destination}">Continue</a>';};
+      document.querySelector('#without').onclick=()=>{};
+      document.querySelector('#continue').onclick=()=>{if(sessionStorage.getItem('coverage')||${mode === 'no-popup'}) location.href='${destination}';else document.querySelector('#upsell').hidden=false;};
+    </script>`;
+}
+function separateExtrasFixture(mode: string) {
+  const selected = mode === 'dropped-protection' ? 'false' : "sessionStorage.getItem('coverage') === 'selected'";
+  const backgroundRequest = ['driver-prefetch', 'driver-fetch', 'post-prefetch', 'wrong-quote-prefetch'].includes(mode)
+    ? `<script>fetch('/offer/driver/${mode === 'wrong-quote-prefetch' ? 'another-quote' : separateOffer().offerId}', { method: '${mode === 'post-prefetch' ? 'POST' : 'GET'}', headers: ${mode === 'driver-fetch' ? '{}' : '{"next-router-prefetch":"1"}'} }).catch(()=>{});</script>` : '';
+  return renderedSeparateOffer(mode === 'changed-contract') + fixture()
+    .replace('<button id="show">Show extras</button>', '<div class="Steps-Next">Next: Driver</div>')
+    .replace('<div id="options" hidden>', '<div id="options" class="OfferDetailsExtras-Extras_StepMode">')
+    .replace('let total = 44.16;', `let total = 44.16 + (${selected} ? 6 : 0);`)
+    .replace('const options =', `if (${selected}) document.querySelector('.OfferPriceBreakdown-Main').insertAdjacentHTML('beforeend','<div class="OfferPriceBreakdown-Extra"><p class="OfferPriceBreakdown-ExtraTitle">Full Coverage</p><p>£6.00</p></div>'); const options =`)
+    + `<div class="ExtrasMobilityProtection"><input type="checkbox" aria-label="Add Roadtrip Protection" ${mode === 'unrequested-roadtrip' ? 'checked' : ''}></div>${backgroundRequest}`;
+}
+
 describe.skipIf(process.env.TRAVEL_BROWSER_TESTS !== '1')('DiscoverCars local extras in Chromium', () => {
   let browser: Browser;
   beforeAll(async () => { browser = await launchBrowser(); });
   afterAll(async () => { await browser?.close(); });
+
+  it.each([{ selected: false, mode: 'normal' }, { selected: true, mode: 'normal' }, { selected: false, mode: 'no-popup' }, { selected: true, mode: 'driver-prefetch' }])('captures separate extras with $selected coverage and $mode decline without entering driver details', async ({ selected, mode }) => {
+    const page = await browser.newPage();
+    let driverRequested = false;
+    try {
+      await prepareCarPage(page, 'discovercars');
+      await page.route('https://www.discovercars.com/**', route => {
+        const path = new URL(route.request().url()).pathname;
+        if (path.includes('/driver/')) driverRequested = true;
+        return route.fulfill({ contentType: 'text/html', body: path.includes('/coverage/') ? separateCoverageFixture(mode) : path.includes('/extras/') ? separateExtrasFixture(mode) : fixture('absent') });
+      });
+      await page.goto(url);
+      const criteria = { ...search, extras: { ...search.extras, protection: selected ? [{ source: 'discovercars' as const, productId: '35' }] : [] } };
+      const result = await captureDiscoverCarsSeparateExtras(page, url, criteria, separateOffer(), baseSnapshot);
+      expect(result.localExtras).toMatchObject({ visibleTotal: selected ? '£164.10' : '£158.10', selections: [{ category: 'child', quantity: 2 }, { kind: 'additional_driver', quantity: 1 }] });
+      expect(result.protection?.selected ?? false).toBe(selected);
+      expect(await page.getByRole('checkbox', { name: 'Add Roadtrip Protection' }).isChecked()).toBe(false);
+      expect(new URL(page.url()).pathname).toBe(`/offer/extras/${separateOffer().offerId}`);
+      expect(driverRequested).toBe(false);
+    } finally { await page.close(); }
+  });
+
+  it.each(['wrong-next', 'unexpected-driver', 'unexpected-checkout', 'driver-fetch', 'post-prefetch', 'wrong-quote-prefetch', 'changed-quote', 'changed-context', 'changed-contract', 'dropped-protection', 'unrequested-roadtrip', 'cancelled'])('rejects %s in the separate extras sequence', async mode => {
+    const page = await browser.newPage();
+    let driverRequested = false;
+    try {
+      await prepareCarPage(page, 'discovercars');
+      await page.route('https://www.discovercars.com/**', async route => {
+        const path = new URL(route.request().url()).pathname;
+        if (path.includes('/driver/') || path === '/checkout') driverRequested = true;
+        if (mode === 'cancelled' && path.includes('/extras/')) { await route.abort(); await page.close(); return; }
+        return route.fulfill({ contentType: 'text/html', body: path.includes('/coverage/') ? separateCoverageFixture(mode) : path.includes('/extras/') ? separateExtrasFixture(mode) : fixture('absent') });
+      });
+      await page.goto(url);
+      const criteria = { ...search, extras: { ...search.extras, protection: mode === 'dropped-protection' ? [{ source: 'discovercars' as const, productId: '35' }] : [] } };
+      await expect(captureDiscoverCarsSeparateExtras(page, url, criteria, separateOffer(), baseSnapshot)).rejects.toThrow();
+      expect(driverRequested).toBe(false);
+    } finally { await page.close(); }
+  });
 
   it('selects two seats and a driver through visible labels and retains the estimated-price disclaimer', async () => {
     const page = await browser.newPage();

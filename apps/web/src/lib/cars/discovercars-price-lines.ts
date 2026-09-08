@@ -7,6 +7,12 @@ export interface DiscoverCarsPriceLine {
   payment: 'now' | 'pickup';
 }
 
+export async function verifyDiscoverCarsPriceSnapshot(summary: Locator, expected: { priceLines: DiscoverCarsPriceLine[]; visibleTotal: string }): Promise<void> {
+  const lines = await captureDiscoverCarsPriceLines(summary);
+  const identity = (items: DiscoverCarsPriceLine[]) => items.map(item => JSON.stringify([item.payment, item.label, item.amount])).sort();
+  if (JSON.stringify(identity(lines)) !== JSON.stringify(identity(expected.priceLines)) || (await summary.locator('.OfferPriceBreakdown-AmountPriceBlock').innerText()).trim() !== expected.visibleTotal.trim()) throw new CarError('Protection review changed the selected local extras or rental price');
+}
+
 export async function captureDiscoverCarsPriceLines(summary: Locator): Promise<DiscoverCarsPriceLine[]> {
   const groups = summary.locator('.OfferPriceBreakdown-Main');
   const lines: DiscoverCarsPriceLine[] = [];

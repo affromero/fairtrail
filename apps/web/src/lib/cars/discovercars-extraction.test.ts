@@ -82,6 +82,29 @@ describe('verified DiscoverCars rental contracts', () => {
     capture.protection.priceLines = capture.protection.priceLines.filter(line => !line.label.includes('Child seat'));
     expect(extractDiscoverCarsOffer(capture, criteria)).toMatchObject({ reasons: [expect.stringMatching(/reconcile/)] });
   });
+  it.each([false, true])('reconciles coverage before the separate extras step with protection=%s', selected => {
+    const { capture, criteria, localExtras } = localExtrasFixture();
+    capture.optionOrder = 'protection-first';
+    if (selected) {
+      criteria.extras.protection = [{ source: 'discovercars', productId: '35' }];
+      const line = { label: 'Full Coverage', amount: '$55.29', payment: 'now' as const };
+      capture.protection = { offerId: String(capture.offer.offerId), productId: '35', name: 'Full Coverage', selected: true, price: { period: 55.29, currency: 'USD' }, terms: 'Reimbursement protection with exclusions.', visibleTotal: '$190.23', priceLines: [...capture.priceLines, line], observedAt: capture.observedAt };
+      localExtras.priceLines.push(line);
+      localExtras.visibleTotal = '$340.17';
+    }
+    const result = extractDiscoverCarsOffer(capture, criteria);
+    if (!('contract' in result)) throw new Error(result.reasons.join('; '));
+    expect(result.total).toMatchObject({ value: { minor: selected ? 34017 : 28488 }, text: localExtras.visibleTotal, status: 'estimated' });
+    expect(result.extras.filter(extra => extra.kind !== 'protection')).toMatchObject([{ kind: 'child_seat', quantity: 2 }, { kind: 'additional_driver', quantity: 2 }]);
+    expect(assessCarPrice(result, criteria, new Date(capture.observedAt)).eligible).toBe(false);
+    if (selected) {
+      capture.optionOrder = 'extras-first';
+      expect(extractDiscoverCarsOffer(capture, criteria)).toMatchObject({ reasons: [expect.stringMatching(/reconcile/)] });
+      capture.optionOrder = 'protection-first';
+      localExtras.priceLines = localExtras.priceLines.filter(line => line.label !== 'Full Coverage');
+      expect(extractDiscoverCarsOffer(capture, criteria)).toMatchObject({ reasons: [expect.stringMatching(/reconcile/)] });
+    }
+  });
   it.each(['wrong-quote', 'stale', 'wrong-category', 'wrong-quantity', 'wrong-unit-price', 'missing-line', 'double-counted', 'changed-payment', 'unrequested'])('rejects %s local-extra evidence', mode => {
     const { capture, criteria, localExtras } = localExtrasFixture();
     if (mode === 'wrong-quote') localExtras.offerId = 'another-quote';

@@ -148,6 +148,9 @@ Always confirm availability and final terms with the provider before booking.
 
 DiscoverCars can select the requested seat categories and quantities and
 additional drivers when the supplier exposes those controls. Its local-extra
+controls may appear on the rental details page or on a separate step after
+coverage. Both sequences retain the requested selections and reject unexpected
+charges; the scraper stops before driver details or booking. Local-extra
 prices and availability are supplier estimates. Results retain each selected
 charge and show a combined estimate, which may exclude additional-driver
 surcharges. You can review an available protection option and request a fresh
