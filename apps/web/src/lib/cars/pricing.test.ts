@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { assessCarPrice as assessPrice } from './pricing';
+import { assessCarPrice as assessPrice, assessCarProtectionReview } from './pricing';
 import { validateCarOffer } from './offer-validation';
 import { parseCarMoney, sumCarMoney } from './money';
 import { carContractIdentity } from './identity';
@@ -148,6 +148,49 @@ describe('confirmed all-in rental totals', () => {
     const later = new Date('2026-09-06T12:16:00Z');
     expect(validateCarOffer(quote, later).total.value).toEqual(money(71000));
     expect(assessPrice(quote, search, later)).toMatchObject({ eligible: false, reasons: [expect.stringMatching(/expired/)] });
+  });
+});
+
+describe('protection review of selected-options estimates', () => {
+  const review = (quote: CarOffer) => assessCarProtectionReview(quote, search, new Date('2026-09-06T12:01:00Z'));
+  function estimatedOffer() {
+    const quote = offer();
+    quote.total.status = 'estimated';
+    quote.charges.find(charge => charge.id === 'seats')!.amount.status = 'estimated';
+    for (const extra of quote.extras.filter(extra => extra.kind !== 'protection')) {
+      extra.availability = { ...evidence<boolean>(true), status: 'unknown', value: null };
+      extra.eligibility = { ...evidence<boolean>(true), status: 'unknown', value: null, text: 'Supplier confirmation required; additional-driver surcharges may apply' };
+    }
+    return quote;
+  }
+  it('allows another quote for priced request-only extras without enabling price tracking or changing evidence', () => {
+    const quote = estimatedOffer(), original = structuredClone(quote);
+    expect(review(quote)).toEqual({ allowed: true, reasons: [] });
+    expect(assessCarPrice(quote, search).eligible).toBe(false);
+    expect(quote).toEqual(original);
+  });
+  it.each([
+    ['unpriced seats', (q: CarOffer) => { q.charges[4]!.amount.value = null; }],
+    ['estimated base rental', (q: CarOffer) => { q.charges[0]!.amount.status = 'estimated'; }],
+    ['estimated mandatory fee', (q: CarOffer) => { q.charges[3]!.amount.status = 'estimated'; }],
+    ['unknown mandatory charges', (q: CarOffer) => { q.mandatoryChargesComplete.status = 'unknown'; }],
+    ['unavailable seats', (q: CarOffer) => { q.extras[0]!.availability.value = false; }],
+    ['ineligible additional driver', (q: CarOffer) => { q.extras[1]!.eligibility.value = false; }],
+    ['wrong quantity', (q: CarOffer) => { q.extras[0]!.quantity = 1; q.contract.extras[0]!.quantity = 1; }],
+    ['unknown inclusion', (q: CarOffer) => { q.extras[0]!.included.status = 'unknown'; }],
+    ['missing charge association', (q: CarOffer) => { q.extras[0]!.chargeId = 'missing'; }],
+    ['unreconciled total', (q: CarOffer) => { q.total.value = money(71001); }],
+    ['uncertain protection', (q: CarOffer) => { q.extras[2]!.availability.status = 'unknown'; }],
+    ['different driver', (q: CarOffer) => { q.contract.driver = { ...q.contract.driver, age: 40 }; }],
+    ['foreign currency', (q: CarOffer) => { q.charges[4]!.amount.value = { currency: 'GBP', minor: 13000 }; }],
+  ] as const)('rejects review with %s', (scenario, change) => {
+    const quote = estimatedOffer(); change(quote);
+    expect(review(quote).allowed, scenario).toBe(false);
+    expect(assessCarPrice(quote, search).eligible).toBe(false);
+  });
+  it('does not use an estimated total when no selected charge explains the estimate', () => {
+    const quote = offer(); quote.total.status = 'estimated';
+    expect(review(quote)).toMatchObject({ allowed: false, reasons: expect.arrayContaining([expect.stringMatching(/total/)]) });
   });
 });
 

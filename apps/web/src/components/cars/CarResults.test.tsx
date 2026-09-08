@@ -36,6 +36,7 @@ describe('rental results and honest tracking controls', () => {
     offer.total = { ...offer.total, value: { currency: 'GBP', minor: offer.total.value!.minor + 7794 }, status: 'estimated' };
     render(<Results search={search} report={carReportFixture([offer])} locale={locale} />);
     expect(screen.getByText(copy.unverifiedTotal)).toBeVisible();
+    expect(screen.getByText(copy.selectedOptionsEstimate)).toBeVisible();
     expect(screen.getByRole('button', { name: copy.track })).toBeDisabled();
     expect(screen.queryByText(copy.verifiedTotal)).not.toBeInTheDocument();
     await userEvent.setup().click(screen.getByText(copy.details));

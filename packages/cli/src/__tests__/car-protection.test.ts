@@ -72,6 +72,25 @@ const inspect = () => readCarOfferReview(client, 'parent', 'verified-quote');
 const protect = (review: string) => command(['protect', 'parent', 'verified-quote', choiceId, '--review', review]);
 
 describe('reviewed CLI rental protection', () => {
+  it('permits reviewed protection for priced driver estimates without permitting tracking', async () => {
+    const offer = current.result.offers[0]!;
+    current.search.extras.additionalDrivers = [{ age: 35, licenceYears: 10, residenceCountry: 'GB' }];
+    offer.contract.additionalDrivers = current.search.extras.additionalDrivers;
+    const extra = { kind: 'additional_driver' as const, category: null, quantity: 1, productId: 'driver' };
+    const unknown = { ...offer.available, value: null, status: 'unknown' as const, text: 'Supplier confirmation required; additional-driver surcharges may apply.' };
+    offer.contract.extras.push(extra);
+    offer.extras.push({ ...extra, availability: unknown, eligibility: unknown, included: { ...offer.available, value: false }, chargeId: 'driver' });
+    offer.charges.push({ id: 'driver', label: 'Additional driver', kind: 'extra', payment: 'pickup', amount: { ...offer.total, value: { currency: 'GBP', minor: 3000 }, status: 'estimated' } });
+    offer.total = { ...offer.total, value: { currency: 'GBP', minor: 13000 }, status: 'estimated' };
+    const review = await inspect();
+    expect(review).toMatchObject({ canRecheck: true, canTrack: false, trackingReview: null, offer: { extras: [{ eligibility: { text: expect.stringContaining('surcharges') } }] } });
+    await command(['track', 'parent', 'verified-quote']);
+    expect(process.exitCode).toBe(1);
+    expect(requests.every(request => request.method === 'GET')).toBe(true);
+    process.exitCode = 0;
+    await protect(review.discovery!.choices[0]!.review!);
+    expect(requests.filter(request => request.method === 'POST')).toMatchObject([{ path: '/api/cars/search/parent/protection' }]);
+  });
   it('prints full terms, policy links and observed extra price without claiming a combined price', async () => {
     const result = await command(['protection', 'parent', 'verified-quote']);
     expect(result.output[0]).toMatchObject({ canRecheck: true, trackingReview: null, offer: { total: { value: { minor: 10000 } } },

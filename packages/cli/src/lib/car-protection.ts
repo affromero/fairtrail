@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { CarClient, CarScopeError } from './car-client.js';
 import { validateCarRunView } from '../../../../apps/web/src/lib/cars/run-view.js';
-import { assessCarPrice } from '../../../../apps/web/src/lib/cars/pricing.js';
+import { assessCarPrice, assessCarProtectionReview } from '../../../../apps/web/src/lib/cars/pricing.js';
 import { assertCarProtectionRecheck } from '../../../../apps/web/src/lib/cars/protection-recheck.js';
 
 /** Review identities acknowledge exact observed content; the server still authorizes every mutation. */
@@ -19,7 +19,7 @@ export async function readCarOfferReview(client: CarClient, searchId: string, of
   const assessment = assessCarPrice(offer, run.search);
   const canTrack = complete && !run.trackingClosed && assessment.eligible;
   const canRecheck = complete && !run.trackingClosed && !protectedQuote && !run.search.extras.protection.length
-    && assessCarPrice(offer, run.search, new Date(run.completedAt!)).eligible;
+    && assessCarProtectionReview(offer, run.search, new Date(run.completedAt!)).allowed;
   const hash = (kind: string, content: unknown) => createHash('sha256').update(JSON.stringify({
     kind, origin: client.origin, scope: before.scope, searchId, offerId, search: run.search, offer, content,
   })).digest('hex');

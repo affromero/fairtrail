@@ -5,7 +5,7 @@ import { cancelTravelJob, enqueueTravelJob, lockTravelResource } from '../travel
 import { assertCarOwner, type CarActor } from './access';
 import { carInteger, carRecord, carText, validateCarOptions, validateCarSearch } from './validation';
 import { validateCarOffer } from './offer-validation';
-import { assessCarPrice } from './pricing';
+import { assessCarPrice, assessCarProtectionReview } from './pricing';
 import { carContractHash, carTrackerSearch } from './selection';
 import { CarError, type CarSearch } from './types';
 import { carCreationIntent, carRefreshIntent } from './creation';
@@ -113,7 +113,7 @@ export async function createCarProtectionRecheck(searchId: string, raw: unknown,
     const discovery = report.protection?.find(entry => entry.offerId === offerId && entry.status === 'complete');
     const choice = discovery?.choices.find(choice => choice.id === choiceId);
     if (!offer || !choice) throw new CarError('Choose a verified protection option returned for this rental');
-    if (!assessCarPrice(offer, search, parent.completedAt).eligible) throw new CarError('Protection requires a verified eligible base rental', 409);
+    if (!assessCarProtectionReview(offer, search, parent.completedAt).allowed) throw new CarError('Protection review requires a verified base rental and itemized selected options', 409);
     const recheck = validateCarSearch({ ...search, sources: [choice.source],
       extras: { ...search.extras, protection: [{ source: choice.source, productId: choice.productId }] },
       protectionRecheck: { searchId, offerId, choiceId, baseContractHash: carContractHash(offer.contract), baseCoverageTerms: offer.contract.coverageTerms },

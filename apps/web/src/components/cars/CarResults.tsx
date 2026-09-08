@@ -2,7 +2,7 @@
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
 import { useLocale, useTranslations } from 'next-intl';
-import { assessCarPrice, MAX_CAR_OFFER_AGE_MS } from '@/lib/cars/pricing';
+import { assessCarPrice, assessCarProtectionReview, MAX_CAR_OFFER_AGE_MS } from '@/lib/cars/pricing';
 import { formatCarMoney } from '@/lib/cars/money';
 import { CAR_PROVIDER_LABELS } from '@/lib/cars/preferences';
 import type { CarOffer, CarSearch, CarSearchReport, CarTrackingOptions as Options } from '@/lib/cars/types';
@@ -61,7 +61,7 @@ function CarResultsBody({ actorScope, searchId, search, report, status, mutation
   async function recheck(offer: CarOffer, choiceId: string) {
     if (!complete || creation.isLocked() || protection.isLocked() || mutationsDisabled || closed || trackingClosed || search.extras.protection.length) return;
     const discovery = report.protection?.find(entry => entry.offerId === offer.id && entry.status === 'complete');
-    if (!discovery?.choices.some(choice => choice.id === choiceId) || !assessCarPrice(offer, search, new Date(offer.observedAt)).eligible) return;
+    if (!discovery?.choices.some(choice => choice.id === choiceId) || !assessCarProtectionReview(offer, search, new Date(offer.observedAt)).allowed) return;
     await protection.create({ offerId: offer.id, choiceId });
   }
   return <section className={styles.root} aria-label={t('results')}>
@@ -90,7 +90,7 @@ function CarResultsBody({ actorScope, searchId, search, report, status, mutation
       <div className={styles.offers}>{report.offers.map((offer, index) => <CarOfferRow key={offer.id} offer={offer} search={search} assessment={assessments[index]!} disabled={locked || !complete || options === null || mutationsDisabled || (needsReview && reviews[offer.id] !== reviewIdentity(offer))} onTrack={() => void track(offer)}>
         {needsReview ? <CarProtectionReview offer={offer} reviewed={reviews[offer.id] === reviewIdentity(offer)} disabled={locked || !complete || mutationsDisabled} onReview={checked => {
           const next = { ...reviewed.current, [offer.id]: checked ? reviewIdentity(offer) : '' }; reviewed.current = next; setReviews(next);
-        }} /> : <CarProtectionChoices discovery={report.protection?.find(entry => entry.offerId === offer.id)} disabled={locked || !complete || mutationsDisabled || !assessCarPrice(offer, search, new Date(offer.observedAt)).eligible} onRequest={choiceId => void recheck(offer, choiceId)} />}
+        }} /> : <CarProtectionChoices discovery={report.protection?.find(entry => entry.offerId === offer.id)} disabled={locked || !complete || mutationsDisabled || !assessCarProtectionReview(offer, search, new Date(offer.observedAt)).allowed} onRequest={choiceId => void recheck(offer, choiceId)} />}
       </CarOfferRow>)}</div></>}
     {!running && !report.offers.length && <p className={styles.notice}>{t('noVerified')}</p>}
     {report.candidates.length > 0 && <section className={styles.candidates} aria-label={t('candidates')}><h3>{t('candidates')}</h3><p className={styles.hint}>{t('candidateHelp')}</p>{report.candidates.map((candidate, index) => {

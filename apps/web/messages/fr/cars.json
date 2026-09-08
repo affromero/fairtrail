@@ -264,6 +264,7 @@
     "dropoff": "Restitution",
     "verifiedTotal": "Total vérifié",
     "unverifiedTotal": "Total fournisseur · non vérifié",
+    "selectedOptionsEstimate": "Estimation avec les options sélectionnées. Les extras dépendent de la disponibilité du fournisseur et les prix peuvent changer. Les suppléments pour conducteurs additionnels peuvent être exclus. Le suivi et les alertes nécessitent un total vérifié.",
     "wholeRental": "Pour toute la location",
     "payNow": "À payer maintenant",
     "payPickup": "À payer au retrait",

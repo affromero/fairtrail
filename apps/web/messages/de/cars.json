@@ -264,6 +264,7 @@
     "dropoff": "Rückgabe",
     "verifiedTotal": "Bestätigter Gesamtpreis",
     "unverifiedTotal": "Anbieterpreis · nicht bestätigt",
+    "selectedOptionsEstimate": "Schätzung mit ausgewählten Extras. Die Verfügbarkeit hängt vom Anbieter ab und Preise können sich ändern. Zuschläge für Zusatzfahrer sind möglicherweise nicht enthalten. Preisbeobachtung und Benachrichtigungen erfordern einen bestätigten Gesamtpreis.",
     "wholeRental": "Für die gesamte Mietdauer",
     "payNow": "Jetzt zahlen",
     "payPickup": "Bei Abholung zahlen",

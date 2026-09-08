@@ -264,6 +264,7 @@
     "dropoff": "Return",
     "verifiedTotal": "Verified total",
     "unverifiedTotal": "Provider total · not verified",
+    "selectedOptionsEstimate": "Selected-options estimate. Extras depend on supplier availability and prices may change. Additional-driver surcharges may be excluded. Tracking and alerts require a verified total.",
     "wholeRental": "For the whole rental",
     "payNow": "Pay now",
     "payPickup": "Pay at pickup",

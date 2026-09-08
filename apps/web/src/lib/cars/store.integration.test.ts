@@ -73,6 +73,46 @@ describe.skipIf(process.env.CAR_STORE_INTEGRATION_TESTS !== '1')('car ownership 
     expect(await prisma.travelJob.count({ where: { userId: owner.userId } })).toBe(0);
   });
 
+  it('preserves priced request-only extras in a protected child and rejects tracking before and after completion', async () => {
+    const { run, body } = await protectionSearch(), search = criteria();
+    search.filters.maxTotal = { currency: 'GBP', minor: 20000 };
+    const report = run.result as unknown as ReturnType<typeof carReportFixture>, base = report.offers[0]!;
+    search.extras.childSeats = [{ category: 'child', quantity: 2 }];
+    search.extras.additionalDrivers = [{ age: 35, licenceYears: 10, residenceCountry: 'GB' }];
+    base.contract.additionalDrivers = search.extras.additionalDrivers;
+    const unknown = { ...base.available, value: null, status: 'unknown' as const, text: 'Supplier availability and eligibility require confirmation; additional-driver surcharges may apply.' };
+    for (const extra of [
+      { kind: 'child_seat' as const, category: 'child' as const, quantity: 2, productId: 'seats' },
+      { kind: 'additional_driver' as const, category: null, quantity: 1, productId: 'driver' },
+    ]) {
+      base.contract.extras.push(extra);
+      base.extras.push({ ...extra, availability: unknown, eligibility: unknown, included: { ...base.available, value: false }, chargeId: extra.productId });
+      base.charges.push({ id: extra.productId, label: extra.productId, kind: 'extra', payment: 'pickup', amount: { ...base.total, value: { currency: 'GBP', minor: 3000 }, status: 'estimated' } });
+    }
+    base.total = { ...base.total, value: { currency: 'GBP', minor: 16000 }, status: 'estimated' };
+    await prisma.carSearchRun.update({ where: { id: run.id }, data: { request: carJson(search), result: carJson(report) } });
+    await expect(createCarTracker({ searchId: run.id, offerId: base.id }, owner)).rejects.toMatchObject({ status: 409 });
+    const child = await createCarProtectionRecheck(run.id, body, owner, crypto.randomUUID());
+    expect(child.request).toMatchObject({ extras: { ...search.extras, protection: [{ source: 'discovercars', productId: '35' }] }, protectionRecheck: { baseContractHash: carContractHash(base.contract) } });
+    const protectedOffer = structuredClone(base), extra = { kind: 'protection' as const, category: null, quantity: 1, productId: '35' };
+    protectedOffer.contract.extras.push(extra); protectedOffer.contract.coverageProductIds.push('35');
+    protectedOffer.contract.coverageTerms += ' Reimbursement with exclusions';
+    protectedOffer.extras.push({ ...extra, availability: { ...base.available, text: 'Full Coverage' }, eligibility: { ...base.available, text: 'Reimbursement with exclusions' }, included: { ...base.available, value: false }, chargeId: 'coverage' });
+    protectedOffer.charges.push({ id: 'coverage', label: 'Full Coverage', kind: 'extra', payment: 'now', amount: { ...base.total, value: { currency: 'GBP', minor: 1800 }, status: 'confirmed' } });
+    protectedOffer.total.value = { currency: 'GBP', minor: 17800 };
+    const job = await prisma.travelJob.findUniqueOrThrow({ where: { carRunId: child.id } });
+    const lease = await acquireTravelLease('browser');
+    if (!lease) throw new Error('Expected isolated browser lease');
+    leases.push(lease); await claimTravelJob(job.id, lease);
+    await prisma.carSearchRun.update({ where: { id: child.id }, data: { status: 'running' } });
+    await finishCarRun(job.id, lease, carReportFixture([protectedOffer], ['discovercars']));
+    const view = await getCarRunView(child.id, owner);
+    expect(view).toMatchObject({ status: 'success', result: { offers: [{ total: { status: 'estimated', value: { minor: 17800 } }, extras: expect.arrayContaining([expect.objectContaining({ productId: 'driver', eligibility: expect.objectContaining({ text: expect.stringContaining('surcharges') }) })]) }] } });
+    await expect(createCarTracker({ searchId: child.id, offerId: base.id }, owner)).rejects.toMatchObject({ status: 409 });
+    expect(await prisma.carTracker.count({ where: { userId: owner.userId } })).toBe(0);
+    expect(await prisma.carTrackerCreation.count({ where: { userId: owner.userId } })).toBe(0);
+  });
+
   it('allows an old observed option to request a fresh quote without treating its old price as current', async () => {
     const { run, body } = await protectionSearch();
     const report = run.result as unknown as ReturnType<typeof carReportFixture>;

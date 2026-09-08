@@ -18,10 +18,26 @@ export interface CarPriceAssessment {
 }
 export const MAX_CAR_OFFER_AGE_MS = 15 * 60_000;
 export function assessCarPrice(raw: unknown, search: CarSearch, now = new Date()): CarPriceAssessment {
+  return assessCarQuote(raw, search, now, false);
+}
+/** Permission to request another estimate is not permission to track its price. */
+export function assessCarProtectionReview(raw: unknown, search: CarSearch, now = new Date()): { allowed: boolean; reasons: string[] } {
+  const assessment = assessCarQuote(raw, search, now, true);
+  return { allowed: assessment.eligible, reasons: assessment.reasons };
+}
+function assessCarQuote(raw: unknown, search: CarSearch, now: Date, protectionReview: boolean): CarPriceAssessment {
   let offer: CarOffer;
   try { offer = validateCarOffer(raw, now); }
   catch (error) { return { eligible: false, reasons: [error instanceof Error ? error.message : 'Invalid provider offer'], total: null, payNow: null, payAtPickup: null }; }
   const reasons: string[] = [];
+  const estimatedExtraCharges = new Set(protectionReview ? offer.extras.filter(extra =>
+    ((extra.kind === 'child_seat' && search.extras.childSeats.some(seat => seat.category === extra.category && seat.quantity === extra.quantity))
+      || (extra.kind === 'additional_driver' && search.extras.additionalDrivers.length === extra.quantity))
+    && extra.chargeId !== null && confirmedCarEvidence(extra.included) && extra.included.value === false,
+  ).map(extra => extra.chargeId!) : []);
+  const pricedEvidence = (evidence: CarEvidence<CarMoney>, allowEstimate: boolean) =>
+    confirmedCarEvidence(evidence) || (allowEstimate && evidence.status === 'estimated' && evidence.value !== null);
+  const hasEstimatedExtras = offer.charges.some(charge => estimatedExtraCharges.has(charge.id) && charge.kind === 'extra' && charge.amount.status === 'estimated');
   if (now.getTime() - Date.parse(offer.observedAt) > MAX_CAR_OFFER_AGE_MS) reasons.push('Rental quote has expired; refresh before updating prices or alerts');
   if (!carContractMatchesSearch(offer.contract, search)) reasons.push('Rental contract does not match the requested locations, times or driver details');
   for (const [name, evidence] of [
@@ -34,12 +50,12 @@ export function assessCarPrice(raw: unknown, search: CarSearch, now = new Date()
   if (offer.requirements.some(requirement => !confirmedCarEvidence(requirement.evidence))) reasons.push('Supplier rental conditions could not be verified');
   let total: CarMoney | null = null, payNow: CarMoney | null = null, payAtPickup: CarMoney | null = null;
   try {
-    if (!confirmedCarEvidence(offer.total)) throw new CarError('Unconfirmed rental total');
+    if (!pricedEvidence(offer.total, hasEstimatedExtras)) throw new CarError('Unconfirmed rental total');
     total = validateCarMoney(offer.total.value, search.currency);
     if (total.minor === 0) throw new CarError('Rental total must be positive');
     if (!offer.charges.length || new Set(offer.charges.map(c => c.id)).size !== offer.charges.length) throw new CarError('Missing or duplicate charge items');
     const amounts = offer.charges.map(charge => {
-      if (!confirmedCarEvidence(charge.amount)) throw new CarError(`Unconfirmed charge: ${charge.label}`);
+      if (!pricedEvidence(charge.amount, charge.kind === 'extra' && estimatedExtraCharges.has(charge.id))) throw new CarError(`Unconfirmed charge: ${charge.label}`);
       if (charge.payment !== 'now' && charge.payment !== 'pickup') throw new CarError('Unknown payment timing');
       return validateCarMoney(charge.amount.value, search.currency);
     });
@@ -57,7 +73,10 @@ export function assessCarPrice(raw: unknown, search: CarSearch, now = new Date()
   for (const extra of requested) {
     const matches = offer.extras.filter(e => e.kind === extra.kind && e.category === extra.category && (extra.productId === null || e.productId === extra.productId));
     const match = matches[0];
-    if (matches.length !== 1 || !match || match.quantity !== extra.quantity || !confirmedCarEvidence(match.availability) || match.availability.value !== true || !confirmedCarEvidence(match.eligibility) || match.eligibility.value !== true) {
+    const acceptableCondition = (evidence: CarEvidence<boolean>) =>
+      (confirmedCarEvidence(evidence) && evidence.value === true)
+      || (protectionReview && extra.kind !== 'protection' && evidence.status !== 'confirmed' && evidence.value !== false);
+    if (matches.length !== 1 || !match || match.quantity !== extra.quantity || !acceptableCondition(match.availability) || !acceptableCondition(match.eligibility)) {
       reasons.push(`Unconfirmed requested extra: ${extra.category ?? extra.kind}`);
       continue;
     }

@@ -41,6 +41,32 @@ beforeEach(() => sessionStorage.clear());
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
 describe('protection options and fresh rental review', () => {
+  it('requests protection for itemized seat estimates while keeping tracking disabled', async () => {
+    const value = report(), search = carSearchFixture(), offer = value.offers[0]!;
+    search.extras.childSeats = [{ category: 'child', quantity: 2 }];
+    const extra = { kind: 'child_seat' as const, category: 'child' as const, quantity: 2, productId: 'child-seat' };
+    const unknown = { ...offer.available, value: null, status: 'unknown' as const, text: 'Supplier availability and suitability require confirmation.' };
+    offer.contract.extras.push(extra);
+    offer.extras.push({ ...extra, availability: unknown, eligibility: unknown, included: { ...offer.available, value: false }, chargeId: 'seats' });
+    offer.charges.push({ id: 'seats', label: 'Two child seats', kind: 'extra', payment: 'pickup', amount: { ...offer.total, value: { currency: 'GBP', minor: 4000 }, status: 'estimated' } });
+    offer.total = { ...offer.total, value: { currency: 'GBP', minor: 14000 }, status: 'estimated' };
+    const requests: unknown[] = [];
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init: RequestInit) => {
+      requests.push({ url, body: JSON.parse(String(init.body)) });
+      return new Response(JSON.stringify({ ok: true, data: { id: 'estimated-child', status: 'queued', creationKey: new Headers(init.headers).get('Idempotency-Key') } }));
+    }));
+    render(<Surface value={value} search={search} />);
+    const user = userEvent.setup();
+    expect(screen.getByRole('button', { name: en.Cars.track })).toBeDisabled();
+    expect(screen.getByText(en.Cars.unverifiedTotal)).toBeVisible();
+    await user.click(screen.getByText(en.Cars.Protection.options));
+    await user.click(screen.getByRole('radio', { name: /Full Coverage/ }));
+    await user.click(screen.getByLabelText(en.Cars.Protection.reviewOption));
+    await user.click(screen.getByRole('button', { name: en.Cars.Protection.recheck }));
+    expect(await screen.findByRole('link', { name: en.Cars.Protection.open })).toHaveAttribute('href', '/cars/search/estimated-child');
+    expect(requests).toEqual([{ url: '/api/cars/search/original/protection', body: { offerId: offer.id, choiceId } }]);
+    expect(screen.getByRole('button', { name: en.Cars.track })).toBeDisabled();
+  });
   it.each(Object.keys(locales) as (keyof typeof locales)[])('requires an explicit option and terms review in %s without adding its observed price to the base total', async locale => {
     const copy = locales[locale].Cars, requests: { url: string; body: unknown }[] = [];
     vi.stubGlobal('fetch', vi.fn(async (url: string, init: RequestInit) => {
