@@ -34,6 +34,15 @@ export function extractAutoEuropeOffer(capture: AutoEuropeCapture, search: CarSe
   const proof = <T>(value: T | null, body: string, status: CarEvidence<T>['status'] = 'confirmed'): CarEvidence<T> => ({ value, text: body, status, sourceUrl: capture.url, observedAt: capture.observedAt });
   const section = (title: string) => capture.sections.find(item => item.title === title)?.text ?? '';
   const requirements: CarRequirement[] = capture.sections.filter(item => ['Driver Information', 'Payment and Charges', 'Vehicle Pick-up and Return', 'Geographical Restrictions'].includes(item.title)).map(item => ({ kind: 'other', appliesTo: 'all_drivers', condition: item.title, evidence: proof(item.text, item.text) }));
+  const requestedLocalExtras = [
+    ...search.extras.childSeats.map(seat => `${seat.category} seat × ${seat.quantity}`),
+    ...(search.extras.additionalDrivers.length ? [`additional driver × ${search.extras.additionalDrivers.length}`] : []),
+  ];
+  if (requestedLocalExtras.length) {
+    const terms = section('Optional Extras');
+    requirements.push({ kind: 'other', appliesTo: 'rental', condition: `Requested local extras: ${requestedLocalExtras.join(', ')}`,
+      evidence: proof<string>(terms || null, terms || 'Provider did not supply local-extra terms for this quote', terms ? 'confirmed' : 'unknown') });
+  }
   const specificRequirements: [CarRequirement['kind'], RegExp, CarRequirement['appliesTo']][] = [
     ['flight_ticket', /Flight tickets\s*\([^)]*\)/i, 'rental'],
     ['physical_licence', /You and all Additional Drivers must present[^.]+\./i, 'all_drivers'],
@@ -70,7 +79,7 @@ export function extractAutoEuropeOffer(capture: AutoEuropeCapture, search: CarSe
     if (!cancellation) throw new CarError('Supplier cancellation deadline could not be verified');
     const cancellationHours = Number(cancellation.match(/(\d+) hours/)?.[1]);
     const cancellationAvailable = Date.parse(capture.observedAt) < Date.parse(search.pickupAt.instant) - cancellationHours * 3_600_000;
-    if (search.extras.childSeats.length || search.extras.additionalDrivers.length) throw new CarError(`Selected local extras are request-only and not confirmed in this quote: ${section('Optional Extras') || 'No confirmed extra availability or total'}`);
+    if (requestedLocalExtras.length) throw new CarError(`Requested ${requestedLocalExtras.join(', ')} could not be selected or priced into this quote. The displayed provider amount excludes these unselected extras; it is not the requested combined total.`);
     const inclusions = rows(rate.inclusions);
     const coverage = rows(rate.coverages).filter(item => item.included_in_vehicle_price === true);
     const payments = carRecord(rate.payments);

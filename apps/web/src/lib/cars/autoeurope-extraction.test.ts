@@ -97,9 +97,26 @@ describe('Auto Europe scoped quote extraction', () => {
   });
   it('excludes request-only extras and unknown mandatory local charges from confirmed alerts', () => {
     const criteria = { ...search, extras: { ...search.extras, additionalDrivers: [{ age: 30, licenceYears: 5, residenceCountry: 'US' }] } };
-    expect(extractAutoEuropeOffer(fixture(), criteria)).toMatchObject({ reasons: [expect.stringMatching(/request-only/)] });
+    expect(extractAutoEuropeOffer(fixture(), criteria)).toMatchObject({ reasons: [expect.stringMatching(/additional driver × 1.*not the requested combined total/)] });
     const capture = fixture(); capture.vehicle.package.fees.push({ code: 'unknown-local-fee' });
     expect(extractAutoEuropeOffer(capture, search)).toMatchObject({ reasons: [expect.stringMatching(/mandatory/)] });
+  });
+  it('keeps requested seat quantities and supplier extras terms separate from the unselected-price explanation', () => {
+    const capture = fixture();
+    const criteria = { ...search, extras: { ...search.extras, childSeats: [{ category: 'infant' as const, quantity: 1 }, { category: 'child' as const, quantity: 2 }], additionalDrivers: [{ age: 30, licenceYears: 5, residenceCountry: 'US' }] } };
+    const result = extractAutoEuropeOffer(capture, criteria);
+    expect(result).not.toHaveProperty('contract');
+    expect(result).toMatchObject({ advertisedTotal: { status: 'estimated', value: { currency: 'USD', minor: 4965 } },
+      reasons: [expect.stringMatching(/infant seat × 1, child seat × 2, additional driver × 1.*excludes/)],
+      requirements: expect.arrayContaining([expect.objectContaining({ condition: expect.stringContaining('child seat × 2'), evidence: expect.objectContaining({ status: 'confirmed', value: 'Additional drivers are request-only; estimated daily prices exclude local taxes.' }) })]) });
+    if ('reasons' in result) expect(result.reasons.join(' ')).not.toContain('estimated daily prices');
+  });
+  it('reports absent local-extra terms as unknown without claiming request-only availability', () => {
+    const capture = fixture(); capture.sections = capture.sections.filter(section => section.title !== 'Optional Extras');
+    const criteria = { ...search, extras: { ...search.extras, childSeats: [{ category: 'booster' as const, quantity: 1 }] } };
+    const result = extractAutoEuropeOffer(capture, criteria);
+    expect(result).toMatchObject({ requirements: expect.arrayContaining([expect.objectContaining({ condition: expect.stringContaining('booster seat × 1'), evidence: expect.objectContaining({ status: 'unknown', value: null }) })]) });
+    expect(JSON.stringify(result)).not.toContain('request-only');
   });
   it('keeps identity across fresh quote sessions but changes it when supplier requirements change', () => {
     const first = offer(); const capture = fixture(); capture.url = capture.url.replace('sanitized', 'fresh-session');

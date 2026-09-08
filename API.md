@@ -549,6 +549,12 @@ no options were found. A missing entry means discovery was not completed, and
 a failed entry includes an error without changing the base quote. Option prices
 are observed extras, not confirmed all-in rental totals.
 
+DiscoverCars local extras, when selectable, produce itemized `estimated` charges
+and totals with supplier availability and eligibility evidence retained as
+`unknown`. AutoEurope local extras that cannot be selected remain candidates;
+their requirements identify the requested quantities and retain any supplied
+Optional Extras terms. Candidate advertised amounts exclude unselected extras.
+
 To request a fresh protected quote, send `POST /api/cars/search/:id/protection`
 with an `Idempotency-Key` UUID and `{ "offerId": "...", "choiceId": "..." }`.
 Use the opaque choice ID from that offer's saved result. Only the search owner
@@ -567,6 +573,15 @@ fresh result's coverage terms and verified all-in total before creating a
 tracker: product terms and prices can change after discovery. Exact-contract
 tracking preserves that protected contract; best-match tracking may later choose
 another eligible rental with the selected product.
+
+Protection review also accepts a verified base rental with priced, request-only
+local extras (or confirmed-included extras with no separate charge). Quantities,
+payment timing, currency, itemized sums, and the original budget must still
+match. Explicitly unavailable or ineligible extras are rejected. The fresh child
+preserves all requested extras and their evidence. This permission only allows
+another quote: estimated totals and unknown extra eligibility still reject
+tracker creation with HTTP 409 and never qualify for price alerts. Additional
+driver surcharges may be excluded from these selected-options estimates.
 
 Optional `filters` contain `transmission`, `minSeats`, `unlimitedMileage`,
 `freeCancellation`, and a currency-specific `maxTotal` in integer minor units.

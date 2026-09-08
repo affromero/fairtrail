@@ -7,7 +7,7 @@ import { chromium, type Browser, type BrowserContext } from 'playwright';
 import pg from 'pg';
 import { carOfferFixture, carReportFixture, carSearchFixture } from '../apps/web/src/test/car-fixtures';
 import { carContractHash } from '../apps/web/src/lib/cars/selection';
-import { carProtectionBrowserScenarios } from './car-protection-browser-scenarios.mts';
+import { carEstimatedExtrasBrowserScenario, carProtectionBrowserScenarios } from './car-protection-browser-scenarios.mts';
 import { travelRecoveryBrowserScenarios } from './travel-recovery-browser-scenarios.mts';
 
 // Disposable stored observations exercise real pages and authentication. No
@@ -186,6 +186,8 @@ try {
   }
   passed.push('Five locale result controls and keyboard evidence disclosure');
   await carProtectionBrowserScenarios(db, alice, output);
+  await carEstimatedExtrasBrowserScenario(db, alice, output);
+  passed.push('Selected extras survive protection creation; estimate and surcharge warnings remain visible in both themes and screen sizes; API and UI reject tracking');
   passed.push('Protection options in both themes and responsive layouts, explicit terms review, lost real acknowledgement recovery, web and built CLI protected tracking with review required, and permanent parent closure preserving accepted child searches');
   await page.route('**/api/cars/search/car-browser-search', route => route.abort());
   await page.getByRole('button', { name: 'Refresh status' }).click();

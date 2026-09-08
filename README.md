@@ -146,6 +146,21 @@ extras must have supported pricing evidence; an unknown charge is not treated
 as free. Deposits and excess are shown separately from the rental total.
 Always confirm availability and final terms with the provider before booking.
 
+DiscoverCars can select the requested seat categories and quantities and
+additional drivers when the supplier exposes those controls. Its local-extra
+prices and availability are supplier estimates. Results retain each selected
+charge and show a combined estimate, which may exclude additional-driver
+surcharges. You can review an available protection option and request a fresh
+quote with the same extras. Adding protection does not make estimated extras
+eligible for tracking or alerts.
+
+AutoEurope's observed checkout does not expose selectable local extras. When
+you request seats or additional drivers, its result identifies the unselected
+extras and shows supplied supplier terms separately. Any advertised amount
+excludes those extras and cannot qualify as the requested combined total.
+Missing terms remain unknown. Base rentals and available protection products
+are checked independently of this limitation.
+
 Choose **best** mode to follow the cheapest qualifying offer across the selected
 providers, or **contract** mode to follow the selected rental contract. Set a
 target price, new-low alerts, and a check interval. The tracker records check

@@ -114,3 +114,64 @@ export async function carProtectionBrowserScenarios(db: pg.Client, context: Brow
     await page.getByRole('heading', { name: 'Tracking closed for this search' }).locator('..').screenshot({ path: resolve(output, 'protection-closed-fixture-390.png') });
   } finally { await page.close(); }
 }
+
+export async function carEstimatedExtrasBrowserScenario(db: pg.Client, context: BrowserContext, output: string) {
+  const search = carSearchFixture(), offer = carOfferFixture(), choiceId = crypto.randomUUID();
+  search.filters.maxTotal = { currency: 'GBP', minor: 20000 };
+  search.extras.childSeats = [{ category: 'child', quantity: 2 }];
+  search.extras.additionalDrivers = [{ age: 35, licenceYears: 10, residenceCountry: 'GB' }];
+  offer.contract.additionalDrivers = search.extras.additionalDrivers;
+  const unknown = { ...offer.available, value: null, status: 'unknown' as const, text: 'Supplier confirmation required. Additional-driver surcharges may apply.' };
+  for (const extra of [
+    { kind: 'child_seat' as const, category: 'child' as const, quantity: 2, productId: 'seats' },
+    { kind: 'additional_driver' as const, category: null, quantity: 1, productId: 'driver' },
+  ]) {
+    offer.contract.extras.push(extra);
+    offer.extras.push({ ...extra, availability: unknown, eligibility: unknown, included: { ...offer.available, value: false }, chargeId: extra.productId });
+    offer.charges.push({ id: extra.productId, label: extra.kind === 'child_seat' ? 'Two child seats' : 'Additional driver', kind: 'extra', payment: 'pickup', amount: { ...offer.total, value: { currency: 'GBP', minor: 3000 }, status: 'estimated' } });
+  }
+  offer.total = { ...offer.total, value: { currency: 'GBP', minor: 16000 }, status: 'estimated' };
+  const report = carReportFixture([offer]);
+  report.protection = [{ offerId: offer.id, status: 'complete', error: null, choices: [{ id: choiceId, source: 'discovercars', productId: '35', name: 'Full Coverage', termsSummary: 'Demonstration policy: reimbursement subject to exclusions.', policyLinks: [], observedExtraPrice: { currency: 'GBP', minor: 1800 }, observedAt: offer.observedAt, sourceUrl: 'https://www.discovercars.com/offer/coverage/example' }] }];
+  const parent = 'car-browser-estimated-extras';
+  await db.query(`INSERT INTO "CarSearchRun" (id,"userId",request,result,status,"createdAt","completedAt") VALUES ($1,'car-browser-alice',$2,$3,'success',$4,$4)`, [parent, search, report, offer.observedAt]);
+  const page = await context.newPage();
+  try {
+    await page.goto(`/cars/search/${parent}`);
+    await page.getByText('Optional protection', { exact: true }).click();
+    await page.getByRole('radio', { name: /Full Coverage/ }).check();
+    await page.getByLabel('I have reviewed this option’s terms and exclusions.').check();
+    assert.ok(await page.getByRole('button', { name: 'Recheck total with protection' }).isEnabled());
+    assert.ok(await page.getByRole('button', { name: 'Track this rental' }).isDisabled());
+    await page.getByRole('button', { name: 'Recheck total with protection' }).click();
+    const open = page.getByRole('link', { name: 'Open protected quote', exact: true }); await open.waitFor();
+    const childId = (await open.getAttribute('href'))!.split('/').at(-1)!;
+    const child = (await db.query(`SELECT request FROM "CarSearchRun" WHERE id=$1`, [childId])).rows[0];
+    assert.deepEqual(child.request.extras.childSeats, search.extras.childSeats);
+    assert.deepEqual(child.request.extras.additionalDrivers, search.extras.additionalDrivers);
+    const extra = { kind: 'protection' as const, category: null, quantity: 1, productId: '35' };
+    offer.contract.extras.push(extra); offer.contract.coverageProductIds.push('35'); offer.contract.coverageTerms += ' Demonstration policy: reimbursement subject to exclusions.';
+    offer.extras.push({ ...extra, availability: { ...offer.available, text: 'Full Coverage' }, eligibility: { ...offer.available, text: 'Demonstration policy: reimbursement subject to exclusions.' }, included: { ...offer.available, value: false }, chargeId: 'coverage' });
+    offer.charges.push({ id: 'coverage', label: 'Full Coverage', kind: 'extra', payment: 'now', amount: { ...offer.total, value: { currency: 'GBP', minor: 1800 }, status: 'confirmed' } });
+    offer.total.value = { currency: 'GBP', minor: 17800 };
+    await db.query(`UPDATE "CarSearchRun" SET status='success',result=$2,"completedAt"=now() WHERE id=$1`, [childId, carReportFixture([offer], ['discovercars'])]);
+    await db.query(`UPDATE "TravelJob" SET status='succeeded',"activeKey"=NULL,"completedAt"=now() WHERE "carRunId"=$1`, [childId]);
+    await open.click();
+    await page.getByLabel('I have reviewed the fresh protection terms and total.').check();
+    assert.ok(await page.getByRole('button', { name: 'Track this rental' }).isDisabled());
+    for (const theme of ['altitude-dark', 'altitude-light']) {
+      await page.evaluate(theme => { document.documentElement.dataset.theme = theme; }, theme);
+      for (const width of [1280, 390]) {
+        await page.setViewportSize({ width, height: 1000 });
+        assert.ok(await page.getByText(/Selected-options estimate\./).isVisible());
+        assert.match(await page.getByText(/Selected-options estimate\./).innerText(), /surcharges may be excluded/);
+        assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
+        await page.locator('article').first().screenshot({ path: resolve(output, `selected-extras-protected-fixture-${theme}-${width}.png`) });
+      }
+    }
+    for (const searchId of [parent, childId]) {
+      const rejected = await context.request.post('/api/cars', { headers: { 'Idempotency-Key': crypto.randomUUID() }, data: { searchId, offerId: offer.id } });
+      assert.equal(rejected.status(), 409, await rejected.text());
+    }
+  } finally { await page.close(); }
+}
