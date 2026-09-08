@@ -876,6 +876,36 @@ npm run dev
 | VPN | ExpressVPN sidecar (Docker, SOCKS5 proxy) |
 </details>
 
+### Image verification and staging
+
+CI builds and stages images on disposable GitHub-hosted runners. The integration
+job verifies the exact image ID and commit, then runs API and browser checks.
+Installer smoke tests run separately on a disposable runner. CI does not SSH to
+the production host or prune its Docker caches.
+
+The Docker workflow resolves one full commit SHA before building both CPU
+architectures. Deploy by registry digest, not by `latest` or a mutable SHA tag:
+
+```bash
+# After CI and the Docker publication workflow succeed for the selected SHA:
+docker buildx imagetools inspect ghcr.io/affromero/flight-finder:<full-SHA>
+docker pull ghcr.io/affromero/flight-finder@sha256:<manifest-digest>
+```
+
+Images carry an `org.opencontainers.image.revision` label. Verify that label
+against the intended full commit SHA and verify `/api/version` after starting
+the image. A registry digest identifies the exact published artifact; a local
+image ID identifies the exact artifact used by staging. Deployment credentials,
+host configuration and personal deployment tooling are not part of this workflow.
+
+For local staging, explicitly opt into a disposable Docker daemon:
+
+```bash
+FLIGHT_FINDER_DISPOSABLE_DOCKER=1 bash scripts/staging-test.sh \
+  sha256:<local-image-id> <full-SHA>
+python3 -m unittest discover -s scripts -p 'test_deploy*.py' -v
+```
+
 ## Contributing
 
 Pull requests welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.

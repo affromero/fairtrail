@@ -22,7 +22,22 @@ env:
   DOCKER_BUILD_SUMMARY: false
 
 jobs:
+  resolve:
+    if: ${{ github.event_name == 'release' || github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      sha: ${{ steps.commit.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ inputs.ref || github.event.workflow_run.head_sha || github.sha }}
+      - id: commit
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
   build:
+    needs: resolve
     if: ${{ github.event_name == 'release' || github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     strategy:
       fail-fast: true
@@ -39,7 +54,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
         with:
-          ref: ${{ inputs.ref || github.event.workflow_run.head_sha || github.sha }}
+          ref: ${{ needs.resolve.outputs.sha }}
 
       - uses: docker/setup-buildx-action@v4.3.0
 
@@ -56,7 +71,7 @@ jobs:
           context: .
           platforms: ${{ matrix.platform }}
           build-args: |
-            COMMIT_SHA=${{ inputs.ref || github.event.workflow_run.head_sha || github.sha }}
+            COMMIT_SHA=${{ needs.resolve.outputs.sha }}
           outputs: type=image,name=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }},push-by-digest=true,name-canonical=true,push=true
 
       - name: Export digest
@@ -73,7 +88,7 @@ jobs:
           retention-days: 1
 
   merge:
-    needs: build
+    needs: [resolve, build]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -81,7 +96,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
         with:
-          ref: ${{ inputs.ref || github.event.workflow_run.head_sha || github.sha }}
+          ref: ${{ needs.resolve.outputs.sha }}
 
       - name: Get version
         id: version
@@ -104,7 +119,7 @@ jobs:
       - name: Create multi-arch manifest
         working-directory: /tmp/digests
         env:
-          HEAD_SHA: ${{ inputs.ref || github.event.workflow_run.head_sha || github.sha }}
+          HEAD_SHA: ${{ needs.resolve.outputs.sha }}
         run: |
           docker buildx imagetools create \
             -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest \

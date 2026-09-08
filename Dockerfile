@@ -77,6 +77,8 @@ FROM docker.io/library/node:26-alpine AS runner
 RUN apk add --no-cache libc6-compat openssl chromium curl
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
+ARG COMMIT_SHA=unknown
+LABEL org.opencontainers.image.revision=${COMMIT_SHA}
 ENV PORT=3003
 ENV HOSTNAME="0.0.0.0"
 ENV CHROME_PATH=/usr/bin/chromium-browser

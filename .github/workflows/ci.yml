@@ -27,6 +27,7 @@ jobs:
       - run: npm run build
       - run: bash scripts/install-flow-test.sh
       - run: bash scripts/cli-runtime-test.sh
+      - run: python3 -m unittest discover -s scripts -p 'test_deploy*.py' -v
 
   install-smoke:
     runs-on: ubuntu-latest
@@ -41,62 +42,17 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7.0.1
-      - run: docker build -t flight-finder-test:latest .
-      - run: bash scripts/docker-integration-test.sh --no-build --keep-alive
+      - name: Build and stage the exact commit on this disposable runner
+        run: |
+          sha=$(git rev-parse HEAD)
+          docker build --build-arg COMMIT_SHA="$sha" -t flight-finder-test:latest .
+          image=$(docker image inspect --format '{{.Id}}' flight-finder-test:latest)
+          bash scripts/staging-test.sh "$image" "$sha" --keep-alive
       - name: Browser smoke tests
         run: |
           npm ci
           npx playwright install chromium --with-deps
           bash scripts/browser-smoke-test.sh http://localhost:3399
-      - name: Cleanup containers
+      - name: Cleanup only this runner's test containers
         if: always()
         run: docker compose -p flight-finder-integration-test -f scripts/docker-compose.integration.yml down -v --remove-orphans
-
-  staging:
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    if: github.ref == 'refs/heads/main'
-    needs: [ci, install-smoke, integration]
-    # Staging SSHes into the single shared prod host and takes a lock there.
-    # Serialize across commits so two main pushes landing close together (for
-    # example a PR merge immediately followed by a version bump commit) cannot
-    # race the lock and fail. Wait for the running job rather than cancelling
-    # it, so cancelling during an active SSH session never orphans containers
-    # or locks on the shared host.
-    concurrency:
-      group: staging-host
-      cancel-in-progress: false
-    steps:
-      - uses: actions/checkout@v7.0.1
-      - name: Setup SSH
-        run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.DEPLOY_KEY }}" > ~/.ssh/staging_key
-          chmod 600 ~/.ssh/staging_key
-          # Pin the host key and verify strictly. Prefer the DEPLOY_KNOWN_HOSTS
-          # secret (an out-of-band pinned key, strongest). When it is not set,
-          # scan the key now and pin it for this run, which still rejects a key
-          # that changes mid-run. Either way StrictHostKeyChecking is "yes", so
-          # the connection is never made with host verification disabled.
-          if [ -n "${{ secrets.DEPLOY_KNOWN_HOSTS }}" ]; then
-            echo "${{ secrets.DEPLOY_KNOWN_HOSTS }}" >> ~/.ssh/known_hosts
-          else
-            ssh-keyscan -H "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
-          fi
-          chmod 600 ~/.ssh/known_hosts
-          STRICT_CHECKING="yes"
-          echo "Host flight-finder-staging" >> ~/.ssh/config
-          echo "  HostName ${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/config
-          echo "  User ${{ secrets.DEPLOY_USER }}" >> ~/.ssh/config
-          echo "  IdentityFile ~/.ssh/staging_key" >> ~/.ssh/config
-          echo "  StrictHostKeyChecking ${STRICT_CHECKING}" >> ~/.ssh/config
-          echo "  ServerAliveInterval 30" >> ~/.ssh/config
-          echo "  ServerAliveCountMax 120" >> ~/.ssh/config
-          echo "  TCPKeepAlive yes" >> ~/.ssh/config
-      - name: Run staging tests
-        env:
-          STAGING_HOST: flight-finder-staging
-          # REPO_TOKEN is read from the environment by staging-test.sh; passing it
-          # via env (not inline in the command) keeps it out of the process list.
-          REPO_TOKEN: ${{ secrets.REPO_TOKEN }}
-        run: bash scripts/staging-test.sh
