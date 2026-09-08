@@ -286,11 +286,15 @@ test_entrypoint_uses_bundled_pinned_prisma() {
     fail "docker-entrypoint.sh must not run 'npx prisma' at runtime; use the bundled CLI"
   fi
 
-  # The bundled CLI must be pinned to a major in the prismacli stage.
-  if printf '%s\n' "$docker_code" | grep -qE 'npm install .*prisma@(\^|~)?[0-9]'; then
-    pass "Dockerfile pins the bundled prisma CLI to a major version"
+  # The isolated toolchain must use its exact, project-aligned lockfile.
+  local prisma_stage
+  prisma_stage=$(printf '%s\n' "$docker_code" | awk '/^FROM .* AS prismacli$/ { active=1; next } /^FROM / { active=0 } active')
+  if printf '%s\n' "$prisma_stage" | grep -qF 'COPY scripts/prisma-cli/package.json scripts/prisma-cli/package-lock.json ./' &&
+     printf '%s\n' "$prisma_stage" | grep -qE '^RUN npm ci( |$)' &&
+     node scripts/check-prisma-toolchain.mjs; then
+    pass "Dockerfile installs the project-aligned Prisma toolchain from its lockfile"
   else
-    fail "Dockerfile prismacli stage must pin prisma (e.g. 'npm install ... prisma@6')"
+    fail "Dockerfile prismacli stage must copy both manifests and install the aligned toolchain with npm ci"
   fi
   if printf '%s\n' "$docker_code" | grep -qE 'prisma@latest'; then
     fail "Dockerfile must not install prisma@latest (silently picks up new majors)"

@@ -33,8 +33,13 @@ vi.mock('playwright', async importOriginal => {
         await page.route('**/*', async route => {
           const url = new URL(route.request().url());
           await transport.beforeRequest?.(url);
-          const response = await context.request.get(`${transport.origin}/${url.hostname}${url.pathname}${url.search}`);
-          await route.fulfill({ response });
+          if (page.isClosed() || !browser.isConnected()) return;
+          try {
+            const response = await context.request.get(`${transport.origin}/${url.hostname}${url.pathname}${url.search}`);
+            await route.fulfill({ response });
+          } catch (error) {
+            if (!page.isClosed() && browser.isConnected()) throw error;
+          }
         });
         const register = page.route.bind(page);
         page.route = async (pattern, handler, options) => register(pattern, async (route, request) => {

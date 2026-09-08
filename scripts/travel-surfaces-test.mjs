@@ -108,17 +108,21 @@ try {
     assert.ok((await page.locator('main').innerText()).includes(t.Landing.travelIntro));
     assert.ok((await page.locator('main').innerText()).includes(t.Landing.travelHousehold));
     assert.ok((await page.locator('main').innerText()).includes(t.Landing.travelAvailability));
-    assert.equal(await page.locator('a[href="/hotels"]').count(), 0, 'Public visitors install rather than navigate to a disabled search');
-    assert.match(await page.locator('meta[name="description"]').getAttribute('content'), /flight and hotel/i);
-    assert.match(await page.locator('meta[property="og:description"]').getAttribute('content'), /flight and hotel/i);
+    assert.equal(await page.locator('a[href="/hotels"], a[href="/cars"]').count(), 0, 'Public visitors install rather than navigate to a disabled search');
     const structured = JSON.parse(await page.locator('script[type="application/ld+json"]').innerText());
-    assert.match(structured.description, /flight and hotel/i);
-    assert.match(await page.title(), /flight and hotel/i);
     const manifest = await (await ctx.request.get('/manifest.json')).json();
-    assert.match(manifest.description, /flight and hotel/i);
+    for (const description of [
+      await page.locator('meta[name="description"]').getAttribute('content'),
+      await page.locator('meta[property="og:description"]').getAttribute('content'),
+      structured.description, await page.title(), manifest.description,
+    ]) {
+      for (const category of [/\bflights?\b/i, /\bhotels?\b/i, /\bcars?\b/i]) assert.match(description, category);
+    }
     await capture(page, `public-${locale}`);
     assert.equal((await ctx.request.get('/hotels')).status(), 404);
     assert.equal((await ctx.request.get('/api/hotels')).status(), 404);
+    assert.equal((await ctx.request.get('/cars')).status(), 404);
+    assert.equal((await ctx.request.get('/api/cars')).status(), 404);
     await page.getByRole('link', { name: t.InstallCommand.desktopLink }).click();
     await page.getByRole('heading', { name: t.Download.title }).waitFor();
     assert.ok((await page.locator('main').innerText()).includes(t.Download.subtitle));
