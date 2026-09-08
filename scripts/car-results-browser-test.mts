@@ -23,6 +23,8 @@ const servers: { child: ReturnType<typeof spawn>; log: ReturnType<typeof createW
 const contexts: BrowserContext[] = [], passed: string[] = [], errors: string[] = [];
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 const search = carSearchFixture(), report = carReportFixture(), now = new Date().toISOString();
+search.pickup.providerNames = { discovercars: 'London Heathrow Airport terminal collection area', autoeurope: 'London Heathrow Airport rental search area' };
+search.dropoff.providerNames = { discovercars: 'London Heathrow Airport return area', autoeurope: 'London Heathrow Airport vehicle return area' };
 async function start(name: string, port: number, selfHosted: boolean) {
   const log = createWriteStream(resolve(output, `${name}.log`));
   const child = spawn(process.execPath, [resolve('node_modules/next/dist/bin/next'), 'start', '-p', String(port), '-H', '127.0.0.1'], {
@@ -156,6 +158,9 @@ try {
   const page = await alice.newPage(); await page.goto('/cars/search/car-browser-search');
   await page.getByRole('button', { name: 'Track this rental' }).waitFor();
   assert.ok(await page.getByRole('button', { name: 'Track this rental' }).isEnabled());
+  await page.getByText('DiscoverCars search location: London Heathrow Airport terminal collection area', { exact: true }).waitFor();
+  await page.getByText('DiscoverCars search location: London Heathrow Airport return area', { exact: true }).waitFor();
+  assert.equal(await page.getByText('Auto Europe search location: London Heathrow Airport rental search area', { exact: true }).count(), 0);
   assert.equal(await page.locator('h1').count(), 1);
   assert.match(await page.locator('meta[name="robots"]').getAttribute('content') ?? '', /noindex/);
   await page.getByText('Charges, extras and rental conditions', { exact: true }).focus();
@@ -292,6 +297,7 @@ try {
   }
   passed.push('Notification history distinguishes five stored outcomes and HTTP responses omit messages, channel identities, claim credentials and raw errors');
   await page.getByRole('heading', { name: 'London weekend' }).waitFor();
+  await page.getByText('Auto Europe search location: London Heathrow Airport rental search area', { exact: true }).waitFor();
   assert.equal(await page.locator('h1').count(), 1);
   assert.match(await page.locator('meta[name="robots"]').getAttribute('content') ?? '', /noindex/);
   assert.match(await page.getByRole('region', { name: 'London weekend', exact: true }).getByRole('alert').innerText(), /needs attention/);

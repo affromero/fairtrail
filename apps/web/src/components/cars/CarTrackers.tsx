@@ -8,6 +8,7 @@ import { formatCarMoney } from '@/lib/cars/money';
 import { travelRequest, TravelResponseError } from '../travel/client';
 import { carLocalDate } from './presentation';
 import styles from './Cars.module.css';
+import { CarLocationLabel } from './CarLocationLabel';
 
 interface ListState { trackers: CarTrackerView[] | null; cursor: string | null; busy: boolean; failed: boolean; hidden: boolean; attempted: string | null }
 export function CarTrackers({ admin = false }: { admin?: boolean }) {
@@ -57,8 +58,8 @@ export function CarTrackers({ admin = false }: { admin?: boolean }) {
       <Link className={styles.trackerRow} href={`/cars/${encodeURIComponent(tracker.id)}`}>
         <div><h3>{tracker.label}</h3><p className={styles.eyebrow}>{t(tracker.active ? 'trackerActive' : 'trackerPaused')}</p>
           <dl className={styles.journey}>
-            <div><dt>{t('pickup')}</dt><dd>{tracker.search.pickup.name}<time dateTime={tracker.search.pickupAt.instant}>{carLocalDate(tracker.search.pickupAt, locale)} · {tracker.search.pickupAt.timeZone}</time></dd></div>
-            <div><dt>{t('dropoff')}</dt><dd>{tracker.search.dropoff.name}<time dateTime={tracker.search.dropoffAt.instant}>{carLocalDate(tracker.search.dropoffAt, locale)} · {tracker.search.dropoffAt.timeZone}</time></dd></div>
+            <div><dt>{t('pickup')}</dt><dd><CarLocationLabel location={tracker.search.pickup} sources={tracker.selection ? [tracker.selection.source] : tracker.search.sources} /><time dateTime={tracker.search.pickupAt.instant}>{carLocalDate(tracker.search.pickupAt, locale)} · {tracker.search.pickupAt.timeZone}</time></dd></div>
+            <div><dt>{t('dropoff')}</dt><dd><CarLocationLabel location={tracker.search.dropoff} sources={tracker.selection ? [tracker.selection.source] : tracker.search.sources} /><time dateTime={tracker.search.dropoffAt.instant}>{carLocalDate(tracker.search.dropoffAt, locale)} · {tracker.search.dropoffAt.timeZone}</time></dd></div>
           </dl>{tracker.lastError && <p className={styles.error}>{t('latestCheckAttention')}</p>}
         </div>
         <div><p className={styles.hint}>{t('retainedPrice')}</p><p className={styles.price}>{tracker.latestPriceMinor === null ? t('unknown') : formatCarMoney({ currency: tracker.currency, minor: tracker.latestPriceMinor }, locale)}</p><span className={styles.hint}>{t('openTracker')}</span></div>

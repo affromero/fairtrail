@@ -26,6 +26,7 @@ export function CarConfirmation({ confirmation, rows, onConfirm }: { confirmatio
   const width = Math.max(10, columns - 2), count = Math.max(1, rows - 4);
   const document = [action, carTerminalText(confirmation.label), `Server: ${carTerminalText(confirmation.origin)}`,
     `Account: ${carTerminalText(confirmation.scope)}`, `Target: ${operation.id ?? 'New resource'}`, `Revision: ${operation.revision ?? 'Not applicable'}`,
+    ...(confirmation.locations ?? []).map(carTerminalText),
     ...(confirmation.receiptPath ? [`Receipt: ${carTerminalText(confirmation.receiptPath)}`] : []),
     ...(confirmation.conflict ? ['The earlier outcome is unproven. This applies a new change to the displayed revision.'] : []),
     ...(operation.kind === 'delete' ? ['Deletes the tracker and its price history. This cannot be undone.'] : []),

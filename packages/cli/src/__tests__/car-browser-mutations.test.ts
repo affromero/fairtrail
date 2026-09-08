@@ -50,8 +50,11 @@ afterEach(async () => {
 });
 
 it('captures the displayed revision and sends nothing until explicitly confirmed', async () => {
+  tracker.search.pickup.providerNames = { discovercars: 'Airport pickup area' };
+  tracker.search.dropoff.providerNames = { discovercars: 'Airport return area' };
+  await browser.reload();
   browser.requestAction('pause');
-  expect(browser.getSnapshot().confirmation).toMatchObject({ scope, operation: { id: tracker.id, revision: tracker.revision, body: { active: false } } });
+  expect(browser.getSnapshot().confirmation).toMatchObject({ scope, operation: { id: tracker.id, revision: tracker.revision, body: { active: false } }, locations: [expect.stringContaining('Airport pickup area'), expect.stringContaining('Airport return area')] });
   expect(await readdir(directory)).toEqual([]); expect(mutations).toEqual([]);
   await browser.confirm();
   expect(mutations).toMatchObject([{ method: 'PATCH', revision: '7', body: { active: false } }]);

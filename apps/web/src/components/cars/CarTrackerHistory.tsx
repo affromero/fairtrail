@@ -7,17 +7,19 @@ import { CAR_PROVIDER_LABELS } from '@/lib/cars/preferences';
 import { CarEvidenceDetails } from './CarEvidenceDetails';
 import { carLocalDate } from './presentation';
 import styles from './Cars.module.css';
+import { CarLocationLabel } from './CarLocationLabel';
 
 export function CarTrackerHistory({ detail }: { detail: CarDetailView }) {
   const t = useTranslations('Cars'), locale = useLocale(), id = useId();
   const { tracker, latestObservation, snapshots, runs } = detail;
+  const sources = tracker.selection ? [tracker.selection.source] : tracker.search.sources;
   const money = (minor: number | null) => minor === null ? t('unknown') : formatCarMoney({ currency: tracker.currency, minor }, locale);
   const time = (value: string | null) => value === null ? t('notRecorded') : <time dateTime={value}>{new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short', timeZone: 'UTC' }).format(new Date(value))} UTC</time>;
   const verified = snapshots.filter(snapshot => snapshot.eligible), excluded = snapshots.filter(snapshot => !snapshot.eligible);
   return <div className={styles.root}>
     <section aria-labelledby={`${id}-summary`}>
       <div className={styles.resultsHeader}><div><p className={styles.eyebrow}>{t(tracker.active ? 'trackerActive' : 'trackerPaused')}</p><h2 id={`${id}-summary`}>{tracker.label}</h2></div><p className={styles.hint}>{t(tracker.options.mode === 'best' ? 'bestHelp' : 'contractHelp')}</p></div>
-      <dl className={styles.journey}><div><dt>{t('pickup')}</dt><dd>{tracker.search.pickup.name}<time dateTime={tracker.search.pickupAt.instant}>{carLocalDate(tracker.search.pickupAt, locale)} · {tracker.search.pickupAt.timeZone}</time></dd></div><div><dt>{t('dropoff')}</dt><dd>{tracker.search.dropoff.name}<time dateTime={tracker.search.dropoffAt.instant}>{carLocalDate(tracker.search.dropoffAt, locale)} · {tracker.search.dropoffAt.timeZone}</time></dd></div></dl>
+      <dl className={styles.journey}><div><dt>{t('pickup')}</dt><dd><CarLocationLabel location={tracker.search.pickup} sources={sources} /><time dateTime={tracker.search.pickupAt.instant}>{carLocalDate(tracker.search.pickupAt, locale)} · {tracker.search.pickupAt.timeZone}</time></dd></div><div><dt>{t('dropoff')}</dt><dd><CarLocationLabel location={tracker.search.dropoff} sources={sources} /><time dateTime={tracker.search.dropoffAt.instant}>{carLocalDate(tracker.search.dropoffAt, locale)} · {tracker.search.dropoffAt.timeZone}</time></dd></div></dl>
       <dl className={styles.historySummary}>
         <div><dt>{t('retainedPrice')}</dt><dd className={styles.price}>{money(tracker.latestPriceMinor)}</dd></div>
         <div><dt>{t('historicalLow')}</dt><dd className={styles.price}>{money(tracker.historicalLowMinor)}</dd></div>

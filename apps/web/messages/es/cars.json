@@ -260,6 +260,7 @@
     "manual": "Manual",
     "seats": "{count} plazas",
     "pickup": "Recogida",
+    "providerLocation": "Lugar de búsqueda de {provider}: {name}",
     "dropoff": "Devolución",
     "verifiedTotal": "Total verificado",
     "unverifiedTotal": "Total del proveedor · sin verificar",

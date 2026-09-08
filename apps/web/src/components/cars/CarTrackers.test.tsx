@@ -22,6 +22,16 @@ function denied(status: number) { return new Response(JSON.stringify({ ok: false
 afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
 describe('saved rental dashboard', () => {
+  it('discloses both provider search areas for best-match tracking', async () => {
+    const row = tracker();
+    row.options.mode = 'best'; row.selection = null;
+    row.search.pickup.providerNames = { discovercars: 'First pickup area', autoeurope: 'Second pickup area' };
+    row.search.dropoff.providerNames = { discovercars: 'First return area', autoeurope: 'Second return area' };
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response([row])));
+    render(<View />);
+    const link = await screen.findByRole('link', { name: /Rental one/ });
+    for (const name of ['First pickup area', 'Second pickup area', 'First return area', 'Second return area']) expect(link).toHaveTextContent(name);
+  });
   it.each(Object.keys(locales) as (keyof typeof locales)[])('renders %s saved rentals with honest prices and station-local dates', async locale => {
     const row = tracker(); row.active = false; row.lastError = 'One provider failed';
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response([row])));

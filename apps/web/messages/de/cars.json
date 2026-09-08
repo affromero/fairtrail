@@ -260,6 +260,7 @@
     "manual": "Schaltgetriebe",
     "seats": "{count} Sitze",
     "pickup": "Abholung",
+    "providerLocation": "Suchort bei {provider}: {name}",
     "dropoff": "Rückgabe",
     "verifiedTotal": "Bestätigter Gesamtpreis",
     "unverifiedTotal": "Anbieterpreis · nicht bestätigt",

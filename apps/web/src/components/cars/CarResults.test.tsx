@@ -25,6 +25,16 @@ beforeEach(() => { sessionStorage.clear(); });
 afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
 describe('rental results and honest tracking controls', () => {
+  it('shows the offered provider pickup and return labels before tracking without mixing providers', () => {
+    const search = carSearchFixture();
+    search.pickup.providerNames = { discovercars: 'Heathrow Terminal pickup', autoeurope: 'Other provider pickup' };
+    search.dropoff.providerNames = { discovercars: 'Heathrow return office', autoeurope: 'Other provider return' };
+    render(<Results search={search} />);
+    expect(screen.getByText('DiscoverCars search location: Heathrow Terminal pickup')).toBeVisible();
+    expect(screen.getByText('DiscoverCars search location: Heathrow return office')).toBeVisible();
+    expect(screen.queryByText(/Other provider pickup/)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Track this rental' })).toBeEnabled();
+  });
   it.each(Object.keys(locales) as (keyof typeof locales)[])('requires explicit permanent closure and keeps results inspectable in %s', async locale => {
     sessionStorage.setItem('ff-car-creation:alice:search-one', '{');
     const copy = locales[locale].Cars;

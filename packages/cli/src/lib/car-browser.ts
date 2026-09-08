@@ -8,6 +8,8 @@ import { carReceiptDirectory } from './car-cli-input.js';
 import { readCarReceipt, type CarOperation, type CarReceipt } from './car-receipts.js';
 import { CarMutationError, performCarMutation, replayCarMutation } from './car-operations.js';
 import { dirname, resolve } from 'node:path';
+import { carProviderLocationLabels } from '../../../../apps/web/src/lib/cars/location-labels.js';
+import { CAR_PROVIDER_LABELS } from '../../../../apps/web/src/lib/cars/preferences.js';
 
 export interface CarBrowserConfirmation {
   operation: CarOperation;
@@ -17,6 +19,7 @@ export interface CarBrowserConfirmation {
   receiptPath: string | null;
   receipt: CarReceipt | null;
   conflict: boolean;
+  locations?: string[];
 }
 export interface CarBrowserRecovery {
   path: string;
@@ -152,6 +155,8 @@ export class CarBrowser {
     });
     if (blocked) { this.publish({ error: 'Recover the earlier request before starting a conflicting change. Use its saved receipt.', confirmation: null }); return; }
     this.publish({ error: null, confirmation: { operation, scope, origin: this.client.origin, label: tracker.label,
+      locations: (['pickup', 'dropoff'] as const).flatMap(stop => carProviderLocationLabels(tracker.search[stop], tracker.selection ? [tracker.selection.source] : tracker.search.sources)
+        .map(({ source, name }) => `${stop === 'pickup' ? 'Pickup' : 'Return'} search location (${CAR_PROVIDER_LABELS[source]}): ${name}`)),
       receiptPath: null, receipt: null, conflict: prior.some(row => row.outcome === 'stale') } });
   }
 

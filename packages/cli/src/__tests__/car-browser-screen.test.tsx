@@ -23,6 +23,7 @@ it('keeps protection receipt confirmation visible in a narrow terminal while eve
   const instance = render(<CarConfirmation rows={20} confirmation={{ operation: { kind: 'protect', id: 'parent-search', revision: null,
     body: { offerId: 'selected-rental', choiceId } }, scope: 'user:alice', origin: 'https://rental.example.test', label: 'Saved protection choice',
     receiptPath: `/private/${'long-private-directory/'.repeat(10)}receipt.json`, receipt: null, conflict: false,
+    locations: ['Pickup search location (DiscoverCars): Terminal collection area with a long provider label', 'Return search location (DiscoverCars): Separate return entrance'],
   }} onConfirm={() => { confirmed = true; }} />, { stdout, stdin, stderr, debug: true, interactive: true, patchConsole: false });
   try {
     await vi.waitFor(() => expect(frames.length).toBeGreaterThan(0));
@@ -30,6 +31,8 @@ it('keeps protection receipt confirmation visible in a narrow terminal while eve
     const text = frames.join('\n');
     expect(text.replace(/\s+/g, ' ')).toContain('Does not book a car or buy coverage.');
     expect(text.replace(/\s+/g, '')).toContain(choiceId);
+    expect(text.replace(/\s+/g, ' ')).toContain('Terminal collection area with a long provider label');
+    expect(text.replace(/\s+/g, ' ')).toContain('Separate return entrance');
     expect(confirmed).toBe(false);
     for (const frame of frames) {
       expect(frame.trimEnd().split('\n').length).toBeLessThanOrEqual(20);
