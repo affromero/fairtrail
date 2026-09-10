@@ -27,9 +27,18 @@ export interface RouteResultPayload {
   destination: string;
   destinationName: string;
   flights: PriceData[];
+  oneWayEstimate?: OneWayEstimate;
   date?: string;
   returnDate?: string;
   error?: string;
+}
+
+/** Two separate tickets for reference only, never a tracked round-trip fare. */
+export interface OneWayEstimate {
+  outbound: PriceData;
+  inbound: PriceData;
+  totalPrice: number;
+  currency: string;
 }
 
 export interface PreviewResultPayload {

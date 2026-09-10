@@ -3,20 +3,13 @@
 import { useState } from 'react';
 import { useTranslations } from 'next-intl';
 import type { PriceData } from '@/lib/scraper/extract-prices';
+import type { RouteResultPayload } from '@/lib/preview-run';
+import { safeHttpUrl } from '@/lib/safe-url';
 import { formatCurrency } from '@/lib/currency';
 import { layoverLabel } from '@/lib/scraper/duration';
 import styles from './FlightPicker.module.css';
 
-export interface RouteFlights {
-  origin: string;
-  originName: string;
-  destination: string;
-  destinationName: string;
-  flights: PriceData[];
-  date?: string; // ISO date — outbound date when grouped by travel date
-  returnDate?: string; // ISO date — return date for round trips
-  error?: string;
-}
+export type RouteFlights = RouteResultPayload;
 
 function formatRouteDate(iso: string): string {
   return new Date(iso + 'T00:00:00').toLocaleDateString('en-US', {
@@ -26,7 +19,7 @@ function formatRouteDate(iso: string): string {
 }
 
 function rKey(route: RouteFlights): string {
-  return `${route.origin}-${route.destination}${route.date ? '-' + route.date : ''}`;
+  return `${route.origin}-${route.destination}:${route.date ?? ''}:${route.returnDate ?? ''}`;
 }
 
 export function FlightPicker({
@@ -179,9 +172,35 @@ export function FlightPicker({
         );
       })}
 
-      {routes.some((r) => r.error) && (
+      {routes.filter((route) => route.oneWayEstimate).map((route) => {
+        const estimate = route.oneWayEstimate!;
+        return (
+          <section key={rKey(route)} className={styles.estimate} aria-label={t('oneWayEstimate')}>
+            <h3>{t('oneWayEstimate')}: {formatCurrency(estimate.totalPrice, estimate.currency)}</h3>
+            <p>{t('oneWayEstimateHint')}</p>
+            <ul>
+              {[
+                { flight: estimate.outbound, origin: route.origin, destination: route.destination, date: route.date },
+                { flight: estimate.inbound, origin: route.destination, destination: route.origin, date: route.returnDate },
+              ].map(({ flight, origin, destination, date }, index) => (
+                <li key={index}>
+                  {origin} → {destination}{date && ` · ${formatRouteDate(date)}`} · {flight.airline}
+                  {' · '}{formatCurrency(flight.price, flight.currency)}
+                  {' · '}{flight.stops === 0 ? t('nonstop') : t('stops', { count: flight.stops })}
+                  {flight.duration && ` · ${flight.duration}`}
+                  {safeHttpUrl(flight.bookingUrl) && (
+                    <> · <a href={safeHttpUrl(flight.bookingUrl)} target="_blank" rel="noopener noreferrer">{t('viewOneWay')}</a></>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </section>
+        );
+      })}
+
+      {routes.some((r) => r.error && !r.oneWayEstimate) && (
         <div className={styles.routeErrors}>
-          {routes.filter((r) => r.error).map((r) => (
+          {routes.filter((r) => r.error && !r.oneWayEstimate).map((r) => (
             <p key={rKey(r)} className={styles.routeError}>
               {r.origin} → {r.destination}: {r.error}
             </p>

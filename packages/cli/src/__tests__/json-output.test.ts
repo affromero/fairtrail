@@ -54,6 +54,12 @@ function snap(over: Record<string, unknown> = {}) {
 describe('getQueryJson', () => {
   beforeEach(() => mockFindUnique.mockReset());
 
+  it('excludes legacy estimates when loading tracker prices', async () => {
+    mockFindUnique.mockResolvedValue(row());
+    await getQueryJson('q1');
+    expect(mockFindUnique.mock.calls[0]?.[0].include.snapshots.where).toMatchObject({ NOT: { airline: { endsWith: ' (approx OW+OW)' } } });
+  });
+
   it('returns null when the tracker does not exist', async () => {
     mockFindUnique.mockResolvedValue(null);
     expect(await getQueryJson('nope')).toBeNull();

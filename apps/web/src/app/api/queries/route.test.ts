@@ -72,6 +72,16 @@ const validBody = {
 };
 
 describe('POST /api/queries', () => {
+  it('rejects old split estimates before writing trackers or snapshots', async () => {
+    const res = await POST(makeRequest({ ...validBody, routes: [{ ...validBody.routes[0], selectedFlights: [{
+      travelDate: '2026-06-15', price: 2991, currency: 'CAD',
+      airline: 'Air Canada + Air Canada (approx OW+OW)', bookingUrl: 'https://example.com/outbound',
+    }] }] }));
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toMatch(/Search again/);
+    expect(mockQueryCreate).not.toHaveBeenCalled();
+    expect(mockSnapshotCreateMany).not.toHaveBeenCalled();
+  });
   beforeEach(() => {
     mockQueryCreate.mockClear();
     mockSnapshotCreateMany.mockClear();

@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/prisma';
+import { ACTUAL_FLIGHT_FARE_WHERE } from '@/lib/flight-pricing';
 import { apiSuccess } from '@/lib/api-response';
 import { redis } from '@/lib/redis';
 
@@ -13,9 +14,9 @@ interface RouteInfo {
   latestScrapedAt: string;
 }
 
-const CACHE_KEY = 'community:routes';
+const CACHE_KEY = 'community:routes:v2';
 const CACHE_TTL = 300; // 5 minutes
-const LOCK_KEY = 'community:routes:lock';
+const LOCK_KEY = 'community:routes:v2:lock';
 const LOCK_TTL = 10; // seconds a single rebuild may hold the lock
 const MAX_ROUTES = 200;
 const MAX_AIRLINES_PER_ROUTE = 20;
@@ -47,6 +48,7 @@ async function writeCache(value: RouteInfo[]): Promise<void> {
  */
 async function buildRoutes(): Promise<RouteInfo[]> {
   const grouped = await prisma.communitySnapshot.groupBy({
+    where: ACTUAL_FLIGHT_FARE_WHERE,
     by: ['origin', 'destination'],
     _count: { id: true },
     _avg: { price: true },
@@ -68,6 +70,7 @@ async function buildRoutes(): Promise<RouteInfo[]> {
   const airlineRows = await prisma.communitySnapshot.findMany({
     where: {
       OR: grouped.map((r: GroupedRoute) => ({ origin: r.origin, destination: r.destination })),
+      ...ACTUAL_FLIGHT_FARE_WHERE,
     },
     select: { origin: true, destination: true, airline: true },
     distinct: ['origin', 'destination', 'airline'],

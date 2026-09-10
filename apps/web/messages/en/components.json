@@ -86,6 +86,9 @@
     "alt": "Price evolution charts - JFK to Paris, LAX to Tokyo, Chicago to Rome"
   },
   "FlightPicker": {
+    "oneWayEstimate": "Separate one-way ticket estimate",
+    "oneWayEstimateHint": "Round-trip fares could not be retrieved. These two tickets are priced separately. This estimate cannot be tracked and is excluded from price history and alerts.",
+    "viewOneWay": "View one-way ticket",
     "nonstop": "Nonstop",
     "stops": "{count, plural, one {# stop} other {# stops}}",
     "flightsOn": "Flights on {date}",

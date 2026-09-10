@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Box, Text, useInput, useApp } from 'ink';
 import Spinner from 'ink-spinner';
 import { prisma } from '@/lib/prisma';
+import { ACTUAL_FLIGHT_FARE_WHERE } from '../lib/flight-pricing.js';
 import { formatDate, formatCurrency, formatTimeAgo } from '../lib/format.js';
 
 interface QueryRow {
@@ -39,6 +40,7 @@ export function QueryList({ onView }: QueryListProps) {
           orderBy: { createdAt: 'desc' },
           include: {
             snapshots: {
+              where: ACTUAL_FLIGHT_FARE_WHERE,
               orderBy: { price: 'asc' },
               select: { price: true },
             },

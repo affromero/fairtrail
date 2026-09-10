@@ -53,6 +53,14 @@ function validSnapshot(overrides: Record<string, unknown> = {}) {
 }
 
 describe('POST /api/community/ingest', () => {
+  it('rejects legacy estimates while accepting actual fares from the same batch', async () => {
+    const res = await POST(makeRequest({ snapshots: [
+      validSnapshot({ airline: 'Air Canada + Air Canada (approx OW+OW)', price: 2991 }),
+      validSnapshot({ airline: 'Air Canada', price: 1809 }),
+    ] }));
+    expect((await res.json()).data).toMatchObject({ accepted: 1, rejected: 1 });
+    expect(mockCreateMany.mock.calls[0]?.[0].data.map((snapshot: { price: number }) => snapshot.price)).toEqual([1809]);
+  });
   beforeEach(() => {
     mockFindUnique.mockReset();
     mockCreateMany.mockClear().mockResolvedValue({ count: 0 });

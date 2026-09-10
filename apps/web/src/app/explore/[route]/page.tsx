@@ -5,6 +5,7 @@ import { notFound } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import type { Metadata } from 'next';
 import { prisma } from '@/lib/prisma';
+import { ACTUAL_FLIGHT_FARE_WHERE } from '@/lib/flight-pricing';
 import { formatCurrency } from '@/lib/currency';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { Footer } from '@/components/Footer';
@@ -44,7 +45,7 @@ export default async function ExploreRoutePage({ params }: Props) {
   const { origin, destination } = parsed;
 
   const snapshots = await prisma.communitySnapshot.findMany({
-    where: { origin, destination },
+    where: { origin, destination, ...ACTUAL_FLIGHT_FARE_WHERE },
     orderBy: { scrapedAt: 'desc' },
     take: 200,
   });

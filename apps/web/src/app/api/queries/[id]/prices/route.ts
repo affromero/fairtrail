@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma';
 import { cached } from '@/lib/redis';
 import { filterSnapshotsByTrackerFilters } from '@/lib/snapshot-filters';
 import { MAX_TRACKER_EDIT_EVENTS } from '@/lib/tracker-edit-events';
+import { ACTUAL_FLIGHT_FARE_WHERE, isLegacySplitFare } from '@/lib/flight-pricing';
 
 export async function GET(
   _request: NextRequest,
@@ -59,7 +60,7 @@ export async function GET(
     `ft:prices:${id}`,
     () =>
       prisma.priceSnapshot.findMany({
-        where: { queryId: id },
+        where: { queryId: id, ...ACTUAL_FLIGHT_FARE_WHERE },
         orderBy: { scrapedAt: 'desc' },
         take: MAX_SNAPSHOTS,
         select: {
@@ -86,7 +87,8 @@ export async function GET(
     120 // 2 min cache for public page
   );
 
-  const allSnapshots = snapshotsDesc.slice().reverse();
+  // Filter after cache retrieval too, including entries cached before upgrade.
+  const allSnapshots = snapshotsDesc.filter((snapshot) => !isLegacySplitFare(snapshot.airline)).reverse();
   const snapshots = filterSnapshotsByTrackerFilters(allSnapshots, query);
 
   const [lastRun, editEventsDesc] = await Promise.all([

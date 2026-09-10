@@ -1,5 +1,6 @@
 import { apiError, apiSuccess } from '@/lib/api-response';
 import { prisma } from '@/lib/prisma';
+import { isLegacySplitFare, LEGACY_SPLIT_PREVIEW_ERROR } from '@/lib/flight-pricing';
 import {
   ACTIVE_PREVIEW_STATUSES,
   PREVIEW_ACTIVE_TIMEOUT_MS,
@@ -91,6 +92,18 @@ export async function GET(
     error: previewRun.error,
     expiresAt: previewRun.expiresAt.toISOString(),
   };
+
+  // A completed preview can survive an upgrade in PostgreSQL or an open tab.
+  // Its old combined prices must never be offered as selectable actual fares.
+  const result = response.result;
+  if (result && [
+    ...(result.flights ?? []),
+    ...(result.routes ?? []).flatMap((route) => route.flights),
+  ].some((flight) => isLegacySplitFare(flight.airline))) {
+    response.status = 'failed';
+    response.result = null;
+    response.error = LEGACY_SPLIT_PREVIEW_ERROR;
+  }
 
   const apiResponse = apiSuccess(response);
   apiResponse.headers.set('Cache-Control', 'private, no-store, max-age=0');

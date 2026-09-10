@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/prisma';
+import { ACTUAL_FLIGHT_FARE_WHERE } from '@/lib/flight-pricing';
 
 const HUB_URL = process.env.COMMUNITY_HUB_URL || 'https://flight-finder.org';
 const MAX_BATCH_SIZE = 500;
@@ -48,6 +49,7 @@ export async function syncToHub(): Promise<void> {
         ? { gt: config.lastCommunitySyncAt }
         : undefined,
       status: 'available',
+      ...ACTUAL_FLIGHT_FARE_WHERE,
     },
     include: {
       query: {

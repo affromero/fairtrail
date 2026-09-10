@@ -214,6 +214,34 @@
   gap: 0.75rem;
 }
 
+.estimate {
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+.estimate h3 {
+  color: var(--text);
+  font-family: var(--font-display);
+  font-size: 1rem;
+}
+
+.estimate a {
+  color: var(--accent);
+}
+
+.estimate ul {
+  margin-top: 0.5rem;
+  padding-left: 1.25rem;
+  overflow-wrap: anywhere;
+}
+
+.estimate li + li {
+  margin-top: 0.5rem;
+}
+
 .trackButton {
   flex: 1;
   padding: 0.75rem 1.5rem;

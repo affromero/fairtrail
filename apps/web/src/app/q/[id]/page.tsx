@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { prisma } from '@/lib/prisma';
+import { ACTUAL_FLIGHT_FARE_WHERE } from '@/lib/flight-pricing';
 import { PriceChart } from '@/components/PriceChart';
 import { BestPrice } from '@/components/BestPrice';
 import { PriceHistory } from '@/components/PriceHistory';
@@ -233,7 +234,7 @@ async function loadQueryWithSnapshots(id: string): Promise<QueryWithSnapshots | 
   if (!query) return null;
 
   const snapshots = await prisma.priceSnapshot.findMany({
-    where: { queryId: id },
+    where: { queryId: id, ...ACTUAL_FLIGHT_FARE_WHERE },
     orderBy: { scrapedAt: 'asc' },
     select: {
       id: true,

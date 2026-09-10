@@ -52,6 +52,13 @@ function airlineRows() {
 }
 
 describe('GET /api/community/routes', () => {
+  it('excludes old split estimates before computing route prices and airline lists', async () => {
+    await GET();
+    for (const boundary of [mockGroupBy, mockFindMany]) {
+      expect(boundary.mock.calls[0]?.[0].where).toMatchObject({ NOT: { airline: { endsWith: ' (approx OW+OW)' } } });
+    }
+    expect(mockGet.mock.calls[0]?.[0]).not.toBe('community:routes');
+  });
   beforeEach(() => {
     mockGroupBy.mockReset().mockResolvedValue(groupedRows());
     mockFindMany.mockReset().mockResolvedValue(airlineRows());
@@ -112,10 +119,10 @@ describe('GET /api/community/routes', () => {
   it('caches the freshly built result after winning the lock', async () => {
     await GET();
     // The cache write uses the data key (not the lock key).
-    const cacheWrite = mockSet.mock.calls.find((c) => c[0] === 'community:routes');
+    const cacheWrite = mockSet.mock.calls.find((c) => c[0] === 'community:routes:v2');
     expect(cacheWrite).toBeDefined();
     // The lock is released afterwards.
-    expect(mockDel).toHaveBeenCalledWith('community:routes:lock');
+    expect(mockDel).toHaveBeenCalledWith('community:routes:v2:lock');
   });
 
   it('returns an empty list when there are no snapshots', async () => {

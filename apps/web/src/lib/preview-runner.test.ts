@@ -24,6 +24,7 @@ const {
   mockRedisDecr,
   mockRedisExpire,
   mockRedisSet,
+  cachedPrices,
 } = vi.hoisted(() => ({
   mockExtractionConfigFindFirst: vi.fn(),
   mockApiUsageLogCreate: vi.fn().mockResolvedValue({}),
@@ -37,6 +38,7 @@ const {
   mockRedisDecr: vi.fn(),
   mockRedisExpire: vi.fn().mockResolvedValue(1),
   mockRedisSet: vi.fn().mockResolvedValue('OK'),
+  cachedPrices: new Map<string, unknown>(),
 }));
 
 vi.mock('fs/promises', () => ({
@@ -51,12 +53,17 @@ vi.mock('@/lib/prisma', () => ({
   },
 }));
 
-// Bypass the cache wrapper: just call the inner factory. Dogpile protection
-// is not in scope; each task in a single runPreview has a unique cache key.
+// Model the Redis boundary with an in-memory cache. Failed factories are never
+// cached, allowing the retry tests to distinguish fares from failed searches.
 // The redis client itself is a controllable stub so the admission gate tests
 // can drive INCR/DECR at the boundary instead of standing up a real Redis.
 vi.mock('@/lib/redis', () => ({
-  cached: <T>(_key: string, fn: () => Promise<T>): Promise<T> => fn(),
+  cached: async <T>(key: string, fn: () => Promise<T>): Promise<T> => {
+    if (cachedPrices.has(key)) return cachedPrices.get(key) as T;
+    const value = await fn();
+    cachedPrices.set(key, value);
+    return value;
+  },
   redis: {
     eval: mockRedisEval,
     incr: mockRedisIncr,
@@ -82,6 +89,7 @@ import {
   acquirePreviewAdmission,
   releasePreviewAdmission,
   buildPreviewDatePairs,
+  buildCacheKey,
 } from './preview-runner';
 import {
   countPreviewTasks,
@@ -119,6 +127,7 @@ function makePayload(overrides: Partial<PreviewRequestPayload> = {}): PreviewReq
 
 function priceData(airline: string, price: number) {
   return {
+    travelDate: '2027-04-15',
     airline,
     price,
     currency: 'USD',
@@ -132,6 +141,7 @@ function priceData(airline: string, price: number) {
 }
 
 beforeEach(() => {
+  cachedPrices.clear();
   mockExtractionConfigFindFirst.mockReset();
   mockApiUsageLogCreate.mockClear();
   mockExtractPrices.mockReset();
@@ -576,67 +586,140 @@ describe('countPreviewTasks parity with validatePreviewPayload', () => {
   });
 });
 
-describe('runPreview long-stay split one-way failures', () => {
-  it('keeps return-shell errors on the canonical route and logs both extracted legs', async () => {
-    mockExtractionConfigFindFirst.mockResolvedValue({
-      id: 'singleton',
-      provider: 'anthropic',
-      model: 'claude-haiku-4-5-20251001',
-      defaultCurrency: 'USD',
-      previewConcurrency: 1,
+describe('round-trip pricing', () => {
+  const roundTrip = (overrides: Partial<PreviewRequestPayload> = {}) => makePayload({
+    tripType: 'round_trip', dateFrom: '2027-04-15', dateTo: '2027-04-30',
+    origins: [{ code: 'YUL', name: 'Montreal' }], destinations: [{ code: 'NRT', name: 'Tokyo' }],
+    ...overrides,
+  });
+  const shell = { html: 'Loading results…', url: 'https://google.com/flights', source: 'google_flights', resultsFound: false };
+  const extraction = (prices: ReturnType<typeof priceData>[], failureReason?: string) => ({
+    prices, failureReason, usage: { inputTokens: 100, outputTokens: 50 },
+  });
+  function arrangeEstimate(inbound = { ...priceData('ANA', 1200), travelDate: '2027-04-30' }) {
+    mockNavigateGoogleFlights.mockResolvedValueOnce(shell);
+    mockExtractPrices.mockResolvedValueOnce(extraction([], 'page_not_loaded'))
+      .mockResolvedValueOnce(extraction([priceData('Air Canada', 1791)]))
+      .mockResolvedValueOnce(extraction([inbound]));
+  }
+
+  it.each(['2027-04-29', '2027-04-30', '2027-05-15'])('preserves real round-trip fares returning %s', async (dateTo) => {
+    const fare = priceData('Air Canada', 1809);
+    mockExtractPrices.mockResolvedValue(extraction([fare]));
+    const result = await runPreview(roundTrip({ dateTo }));
+    expect(result.routes[0]?.flights).toEqual([fare]);
+    expect(result.routes[0]?.oneWayEstimate).toBeUndefined();
+    expect(mockNavigateGoogleFlights.mock.calls.map(([params]) => params.tripType)).toEqual(['round_trip']);
+    expect(mockNavigateGoogleFlights.mock.calls[0]?.[0]).toMatchObject({ dateTo: new Date(`${dateTo}T00:00:00Z`) });
+  });
+
+  it('uses the preferred airline for a long-stay round trip', async () => {
+    mockNavigateAirlineDirect.mockResolvedValue({ ...shell, source: 'airline_direct', resultsFound: true });
+    const result = await runPreview(roundTrip({ preferredAirlines: ['Lufthansa'] }));
+    expect(result.routes[0]?.flights).toEqual([priceData('AA', 250)]);
+    expect(mockNavigateAirlineDirect.mock.calls[0]?.[0]).toMatchObject({ tripType: 'round_trip' });
+    expect(mockNavigateGoogleFlights).not.toHaveBeenCalled();
+  });
+
+  it('returns an untrackable two-ticket estimate only after round-trip loading fails', async () => {
+    arrangeEstimate();
+    const result = await runPreview(roundTrip());
+    expect(result.flights).toEqual([]);
+    expect(result.routes[0]).toMatchObject({
+      flights: [], error: expect.stringMatching(/Round-trip fares did not load/),
+      oneWayEstimate: { totalPrice: 2991, currency: 'USD', outbound: priceData('Air Canada', 1791), inbound: { airline: 'ANA', price: 1200, travelDate: '2027-04-30' } },
     });
-    mockNavigateGoogleFlights
-      .mockResolvedValueOnce({
-        html: '<html>outbound results</html>',
-        url: 'https://google.com/flights/outbound',
-        source: 'google_flights',
-        resultsFound: true,
-      })
-      .mockResolvedValueOnce({
-        html: '<html>Loading results…</html>',
-        url: 'https://google.com/flights/return',
-        source: 'google_flights',
-        resultsFound: false,
-      });
-    mockExtractPrices
-      .mockResolvedValueOnce({
-        prices: [priceData('AA', 250)],
-        usage: { inputTokens: 100, outputTokens: 50 },
-        failureReason: undefined,
-      })
-      .mockResolvedValueOnce({
-        prices: [],
-        usage: { inputTokens: 80, outputTokens: 20 },
-        failureReason: 'page_not_loaded',
-      });
+    expect(mockNavigateGoogleFlights.mock.calls.map(([params]) => [params.origin, params.destination, params.tripType])).toEqual([
+      ['YUL', 'NRT', 'round_trip'], ['YUL', 'NRT', 'one_way'], ['NRT', 'YUL', 'one_way'],
+    ]);
+    expect(mockApiUsageLogCreate.mock.calls.map(([args]) => args.data.inputTokens)).toEqual([100, 100, 100]);
+  });
 
-    await expect(
-      runPreview(
-        makePayload({
-          tripType: 'round_trip',
-          dateFrom: '2026-08-01',
-          dateTo: '2026-09-01',
-          outboundDates: ['2026-08-01', '2026-08-02'],
-          returnDates: ['2026-09-01'],
-          origins: [{ code: 'LAX', name: 'Los Angeles' }],
-          destinations: [{ code: 'YOW', name: 'Ottawa' }],
-        }),
-        { concurrency: 1 },
-      ),
-    ).rejects.toThrow('LAX→YOW');
+  it('retries real round-trip fares on a new preview instead of caching an estimate', async () => {
+    arrangeEstimate();
+    const first = await runPreview(roundTrip());
+    expect(first.routes[0]?.oneWayEstimate?.totalPrice).toBe(2991);
+    const actual = priceData('Air Canada', 1809);
+    mockExtractPrices.mockResolvedValue(extraction([actual]));
+    const second = await runPreview(roundTrip());
+    expect(second.routes[0]?.flights).toEqual([actual]);
+    expect(second.routes[0]?.oneWayEstimate).toBeUndefined();
+  });
 
-    expect(mockNavigateGoogleFlights).toHaveBeenCalledTimes(2);
-    expect(mockApiUsageLogCreate).toHaveBeenCalledTimes(2);
-    expect(mockApiUsageLogCreate).toHaveBeenNthCalledWith(
-      2,
-      expect.objectContaining({
-        data: expect.objectContaining({
-          inputTokens: 80,
-          outputTokens: 20,
-          durationMs: expect.any(Number),
-        }),
-      }),
-    );
+  it('rejects a combined estimate exceeding the total budget', async () => {
+    arrangeEstimate();
+    await expect(runPreview(roundTrip({ maxPrice: 2000 }))).rejects.toThrow(/total budget/);
+  });
+
+  it('never adds different currencies together', async () => {
+    arrangeEstimate({ ...priceData('ANA', 1200), currency: 'JPY', travelDate: '2027-04-30' });
+    await expect(runPreview(roundTrip())).rejects.toThrow(/currency/);
+  });
+
+  it('chooses the cheapest compatible pair and preserves each ticket independently', async () => {
+    mockNavigateGoogleFlights.mockResolvedValueOnce(shell);
+    const outbound = { ...priceData('Air Canada', 700), currency: 'CAD', bookingUrl: 'https://example.com/outbound' };
+    const inbound = { ...priceData('ANA', 900), currency: 'CAD', bookingUrl: 'https://example.com/inbound', travelDate: '2027-04-30' };
+    mockExtractPrices.mockResolvedValueOnce(extraction([], 'page_not_loaded'))
+      .mockResolvedValueOnce(extraction([{ ...outbound, price: 1200 }, outbound, { ...outbound, currency: 'JPY', price: 100 }]))
+      .mockResolvedValueOnce(extraction([{ ...inbound, price: 1000 }, inbound]));
+    const result = await runPreview(roundTrip({ maxPrice: 1600 }));
+    expect(result.routes[0]?.oneWayEstimate).toEqual({ outbound, inbound, currency: 'CAD', totalPrice: 1600 });
+  });
+
+  it('retains all extraction usage and the original failure when the return ticket fails', async () => {
+    mockNavigateGoogleFlights.mockResolvedValueOnce(shell)
+      .mockResolvedValueOnce({ ...shell, html: 'outbound fares', resultsFound: true })
+      .mockResolvedValueOnce(shell);
+    mockExtractPrices.mockResolvedValueOnce(extraction([], 'page_not_loaded'))
+      .mockResolvedValueOnce(extraction([priceData('Air Canada', 1791)]))
+      .mockResolvedValueOnce(extraction([], 'page_not_loaded'));
+    await expect(runPreview(roundTrip())).rejects.toThrow(/Round-trip fares did not load.*YUL→NRT/);
+    expect(mockApiUsageLogCreate.mock.calls.map(([args]) => args.data.inputTokens)).toEqual([100, 100, 100]);
+  });
+
+  it.each(['llm_error', 'page_not_loaded'])('surfaces airline extraction failure %s without synthesizing tickets', async (failureReason) => {
+    vi.useFakeTimers();
+    try {
+      mockNavigateAirlineDirect.mockResolvedValue({ ...shell, source: 'airline_direct' });
+      mockExtractPrices.mockResolvedValue(extraction([], failureReason));
+      const rejected = expect(runPreview(roundTrip({ preferredAirlines: ['Lufthansa'] }))).rejects.toThrow();
+      await vi.runAllTimersAsync();
+      await rejected;
+      expect(mockNavigateGoogleFlights).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('still attempts other dates when one itinerary and its estimate fail', async () => {
+    mockNavigateGoogleFlights.mockResolvedValueOnce(shell).mockResolvedValueOnce(shell);
+    mockExtractPrices.mockResolvedValueOnce(extraction([], 'page_not_loaded'))
+      .mockResolvedValueOnce(extraction([], 'page_not_loaded'));
+    const result = await runPreview(roundTrip({ outboundDates: ['2027-04-15', '2027-04-16'], returnDates: ['2027-04-30'] }), { concurrency: 1 });
+    expect(result.routes[0]).toMatchObject({ flights: [], error: expect.stringContaining('YUL→NRT') });
+    expect(result.routes[1]?.flights).toEqual([priceData('AA', 250)]);
+    expect(mockNavigateGoogleFlights.mock.calls[2]?.[0]).toMatchObject({ tripType: 'round_trip', dateFrom: new Date('2027-04-16T00:00:00Z') });
+  });
+
+  it('does not synthesize a return ticket for a failed one-way search', async () => {
+    mockNavigateGoogleFlights.mockResolvedValue(shell);
+    mockExtractPrices.mockResolvedValue(extraction([], 'page_not_loaded'));
+    await expect(runPreview(makePayload())).rejects.toThrow(/Google Flights did not return results/);
+    expect(mockNavigateGoogleFlights.mock.calls.map(([params]) => params.tripType)).toEqual(['one_way']);
+  });
+
+  it('does not replace filter failures with separate tickets', async () => {
+    mockExtractPrices.mockResolvedValue(extraction([], 'all_filtered_out'));
+    await expect(runPreview(roundTrip())).rejects.toThrow(/filters/);
+    expect(mockNavigateGoogleFlights.mock.calls.every(([params]) => params.tripType === 'round_trip')).toBe(true);
+  });
+
+  it('keeps preview caches separate when price limits or airline preferences change', () => {
+    const base = { maxPrice: null, maxStops: null, maxDurationHours: null, preferredAirlines: [], timePreference: 'any' };
+    const key = (filters: Parameters<typeof buildCacheKey>[7]) => buildCacheKey('YUL', 'NRT', '2027-04-15', '2027-04-30', 'economy', 'round_trip', 'CAD', filters);
+    expect(key(base)).not.toBe(key({ ...base, maxPrice: 2000 }));
+    expect(key(base)).not.toBe(key({ ...base, preferredAirlines: ['Lufthansa'] }));
   });
 });
 
