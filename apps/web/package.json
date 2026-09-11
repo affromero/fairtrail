@@ -27,6 +27,7 @@
     "nodemailer": "^9.1.1",
     "openai": "^7.10.0",
     "playwright": "^1.62.1",
+    "plotly.js": "npm:plotly.js-basic-dist-min@3.5.1",
     "qrcode": "^1.5.4",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
