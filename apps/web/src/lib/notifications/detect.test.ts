@@ -50,6 +50,16 @@ function run(over: Partial<Parameters<typeof detectNewLow>[0]> = {}) {
 describe('detectNewLow', () => {
   beforeEach(() => vi.clearAllMocks());
 
+  it('excludes old split estimates from both the current fare and historical baseline queries', async () => {
+    arrange({ current: { price: 1809 }, priorMin: null });
+    expect(await run()).toBeNull();
+    for (const boundary of [mockFindFirst, mockAggregate]) {
+      expect(boundary.mock.calls[0]?.[0].where).toMatchObject({
+        NOT: { airline: { endsWith: ' (approx OW+OW)' } },
+      });
+    }
+  });
+
   it('fires when the cheapest fare beats the prior best by more than the floor', async () => {
     arrange({ current: { price: 250, airline: 'United', bookingUrl: 'https://u/1' }, priorMin: 300 });
     const alert = await run();

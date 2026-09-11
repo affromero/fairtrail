@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { ACTUAL_FLIGHT_FARE_WHERE } from '@/lib/flight-pricing';
 import { apiSuccess, apiError } from '@/lib/api-response';
 import { cached, redis } from '@/lib/redis';
 import { isValidIATA } from '@/lib/iata-codes';
@@ -55,9 +56,9 @@ export async function GET(
     return apiError('Invalid IATA airport codes', 400);
   }
 
-  const prices = await cached(`community:route:${origin}-${destination}`, async () => {
+  const prices = await cached(`community:route:v2:${origin}-${destination}`, async () => {
     const snapshots = await prisma.communitySnapshot.findMany({
-      where: { origin, destination },
+      where: { origin, destination, ...ACTUAL_FLIGHT_FARE_WHERE },
       select: {
         travelDate: true,
         price: true,

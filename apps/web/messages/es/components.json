@@ -86,6 +86,9 @@
     "alt": "Gráficos de evolución de precios: JFK a París, LAX a Tokio, Chicago a Roma"
   },
   "FlightPicker": {
+    "oneWayEstimate": "Estimación de dos billetes de solo ida",
+    "oneWayEstimateHint": "No se pudieron obtener tarifas de ida y vuelta. Estos dos billetes tienen precios independientes. Esta estimación no se puede seguir y se excluye del historial de precios y las alertas.",
+    "viewOneWay": "Ver billete de solo ida",
     "nonstop": "Directo",
     "stops": "{count, plural, one {# escala} other {# escalas}}",
     "flightsOn": "Vuelos el {date}",

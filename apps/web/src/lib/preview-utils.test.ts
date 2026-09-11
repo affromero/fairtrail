@@ -29,9 +29,9 @@ describe('isGoogleFlightsLoadingShell', () => {
 });
 
 describe('GoogleFlightsLoadingShellError', () => {
-  it('sets routeKey from origin and destination', () => {
+  it('identifies the failed route without claiming that long stays are unsupported', () => {
     const error = new GoogleFlightsLoadingShellError('LAX', 'YOW');
-    expect(error.routeKey).toBe('LAX-YOW');
-    expect(error.name).toBe('GoogleFlightsLoadingShellError');
+    expect(error.message).toContain('LAX→YOW');
+    expect(error.message).not.toMatch(/shorter stay|2 weeks/);
   });
 });

@@ -2,6 +2,7 @@
 // single tracker, otherwise the whole list. Plain TypeScript (no JSX) so the
 // pure getters are unit testable by mocking the prisma client.
 import { prisma } from '@/lib/prisma';
+import { ACTUAL_FLIGHT_FARE_WHERE } from './flight-pricing.js';
 
 export interface JsonSnapshot {
   price: number;
@@ -75,7 +76,7 @@ export async function getQueryJson(id: string): Promise<JsonQuery | null> {
     where: { id },
     include: {
       snapshots: {
-        where: { status: 'available' },
+        where: { status: 'available', ...ACTUAL_FLIGHT_FARE_WHERE },
         orderBy: { scrapedAt: 'desc' },
       },
       fetchRuns: {
@@ -136,7 +137,7 @@ export async function getQueryListJson(): Promise<JsonQuerySummary[]> {
     orderBy: { createdAt: 'desc' },
     include: {
       snapshots: {
-        where: { status: 'available' },
+        where: { status: 'available', ...ACTUAL_FLIGHT_FARE_WHERE },
         orderBy: { price: 'asc' },
         select: { price: true },
       },

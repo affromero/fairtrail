@@ -86,6 +86,9 @@
     "alt": "Graphiques d’évolution des prix - JFK vers Paris, LAX vers Tokyo, Chicago vers Rome"
   },
   "FlightPicker": {
+    "oneWayEstimate": "Estimation de deux billets aller simple",
+    "oneWayEstimateHint": "Les tarifs aller-retour n’ont pas pu être récupérés. Ces deux billets sont tarifés séparément. Cette estimation ne peut pas être suivie et est exclue de l’historique des prix et des alertes.",
+    "viewOneWay": "Voir le billet aller simple",
     "nonstop": "Direct",
     "stops": "{count, plural, one {# escale} other {# escales}}",
     "flightsOn": "Vols du {date}",

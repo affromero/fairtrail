@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/prisma';
+import { ACTUAL_FLIGHT_FARE_WHERE } from '@/lib/flight-pricing';
 
 /** A confirmed new-low price worth alerting on. */
 export interface NewLowAlert {
@@ -54,7 +55,7 @@ export async function detectNewLow(params: DetectNewLowParams): Promise<NewLowAl
   // Cheapest available fare found this cycle. Carry its booking details so the
   // notification can deep-link straight to the flight.
   const cheapest = await prisma.priceSnapshot.findFirst({
-    where: { queryId: query.id, status: 'available', scrapedAt: { gte: cycleStartedAt }, ...currencyFilter },
+    where: { queryId: query.id, status: 'available', scrapedAt: { gte: cycleStartedAt }, ...currencyFilter, ...ACTUAL_FLIGHT_FARE_WHERE },
     orderBy: { price: 'asc' },
     select: {
       price: true,
@@ -78,6 +79,7 @@ export async function detectNewLow(params: DetectNewLowParams): Promise<NewLowAl
     where: {
       queryId: query.id,
       status: 'available',
+      ...ACTUAL_FLIGHT_FARE_WHERE,
       scrapedAt: baselineFrom ? { lt: cycleStartedAt, gte: baselineFrom } : { lt: cycleStartedAt },
       currency: query.currency ?? cheapest.currency,
     },

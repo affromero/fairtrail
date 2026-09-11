@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useRef, memo } from 'react';
 import { Box, Text, useApp, useInput } from 'ink';
 import Spinner from 'ink-spinner';
 import { prisma } from '@/lib/prisma';
+import { ACTUAL_FLIGHT_FARE_WHERE } from '../lib/flight-pricing.js';
 import { PriceChart } from '../components/PriceChart.js';
 import { BestPriceCard } from '../components/BestPriceCard.js';
 import { formatDate, formatCurrency, formatStops, formatTimeAgo } from '../lib/format.js';
@@ -151,7 +152,7 @@ export function QueryView({ id, onBack }: QueryViewProps) {
         where: { id },
         include: {
           snapshots: {
-            where: { status: 'available' },
+            where: { status: 'available', ...ACTUAL_FLIGHT_FARE_WHERE },
             orderBy: { scrapedAt: 'desc' },
           },
           fetchRuns: {

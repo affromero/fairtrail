@@ -11,6 +11,7 @@ import { safeHttpUrl } from '@/lib/safe-url';
 import { isValidPriceAmount } from '@/lib/limits';
 import { CABIN_CLASSES, isCabinClass } from '@/lib/cabin-class';
 import { coerceLayovers } from '@/lib/scraper/duration';
+import { isLegacySplitFare, LEGACY_SPLIT_PREVIEW_ERROR } from '@/lib/flight-pricing';
 
 const MAX_ROUTES = 20;
 const MAX_FLIGHTS_PER_ROUTE = 50;
@@ -229,6 +230,9 @@ export async function POST(request: NextRequest) {
     }
 
     for (const f of flights) {
+      if (isLegacySplitFare(f.airline)) {
+        return apiError(LEGACY_SPLIT_PREVIEW_ERROR, 400);
+      }
       if (!isValidDateString(f.travelDate)) {
         return apiError(`Selected flight has invalid travelDate: ${f.travelDate}`, 400);
       }

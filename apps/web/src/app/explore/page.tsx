@@ -3,6 +3,7 @@ export const dynamic = 'force-dynamic';
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import { prisma } from '@/lib/prisma';
+import { ACTUAL_FLIGHT_FARE_WHERE } from '@/lib/flight-pricing';
 import { formatCurrency } from '@/lib/currency';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { Footer } from '@/components/Footer';
@@ -22,6 +23,7 @@ async function getRoutes(): Promise<RouteData[]> {
   // Group by currency too: min/avg across mixed currencies is meaningless.
   // A route's displayed prices come from its dominant currency's snapshots.
   const raw = await prisma.communitySnapshot.groupBy({
+    where: ACTUAL_FLIGHT_FARE_WHERE,
     by: ['origin', 'destination', 'currency'],
     _count: { id: true },
     _avg: { price: true },
@@ -48,7 +50,7 @@ async function getRoutes(): Promise<RouteData[]> {
 
   for (const { count, best } of top) {
     const airlines = await prisma.communitySnapshot.findMany({
-      where: { origin: best.origin, destination: best.destination },
+      where: { origin: best.origin, destination: best.destination, ...ACTUAL_FLIGHT_FARE_WHERE },
       select: { airline: true },
       distinct: ['airline'],
       take: 10,
@@ -76,7 +78,7 @@ export default async function ExplorePage() {
     where: { active: true, snapshotCount: { gt: 0 } },
   });
 
-  const totalSnapshots = await prisma.communitySnapshot.count();
+  const totalSnapshots = await prisma.communitySnapshot.count({ where: ACTUAL_FLIGHT_FARE_WHERE });
 
   return (
     <main className={styles.root}>

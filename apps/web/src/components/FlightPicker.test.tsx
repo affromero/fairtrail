@@ -49,6 +49,45 @@ function renderPicker(count: number, max?: number) {
 }
 
 describe('FlightPicker — configurable per-route selection cap (issue #89)', () => {
+  it('shows both one-way tickets without allowing an estimate to be tracked', () => {
+    const onTrack = vi.fn();
+    render(<FlightPicker routes={[{
+      ...route(0), date: '2027-04-15', returnDate: '2027-04-30',
+      oneWayEstimate: {
+        totalPrice: 2991, currency: 'CAD',
+        outbound: { ...flight(0), airline: 'Air Canada', price: 1791, currency: 'CAD', bookingUrl: 'https://example.com/outbound' },
+        inbound: { ...flight(1), airline: 'ANA', price: 1200, currency: 'CAD', bookingUrl: 'https://example.com/return' },
+      },
+    }]} onTrack={onTrack} onBack={vi.fn()} onEdit={vi.fn()} loading={false} />);
+    expect(screen.getByRole('region', { name: /Separate one-way ticket estimate/ })).toHaveTextContent('Air Canada');
+    expect(screen.getByText(/Round-trip fares could not be retrieved/)).toBeVisible();
+    expect(screen.getAllByRole('link').map((link) => link.getAttribute('href'))).toEqual(['https://example.com/outbound', 'https://example.com/return']);
+    const track = screen.getByRole('button', { name: /track 0 flights/i });
+    expect(track).toBeDisabled();
+    fireEvent.click(track);
+    expect(onTrack).not.toHaveBeenCalled();
+  });
+
+  it('tracks only real fares when another route has a separate ticket estimate', () => {
+    const onTrack = vi.fn();
+    const actual = { ...route(1), date: '2027-04-15', returnDate: '2027-04-29' };
+    render(<FlightPicker routes={[actual, {
+      ...route(0), date: '2027-04-15', returnDate: '2027-04-30',
+      oneWayEstimate: { totalPrice: 201, currency: 'USD', outbound: flight(0), inbound: flight(1) },
+    }]} onTrack={onTrack} onBack={vi.fn()} onEdit={vi.fn()} loading={false} />);
+    fireEvent.click(screen.getByRole('button', { name: /track 1 flight/i }));
+    expect(onTrack).toHaveBeenCalledWith([{ route: actual, flights: actual.flights }]);
+  });
+
+  it('keeps selection independent for itineraries with the same departure and different return dates', () => {
+    const onTrack = vi.fn();
+    const first = { ...route(1), date: '2027-04-15', returnDate: '2027-04-29' };
+    const second = { ...route(1), date: '2027-04-15', returnDate: '2027-04-30' };
+    render(<FlightPicker routes={[first, second]} onTrack={onTrack} onBack={vi.fn()} onEdit={vi.fn()} loading={false} />);
+    fireEvent.click(screen.getAllByRole('button', { name: /^clear$/i })[0]!);
+    fireEvent.click(screen.getByRole('button', { name: /track 1 flight/i }));
+    expect(onTrack).toHaveBeenCalledWith([{ route: second, flights: second.flights }]);
+  });
   it('pre-selects only up to the configured cap when flights exceed it', () => {
     const { container } = renderPicker(12, 3);
     // 12 flights available, cap of 3 -> first 3 pre-selected.

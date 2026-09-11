@@ -34,6 +34,13 @@ function row(overrides: Record<string, unknown>) {
 }
 
 describe('GET /api/preview/[id]', () => {
+  it.each(['routes', 'flights'])('requires a fresh search for an old completed preview with estimates in %s', async (location) => {
+    const flights = [{ airline: 'Air Canada + Air Canada (approx OW+OW)', price: 2991 }];
+    const resultPayload = location === 'routes' ? { routes: [{ flights }] } : { routes: [], flights };
+    mockFindUnique.mockResolvedValue(row({ status: 'completed', resultPayload }));
+    const res = await GET(new Request('http://test'), makeContext('p1'));
+    expect((await res.json()).data).toMatchObject({ status: 'failed', result: null, error: expect.stringMatching(/Search again/) });
+  });
   beforeEach(() => {
     mockFindUnique.mockReset();
     mockUpdateMany.mockReset();

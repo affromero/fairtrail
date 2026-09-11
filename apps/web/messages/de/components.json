@@ -86,6 +86,9 @@
     "alt": "Preisverlaufsdiagramme – JFK nach Paris, LAX nach Tokio, Chicago nach Rom"
   },
   "FlightPicker": {
+    "oneWayEstimate": "Schätzung für zwei separate Einzelflüge",
+    "oneWayEstimateHint": "Preise für Hin- und Rückflüge konnten nicht abgerufen werden. Diese beiden Tickets werden separat berechnet. Diese Schätzung kann nicht verfolgt werden und ist vom Preisverlauf und von Benachrichtigungen ausgeschlossen.",
+    "viewOneWay": "Einzelflug ansehen",
     "nonstop": "Direktflug",
     "stops": "{count, plural, one {# Zwischenstopp} other {# Zwischenstopps}}",
     "flightsOn": "Flüge am {date}",

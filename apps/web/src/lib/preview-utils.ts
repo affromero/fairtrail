@@ -141,18 +141,12 @@ export function isGoogleFlightsLoadingShell(text: string, resultsFound?: boolean
 }
 
 export function googleFlightsLoadingShellMessage(origin: string, destination: string): string {
-  return `Google Flights did not return results for ${origin}→${destination} on these dates. Try a shorter stay (under ~2 weeks), nearer dates, or one outbound/return pair.`;
+  return `Google Flights did not return results for ${origin}→${destination} on these dates. Try again later or edit the search.`;
 }
 
 export class GoogleFlightsLoadingShellError extends Error {
-  readonly routeKey: string;
   constructor(origin: string, destination: string) {
     super(googleFlightsLoadingShellMessage(origin, destination));
     this.name = 'GoogleFlightsLoadingShellError';
-    this.routeKey = `${origin}-${destination}`;
   }
-}
-
-export function isGoogleFlightsLoadingShellError(error: unknown): error is GoogleFlightsLoadingShellError {
-  return error instanceof GoogleFlightsLoadingShellError;
 }

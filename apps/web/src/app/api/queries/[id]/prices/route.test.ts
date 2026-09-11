@@ -6,6 +6,7 @@ const mockSnapshotFindMany = vi.fn();
 const mockFetchRunFindFirst = vi.fn();
 const mockExtractionConfigFindFirst = vi.fn().mockResolvedValue({ scrapeInterval: 3 });
 const mockQueryEditEventFindMany = vi.fn();
+const mockCached = vi.fn();
 
 vi.mock('@/lib/prisma', () => ({
   prisma: {
@@ -18,7 +19,7 @@ vi.mock('@/lib/prisma', () => ({
 }));
 
 vi.mock('@/lib/redis', () => ({
-  cached: (_key: string, fn: () => Promise<unknown>) => fn(),
+  cached: (...args: unknown[]) => mockCached(...args),
 }));
 
 import { GET } from './route';
@@ -36,8 +37,20 @@ function callGet(id = 'test-id') {
 }
 
 describe('GET /api/queries/[id]/prices', () => {
+  it('excludes legacy estimates from history and counts, including pre-upgrade cached data', async () => {
+    mockQueryFindUnique.mockResolvedValue({ id: 'test-id', expiresAt: futureDate() });
+    mockCached.mockResolvedValueOnce([
+      { id: 'estimate', price: 2991, airline: 'Air Canada + Air Canada (approx OW+OW)' },
+      { id: 'actual', price: 1809, airline: 'Air Canada + ANA' },
+    ]);
+    const body = await (await callGet()).json();
+    expect(body.data.snapshots.map((snapshot: { id: string }) => snapshot.id)).toEqual(['actual']);
+    expect(body.data).toMatchObject({ snapshotCount: 1, totalSnapshotCount: 1 });
+    expect(mockSnapshotFindMany).not.toHaveBeenCalled();
+  });
   beforeEach(() => {
     vi.clearAllMocks();
+    mockCached.mockImplementation((_key: string, fn: () => Promise<unknown>) => fn());
     mockExtractionConfigFindFirst.mockResolvedValue({ scrapeInterval: 3 });
     mockSnapshotFindMany.mockResolvedValue([]);
     mockFetchRunFindFirst.mockResolvedValue(null);

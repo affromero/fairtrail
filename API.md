@@ -79,6 +79,34 @@ If `needsClarification` is `true`, the response includes a `message` asking the 
 
 ---
 
+### Preview flight fares
+
+`POST /api/preview` starts an asynchronous search and returns `data.previewRunId`.
+Poll `GET /api/preview/{id}` for `data.status` and `data.result.routes`.
+
+Each route includes `origin`, `destination`, `date`, `returnDate`, and `flights`.
+Round-trip searches attempt the requested itinerary regardless of stay length.
+If Google Flights remains on a loading screen, the route can instead contain
+`flights: []`, an `error` explaining the failure, and `oneWayEstimate`:
+
+- `outbound` and `inbound`: separate flight records, each with its own date,
+  price, currency, airline, and booking URL.
+- `totalPrice` and `currency`: the sum of the two tickets in the same currency,
+  within the requested total budget.
+
+An estimate-only preview can have status `completed`. Estimates are informational
+and cannot be selected for tracking. Only `flights` may be sent as
+`selectedFlights` when creating a tracker. Estimates do not enter price history
+or alerts. If neither actual fares nor an estimate can be retrieved, the search
+reports a failure.
+
+Estimates are not cached as fares. Starting another preview after a loading
+failure retries the round-trip search.
+
+Previews containing the old `(approx OW+OW)` flight labels require a new search.
+Tracker creation rejects these old estimates; historical rows remain stored but
+are excluded from displayed fares, alert comparisons, and community prices.
+
 ### Create a tracked query
 
 Creates a flight price tracker that will be scraped on each cron run.

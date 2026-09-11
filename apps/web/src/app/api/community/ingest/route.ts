@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/prisma';
+import { isLegacySplitFare } from '@/lib/flight-pricing';
 import { apiSuccess, apiError } from '@/lib/api-response';
 import { isValidIATA } from '@/lib/iata-codes';
 import { isValidPriceAmount } from '@/lib/limits';
@@ -135,6 +136,7 @@ export async function POST(request: Request) {
     if (isNaN(travelDate.getTime()) || travelDate < travelMin || travelDate > travelMax) { errors.push(`[${i}] invalid travelDate`); continue; }
 
     if (typeof s.airline !== 'string' || s.airline.length === 0 || s.airline.length > MAX_AIRLINE_LEN) { errors.push(`[${i}] invalid airline`); continue; }
+    if (isLegacySplitFare(s.airline)) { errors.push(`[${i}] separate one-way estimates are not flight fares`); continue; }
 
     // cabinClass is constrained to a known enum and a short length so unbounded
     // attacker-controlled strings cannot be persisted.

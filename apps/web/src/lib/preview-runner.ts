@@ -19,6 +19,7 @@ import {
   type PreviewRequestPayload,
   type PreviewResultPayload,
   type RouteResultPayload,
+  type OneWayEstimate,
 } from '@/lib/preview-run';
 import { isValidPriceAmount } from '@/lib/limits';
 import { getModelCosts, resolveApiKey } from '@/lib/scraper/ai-registry';
@@ -29,9 +30,7 @@ import type { Airport } from '@/lib/scraper/parse-query';
 import {
   buildPreviewDatePairs,
   GoogleFlightsLoadingShellError,
-  googleFlightsLoadingShellMessage,
   isGoogleFlightsLoadingShell,
-  isGoogleFlightsLoadingShellError,
   isPreviewTooFarInFuture,
   previewTooFarInFutureMessage,
   type PreviewDatePair,
@@ -47,9 +46,6 @@ const RETRYABLE_FAILURES: ExtractionFailureReason[] = [
 const MAX_ATTEMPTS = 2;
 const DEBUG_DIR = '/tmp/flight-finder-debug';
 const PREVIEW_MAX_RESULTS = 20;
-/** Google Flights round-trip phrase URLs hang on "Loading results" past this stay length. */
-const GOOGLE_RT_LONG_STAY_DAYS = 14;
-const MS_PER_DAY = 1000 * 60 * 60 * 24;
 
 /**
  * Default max concurrent scrapeRoute calls. Each scrapeRoute launches a
@@ -245,13 +241,15 @@ export function buildCacheKey(
   dateTo: string,
   cabinClass: string,
   tripType: string,
-  currency: string | null
+  currency: string | null,
+  filters?: Pick<PreviewRequestPayload, 'maxPrice' | 'maxStops' | 'maxDurationHours' | 'preferredAirlines' | 'timePreference'>,
 ): string {
   const hash = createHash('sha256')
-    .update(`${origin}:${destination}:${dateFrom}:${dateTo}:${cabinClass}:${tripType}:${currency ?? 'auto'}`)
+    .update(`${origin}:${destination}:${dateFrom}:${dateTo}:${cabinClass}:${tripType}:${currency ?? 'auto'}:${JSON.stringify(filters ?? null)}`)
     .digest('hex')
     .slice(0, 16);
-  return `preview:${hash}`;
+  // v2 separates actual fares from the old cached OW+OW PriceData arrays.
+  return `preview:v2:${hash}`;
 }
 
 export { buildPreviewDatePairs, type PreviewDatePair };
@@ -385,51 +383,42 @@ async function scrapeGoogleOneWayLeg(
   };
 }
 
-/**
- * Google Flights round-trip phrase URLs hang forever on stays longer than
- * ~14 days. One-way legs for the same dates still load, so we scrape outbound
- * + return separately and sum the cheapest return into each outbound option
- * as an approximate round-trip total.
- */
-async function scrapeLongStaySplitOneWays(params: ScrapeRouteParams): Promise<PriceData[]> {
+/** Only called after a real round-trip search returns a Google loading shell. */
+async function scrapeOneWayEstimate(params: ScrapeRouteParams): Promise<OneWayEstimate> {
   const { origin, destination, dateFrom, dateTo, dateFromStr } = params;
   const dateToStr = dateTo.toISOString().split('T')[0]!;
 
-  console.log(`[preview] ${origin}->${destination} using split one-way scrape for long stay (${dateFromStr} / ${dateToStr})`);
+  console.log(`[preview] ${origin}->${destination} checking separate one-way tickets (${dateFromStr} / ${dateToStr})`);
 
   const outbound = await scrapeGoogleOneWayLeg(params, origin, destination, dateFrom, dateFromStr);
-  const inbound = await scrapeGoogleOneWayLeg(params, destination, origin, dateTo, dateToStr);
-
   if (outbound.failureReason || outbound.prices.length === 0) {
     throw new Error(`Could not load outbound flights for ${origin}→${destination}`);
   }
+  const inbound = await scrapeGoogleOneWayLeg(params, destination, origin, dateTo, dateToStr);
   if (inbound.failureReason || inbound.prices.length === 0) {
     throw new Error(`Could not load return flights for ${destination}→${origin}`);
   }
 
-  const cheapestReturn = Math.min(...inbound.prices.map((f) => f.price));
-  const returnAirline = inbound.prices.find((f) => f.price === cheapestReturn)?.airline ?? 'return';
-  // Booking URL is outbound-only; OW+OW totals are approximate (true RT may differ).
-  const combined = outbound.prices.map((flight) => ({
-    ...flight,
-    price: flight.price + cheapestReturn,
-    airline: `${flight.airline} + ${returnAirline} (approx OW+OW)`,
-  }));
-
-  console.log(
-    `[preview] ${origin}->${destination} OK via split one-ways - ${combined.length} options (cheapest return $${cheapestReturn})`,
-  );
-  return combined;
+  let estimate: OneWayEstimate | undefined;
+  for (const outboundFlight of outbound.prices) {
+    for (const inboundFlight of inbound.prices) {
+      if (!outboundFlight.currency || outboundFlight.currency !== inboundFlight.currency) continue;
+      const totalPrice = Math.round((outboundFlight.price + inboundFlight.price) * 100) / 100;
+      if (!isValidPriceAmount(totalPrice) || totalPrice <= 0) continue;
+      if (params.maxPrice !== null && totalPrice > params.maxPrice) continue;
+      if (!estimate || totalPrice < estimate.totalPrice) {
+        estimate = { outbound: outboundFlight, inbound: inboundFlight, totalPrice, currency: outboundFlight.currency };
+      }
+    }
+  }
+  if (!estimate) throw new Error('No separate one-way ticket pair matched the currency and total budget');
+  return estimate;
 }
+
+type RoutePricing = Pick<RouteResultPayload, 'flights' | 'oneWayEstimate' | 'error'>;
 
 async function scrapeRoute(params: ScrapeRouteParams): Promise<PriceData[]> {
   const { origin, destination, dateFrom, dateTo, dateFromStr, cabinClass, tripType } = params;
-
-  const stayDays = Math.round((dateTo.getTime() - dateFrom.getTime()) / MS_PER_DAY);
-  const isLongStayRoundTrip = tripType !== 'one_way' && stayDays > GOOGLE_RT_LONG_STAY_DAYS;
-  if (isLongStayRoundTrip) {
-    return scrapeLongStaySplitOneWays(params);
-  }
 
   const searchParams = { origin, destination, dateFrom, dateTo, cabinClass, tripType, currency: params.currency };
   const airlines = params.preferredAirlines;
@@ -511,9 +500,9 @@ async function scrapeRoute(params: ScrapeRouteParams): Promise<PriceData[]> {
 
     lastFailureReason = failureReason;
 
-    if (failureReason === 'page_not_loaded' && isGoogleFlightsLoadingShell(nav.html, nav.resultsFound)) {
+    if (nav.source === 'google_flights' && failureReason === 'page_not_loaded' && isGoogleFlightsLoadingShell(nav.html, nav.resultsFound)) {
       hitLoadingShell = true;
-      console.log(`[preview] ${origin}->${destination} stuck on Google loading shell — trying split one-way fallback`);
+      console.log(`[preview] ${origin}->${destination} Google results did not load`);
       break;
     }
 
@@ -537,12 +526,6 @@ async function scrapeRoute(params: ScrapeRouteParams): Promise<PriceData[]> {
       await new Promise((resolve) => setTimeout(resolve, delay));
       continue;
     }
-  }
-
-  // Loading-shell on a shorter RT (or edge-case long stay that slipped past
-  // the proactive path): split into one-ways before surfacing an error.
-  if (hitLoadingShell && tripType !== 'one_way') {
-    return scrapeLongStaySplitOneWays(params);
   }
 
   const totalCost =
@@ -577,6 +560,29 @@ async function scrapeRoute(params: ScrapeRouteParams): Promise<PriceData[]> {
   };
 
   throw new Error(messages[lastFailureReason!] ?? 'Flight extraction failed');
+}
+
+async function scrapeRouteWithEstimate(cacheKey: string, params: ScrapeRouteParams): Promise<RoutePricing> {
+  try {
+    return { flights: await cached(cacheKey, () => scrapeRoute(params)) };
+  } catch (error) {
+    currentTravelExecution()?.check();
+    if (!(error instanceof GoogleFlightsLoadingShellError) || params.tripType === 'one_way') throw error;
+  }
+
+  // A temporary loading failure must not cache an estimate in place of fares.
+  // A new preview retries the actual itinerary, even when an estimate succeeded.
+  try {
+    return {
+      flights: [],
+      oneWayEstimate: await scrapeOneWayEstimate(params),
+      error: 'Round-trip fares did not load. Separate one-way tickets are shown only as an estimate.',
+    };
+  } catch (error) {
+    currentTravelExecution()?.check();
+    const detail = error instanceof Error ? error.message : 'Separate one-way tickets could not be priced';
+    throw new Error(`Round-trip fares did not load. ${detail}`, { cause: error });
+  }
 }
 
 export async function runPreview(
@@ -629,33 +635,10 @@ export async function runPreview(
 
   const routes: RouteResult[] = new Array(tasks.length);
   let nextIndex = 0;
-  const loadingShellRoutes = new Set<string>();
 
   const runOne = async (taskIndex: number): Promise<void> => {
     const task = tasks[taskIndex]!;
     const { combo, outboundDate, returnDate } = task;
-    const routeKey = `${combo.origin.code}-${combo.destination.code}`;
-
-    if (loadingShellRoutes.has(routeKey)) {
-      routes[taskIndex] = {
-        origin: combo.origin.code,
-        originName: combo.origin.name,
-        destination: combo.destination.code,
-        destinationName: combo.destination.name,
-        flights: [],
-        date: outboundDate,
-        returnDate,
-        error: googleFlightsLoadingShellMessage(combo.origin.code, combo.destination.code),
-      };
-      if (options.onTaskComplete) {
-        try {
-          await options.onTaskComplete();
-        } catch (callbackError) {
-          console.error('[preview] onTaskComplete callback threw', callbackError);
-        }
-      }
-      return;
-    }
 
     const taskFrom = new Date(outboundDate + 'T00:00:00Z');
     const taskTo = new Date(returnDate + 'T00:00:00Z');
@@ -666,44 +649,40 @@ export async function runPreview(
       returnDate,
       cabinClass || 'economy',
       tripType || 'round_trip',
-      currency
+      currency,
+      { maxPrice, maxStops, maxDurationHours, preferredAirlines, timePreference },
     );
 
     try {
-      const flights = await cached<PriceData[]>(cacheKey, () =>
-        scrapeRoute({
-          origin: combo.origin.code,
-          destination: combo.destination.code,
-          dateFrom: taskFrom,
-          dateTo: taskTo,
-          dateFromStr: outboundDate,
-          cabinClass: cabinClass || 'economy',
-          tripType: tripType || 'round_trip',
-          maxPrice: maxPrice ? Number(maxPrice) : null,
-          maxStops: maxStops !== undefined && maxStops !== null ? Number(maxStops) : null,
-          maxDurationHours,
-          preferredAirlines,
-          timePreference: timePreference || 'any',
-          currency,
-          context,
-          taskIndex,
-        })
-      );
+      const pricing = await scrapeRouteWithEstimate(cacheKey, {
+        origin: combo.origin.code,
+        destination: combo.destination.code,
+        dateFrom: taskFrom,
+        dateTo: taskTo,
+        dateFromStr: outboundDate,
+        cabinClass: cabinClass || 'economy',
+        tripType: tripType || 'round_trip',
+        maxPrice: maxPrice === null ? null : Number(maxPrice),
+        maxStops: maxStops !== undefined && maxStops !== null ? Number(maxStops) : null,
+        maxDurationHours,
+        preferredAirlines,
+        timePreference: timePreference || 'any',
+        currency,
+        context,
+        taskIndex,
+      });
 
       routes[taskIndex] = {
         origin: combo.origin.code,
         originName: combo.origin.name,
         destination: combo.destination.code,
         destinationName: combo.destination.name,
-        flights,
+        ...pricing,
         date: outboundDate,
         returnDate,
       };
     } catch (error) {
       currentTravelExecution()?.check();
-      if (isGoogleFlightsLoadingShellError(error)) {
-        loadingShellRoutes.add(error.routeKey);
-      }
       routes[taskIndex] = {
         origin: combo.origin.code,
         originName: combo.origin.name,
@@ -756,11 +735,12 @@ export async function runPreview(
     };
   }
 
-  if (Date.now() >= deadline && !routes.some((route) => (route?.flights?.length ?? 0) > 0)) {
+  const hasResults = routes.some((route) => route.flights.length > 0 || route.oneWayEstimate);
+  if (Date.now() >= deadline && !hasResults) {
     throw new Error(PREVIEW_WALL_CLOCK_ERROR);
   }
 
-  if (!routes.some((route) => (route?.flights?.length ?? 0) > 0)) {
+  if (!hasResults) {
     const firstError = routes.find((route) => route.error)?.error ?? 'No flights found for any route';
     throw new Error(firstError);
   }
